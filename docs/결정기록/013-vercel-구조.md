@@ -14,7 +14,8 @@
 - 처음 고른 것: A. **미리보기 배포에서 실패**
   - 빌드 기록: `Installing required dependencies from pyproject.toml...` — `pyproject.toml`이 있으면 `requirements.txt`를 쓰지 않아 FastAPI가 설치되지 않았다
   - 함수가 `api/index`로 만들어졌고 `/api/health`는 404 (`X-Vercel-Error: NOT_FOUND`), `/`는 `public/index.html`로 200
-- 결정: **B**. 진입 파일만 루트 `index.py`로 옮기고 `app/` 패키지는 그대로 둔다. `pyproject.toml`은 두지 않고 pytest 설정은 `pytest.ini`로 옮긴다. 파이썬 버전은 `.python-version` = 3.14(로컬 개발 버전과 같음, 빌드 기록 `Using Python 3.14 from .python-version`로 확인). 의존성은 `requirements.txt`(실행용)와 `requirements-dev.txt`(테스트용 pytest·httpx)로 나눠 함수 번들에 테스트 도구가 들어가지 않게 한다. 화면은 `public/`에 두고 FastAPI에 붙이지 않는다.
+- 두 번째 실패: B로 옮긴 뒤에는 파이썬 빌드가 아예 돌지 않았다. 대시보드 Import 시점의 `main`에 문서만 있어 프로젝트 Framework Preset이 `Other`(정적)로 잡혔기 때문이다(`vercel project inspect`로 확인). 첫 배포에서 파이썬이 돈 것은 `api/` 폴더 호환 방식 때문이었다.
+- 결정: **B + `vercel.json`의 `"framework": "fastapi"`**(문서: 이 값이 대시보드의 Framework Preset을 덮어씀, 스키마에서 `fastapi` 값 확인). 설정을 대시보드가 아니라 저장소에 둬서 다시 만들 때도 같게 한다. 진입 파일만 루트 `index.py`로 옮기고 `app/` 패키지는 그대로 둔다. `pyproject.toml`은 두지 않고 pytest 설정은 `pytest.ini`로 옮긴다. 파이썬 버전은 `.python-version` = 3.14(로컬 개발 버전과 같음, 빌드 기록 `Using Python 3.14 from .python-version`로 확인). 의존성은 `requirements.txt`(실행용)와 `requirements-dev.txt`(테스트용 pytest·httpx)로 나눠 함수 번들에 테스트 도구가 들어가지 않게 한다. 화면은 `public/`에 두고 FastAPI에 붙이지 않는다.
 - 함수 지역: 기본값 `iad1`(빌드 결과 `λ ... [iad1]`). Neon DB 지역과 맞추는 일은 Task 12에서 한다.
 - 맞바꾼 것: 계획의 `api/index.py` 위치를 포기했다. `pyproject.toml`을 쓰는 도구(ruff 설정 등)를 나중에 넣으려면 의존성을 그 파일로 옮겨야 한다.
 - 다시 볼 조건: `pyproject.toml`이 필요해지거나, Vercel 자동 감지 위치가 바뀌면.
