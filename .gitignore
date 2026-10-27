@@ -1,0 +1,9 @@
+.env
+data/manuals/
+*.pdf
+docs/design/references/
+__pycache__/
+.venv/
+.superpowers/
+.pytest_cache/
+.vercel/

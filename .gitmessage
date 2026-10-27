@@ -1,0 +1,11 @@
+<type>(<scope>): <제목 — 무엇을 했는지, 50자 이내, 마침표 없음>
+
+- 무엇을: <바뀐 내용 1~3줄>
+- 왜: <이유, 관련 기획서 절>
+- 테스트: <실행한 명령과 결과>
+
+Refs: Task <번호>, docs/기획서.md <절>
+
+# type: feat · fix · test · refactor · docs · chore
+# scope: setup, input-guard, catalog, ingest, retrieval, answer, ask, ui, deploy, evaluation, docs
+# 하지 않는 것: "수정"·"update" 같은 제목, 여러 기능 섞기, 비밀 값·설명서 본문 쓰기
