@@ -11,7 +11,7 @@ Python(FastAPI) + Vercel 함수, OpenAI API(임베딩·답변), Neon Postgres + 
 ## 폴더 구조
 
 ```
-api/index.py      Vercel 진입점 (app.web.create_app()만 노출, 로직 없음)
+index.py          Vercel 진입점 (app.web.create_app()만 노출, 로직 없음)
 app/web.py        create_app(): 라우터 조립 + /api/health
 app/core/         설정·오류 정의·DB 연결
 app/input_guard/  입력 검사·개인정보 가리기
@@ -36,7 +36,7 @@ py -3.14 -m venv .venv
 .venv/Scripts/python -m pytest -v -m "not integration"
 ```
 
-Vercel 진입점은 `pyproject.toml`의 `[tool.vercel] entrypoint = "api.index:app"`, 파이썬 버전은 `.python-version`(결정기록 013).
+Vercel 진입점은 루트 `index.py`(자동 감지), 파이썬 버전은 `.python-version`, 실행 의존성은 `requirements.txt`, 테스트 도구는 `requirements-dev.txt`, pytest 설정은 `pytest.ini`(결정기록 013). `pyproject.toml`을 만들지 않는다 — 있으면 Vercel이 `requirements.txt` 대신 그 파일로 의존성을 설치한다.
 
 ## 금지
 
