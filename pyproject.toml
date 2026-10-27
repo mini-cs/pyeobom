@@ -1,0 +1,7 @@
+# 의존성은 requirements.txt에 둔다. 이 파일은 Vercel 진입점과 pytest 설정만 담는다.
+[tool.vercel]
+entrypoint = "api.index:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = ["integration: 실제 OpenAI·Neon에 연결하는 테스트 (기본 실행에서 제외)"]
