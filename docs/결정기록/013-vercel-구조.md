@@ -19,4 +19,4 @@
 - 함수 지역: 기본값 `iad1`(빌드 결과 `λ ... [iad1]`). Neon DB 지역과 맞추는 일은 Task 12에서 한다.
 - 맞바꾼 것: 계획의 `api/index.py` 위치를 포기했다. `pyproject.toml`을 쓰는 도구(ruff 설정 등)를 나중에 넣으려면 의존성을 그 파일로 옮겨야 한다.
 - 다시 볼 조건: `pyproject.toml`이 필요해지거나, Vercel 자동 감지 위치가 바뀌면.
-- 배포 확인 결과: (B 배포 후 기록)
+- 배포 확인 결과 (2026-10-27, 커밋 0327f0b 미리보기): `/api/health` → 200 `{"status":"ok"}`, `/` → `public/index.html` 200, 빌드 `λ fastapi [iad1]`, `Using Python 3.14 from .python-version`, `Installing required dependencies from requirements.txt`
