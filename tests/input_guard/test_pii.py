@@ -1,6 +1,11 @@
+import csv
+from pathlib import Path
+
 import pytest
 
 from app.input_guard.pii import mask_pii
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -20,10 +25,23 @@ def test_keeps_normal_question():
     assert mask_pii("에러 코드 4E가 떴어요") == ("에러 코드 4E가 떴어요", False)
 
 
-@pytest.mark.parametrize("q", ["세탁기로 30분 돌렸어요", "희망 온도로 18도 맞췄어요"])
-def test_particle_ro_with_number_is_not_address(q):
+@pytest.mark.parametrize("q", ["세탁기로 30분", "온도로 18도", "코스로 2번", "헹굼 2회로 3회 더"])
+def test_particle_ro_with_unit_is_not_address(q):
     assert mask_pii(q) == (q, False)
 
 
-def test_road_name_address_is_masked():
-    assert mask_pii("망원로 123에 살아요") == ("[주소]에 살아요", True)
+@pytest.mark.parametrize("raw,expected", [
+    ("망원로 123에", "[주소]에"),
+    ("망원로 123번지", "[주소]번지"),
+    ("연남로 12-3이에요", "[주소]이에요"),
+])
+def test_road_name_address_is_masked(raw, expected):
+    assert mask_pii(raw) == (expected, True)
+
+
+def test_eval_questions_are_unchanged():
+    with (ROOT / "evaluation" / "questions.csv").open(encoding="utf-8-sig", newline="") as f:
+        questions = [r["question"] for r in csv.DictReader(f)]
+    assert len(questions) == 30
+    changed = [q for q in questions if mask_pii(q) != (q, False)]
+    assert changed == []
