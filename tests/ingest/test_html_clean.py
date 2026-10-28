@@ -19,8 +19,8 @@ def test_clean_text_removes_broken_footer():
 
 def test_clean_text_removes_plain_untitled_footer():
     # pypdfium2는 바닥글을 깨지 않은 형태로 쪽마다 1줄 남긴다 (결정기록 016 수정)
-    raw = "이불 코스\n• 최대 용량: 4.0 kg\nUntitled-1 38 2026-02-26 10:07:02"
-    assert clean_text(raw) == "이불 코스\n• 최대 용량: 4.0 kg"
+    raw = "이불 코스\n• 최대 용량: 4.0 kg\nUntitled-1 38 2026-02-26 10:07:02\n문을 닫으세요\nUntitled-1 49"  # 49쪽은 날짜 없이 남는다
+    assert clean_text(raw) == "이불 코스\n• 최대 용량: 4.0 kg\n문을 닫으세요"
 
 
 def test_drop_out_of_scope_paragraphs():
