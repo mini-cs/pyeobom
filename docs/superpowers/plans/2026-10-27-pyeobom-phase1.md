@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **근거 문서**(기획서 3.2): 모델 전용 사용설명서(PDF) 3~4개 + 제조사 공식 해결 가이드(HTML, 제품 종류 공용) — LG 드럼 에러코드 페이지 1개, 삼성 드럼 점검 코드 세부 페이지 8개. **모델 하나에 문서 여러 개**가 연결된다(`document_models`). 문서 목록·적용 범위는 본문 없이 `data/documents.json`으로 관리한다.
+- **근거 문서**(기획서 3.2): 모델 전용 사용설명서(PDF) 3~4개 + 제조사 공식 해결 가이드(HTML, 제품 종류 공용) — LG 드럼 에러코드 페이지 1개, 삼성 드럼 점검 코드 세부 페이지 6개(링크 2개는 페이지 없음). **모델 하나에 문서 여러 개**가 연결된다(`document_models`). 문서 목록·적용 범위는 본문 없이 `data/documents.json`으로 관리한다.
 - **근거 우선순위**: 같은 내용이면 모델 전용 설명서 > 공용 가이드. 공용 가이드를 인용할 때는 경고 문구를 정확히 `공용 콘텐츠라 모델에 따라 다를 수 있어요`로 표시한다.
 - **근거 참조 표기**(평가·디버그 공통): 설명서는 `manual:<쪽>`, 가이드는 `guide:<doc_id>`.
 - 질문 1개 = 답변 1개. 이전 대화를 기억하지 않는다.
@@ -368,7 +368,8 @@ def test_api_models_hides_internal_fields():
 **Branch:** `feat/ingest`
 
 **Files:**
-- Create: `ingest/schema.sql`, `ingest/pdf.py`, `ingest/html.py`, `ingest/clean.py`, `ingest/load.py`, `ingest/__main__.py`, `data/documents.json`, `app/core/db.py`, `app/retrieval/embeddings.py`, `tests/ingest/fixtures/sample_guide.html`(직접 만든 가짜 HTML)
+- Create: `ingest/schema.sql`, `ingest/pdf.py`, `ingest/html.py`, `ingest/clean.py`, `ingest/load.py`, `ingest/__main__.py`, `data/documents.json`, `app/core/db.py`, `app/retrieval/embeddings.py`, `tests/ingest/fixtures/sample_guide.html`(직접 만든 가짜 HTML), `docs/결정기록/016-추출-도구-선택.md`
+- Modify: `requirements-dev.txt`(MarkItDown을 쓰기로 하면 여기에만 추가)
 - Modify: `.gitignore`(`data/guides/` 추가)
 - Test: `tests/ingest/test_chunking.py`, `tests/ingest/test_html_clean.py`
 
@@ -376,10 +377,11 @@ def test_api_models_hides_internal_fields():
 - Consumes: `load_models()`, `get_settings()`
 - Produces:
   - `ingest/schema.sql` = 기획서 5.6의 `documents`, `document_models`, `chunks` + 맨 앞 `CREATE EXTENSION IF NOT EXISTS vector;`, `VECTOR(<EMBED_DIM>)`는 `.env`의 `EMBED_DIM` 값으로 기입
-  - `data/documents.json` 항목: `{"id", "doc_type": "manual"|"guide", "title", "source_url", "scope_note", "model_ids": [...], "file", "content_selector"(가이드만), "fetched_at"}`
+  - `data/documents.json` 항목: `{"id", "doc_type": "manual"|"guide", "title", "source_url", "scope_note", "model_ids": [...], "file", "content_selector"(가이드만), "exclude_keywords"(선택, 예: ["플렉스워시"]), "fetched_at"}`
   - `extract_pages(pdf_path: str) -> list[tuple[int, str]]` (1부터 시작하는 페이지 번호, 페이지 텍스트)
   - `extract_html(path: str, content_selector: str) -> str` — 본문 영역의 **모든** 글자(탭에 숨은 패널 포함, `textContent` 기준), 본문 밖 메뉴·바닥글 제외
   - `clean_text(text: str) -> str` — 깨진 바닥글(글자가 두 번씩 반복된 `UUnnttiittlleedd` 같은 줄, `(cid:31)` 같은 표기) 제거
+  - `drop_out_of_scope(text: str, keywords: list[str]) -> tuple[str, int]` — 키워드가 들어 있는 문단(빈 줄로 나뉜 덩어리)과, 키워드가 든 `[...]` 소제목으로 시작하는 단락을 다음 소제목 전까지 통째로 뺀다. 뺀 문단 수를 함께 돌려주고, 전처리는 문서별로 이 수를 출력한다(개발일지에 기록)
   - `chunk_pages(pages: list[tuple[int, str]], max_chars: int = 800, overlap: int = 100) -> list[tuple[int, str]]` (조각은 페이지를 넘지 않음, 가이드는 페이지 대신 문서 전체를 `[(0, text)]`로 넣고 저장 시 `page = NULL`)
   - `get_conn()` (psycopg 연결 + pgvector 타입 등록, 실패 시 `make_error("DB_UNAVAILABLE")`)
   - `embed_texts(texts: list[str]) -> list[list[float]]`, `embed_query(text: str) -> list[float]`
@@ -387,8 +389,19 @@ def test_api_models_hides_internal_fields():
 
 - [ ] **Step 1: 근거 문서 확정 (1일차)** — 세탁기 2개(삼성 WD90H25AH*/BH*, LG 드럼)는 2026-10-27에 추출 확인 완료. 남은 것:
   - 에어컨: 삼성·LG 벽걸이 설명서 후보를 같은 **임시 확인 스크립트(커밋하지 않음)**로 추출 확인 → 글자가 더 깨끗한 쪽 1개 선택
-  - 해결 가이드 저장: LG 드럼 에러코드 페이지 1개, 삼성 드럼 점검 코드 세부 페이지 8개를 브라우저 "웹페이지 전체 저장"으로 `data/guides/`에 저장(탭에 숨은 설명까지 들어가는지 확인)
+  - 해결 가이드 저장: LG 드럼 에러코드 페이지 1개, 삼성 드럼 점검 코드 세부 페이지 6개(oC·HC·FC·LC·5C·4C — UE·dC 링크는 페이지 없음)를 브라우저 "웹페이지 전체 저장"으로 `data/guides/`에 저장(탭에 숨은 설명까지 들어가는지 확인)
+  - 삼성 oC·LC 페이지의 **플렉스워시 전용 문단은 전처리에서 뺀다**(2026-10-28 결정 A — 적용 범위 원칙을 문단 단위까지 적용). `documents.json`의 해당 문서에 `"exclude_keywords": ["플렉스워시"]`를 넣고, 결정과 이유를 결정기록 014에 남긴다
   - 결과(파일 이름, 표지 모델명, 다운로드할 때 검색한 모델명, 적용 범위, 쓰지 않기로 한 페이지와 이유)를 `docs/결정기록/014-근거-문서-선정.md`에 기록
+- [ ] **Step 1-2: 추출 도구 비교 (1일차, 임시 확인·커밋하지 않음)** — 같은 문서로 두 방법을 나란히 비교해 Step 4의 구현 방식을 정한다.
+  - **PDF**(세탁기 2 + 에어컨 후보 2): `pdfplumber` vs MarkItDown(`markitdown[pdf]`)
+    - 쪽 수가 원본과 같은가 (MarkItDown은 쪽 경계 문자 `\f`로 나눈 개수)
+    - 깨진 바닥글(`UUnnttiittlleedd`, `(cid:31)` 등)이 남는가
+    - 에러 코드·문제 해결 쪽의 글이 읽기 쉬운가(문단이 끊기거나 섞이지 않는가)
+  - **HTML**(해결 가이드 9개): MarkItDown 결과 vs 본문 영역만 뽑은 결과(`content_selector`)
+    - LG 페이지의 숨은 탭 설명(OE·UE 등)이 모두 들어오는가
+    - 사이트 메뉴·바닥글 같은 잡음이 섞이는가, 제목·목록 구조가 남는가
+  - MarkItDown은 로컬 전처리 전용이므로 `requirements-dev.txt`에만 추가한다(`requirements.txt`에 넣으면 Vercel 함수에도 설치됨). 파이썬 버전(`.python-version`)과 설치가 맞는지 함께 확인한다.
+  - 비교 결과(항목별 표)와 선택(예: "PDF는 A, HTML은 B")을 `docs/결정기록/016-추출-도구-선택.md`에 기록한다. 함수 형식(`extract_pages`, `extract_html`)은 그대로이고 안쪽 구현만 달라진다.
 - [ ] **Step 2: 실패하는 테스트 작성**
 
 ```python
@@ -414,10 +427,22 @@ def test_html_includes_hidden_tab_panels_and_skips_nav():
 def test_clean_text_removes_broken_footer():
     raw = "배수 필터를 청소하세요.\nUUnnttiittlleedd--11 1122\n(cid:31)(cid:32)\n전원을 끄세요."
     assert clean_text(raw) == "배수 필터를 청소하세요.\n전원을 끄세요."
+
+def test_drop_out_of_scope_paragraphs():
+    raw = ("배수 필터를 청소하세요.\n\n"
+           "플렉스워시 제품은 상부와 하부 표시가 다릅니다.\n\n"
+           "[플렉스워시 제품 누수 점검 안내]\n상단에 호스를 고정하세요.\n\n"
+           "[일반 안내]\n전원을 끄고 다시 켜세요.")
+    text, n = drop_out_of_scope(raw, ["플렉스워시"])
+    assert "플렉스워시" not in text and "상단에 호스를 고정" not in text
+    assert "배수 필터를 청소하세요." in text and "전원을 끄고 다시 켜세요." in text and n == 2
+
+def test_drop_out_of_scope_without_keywords_keeps_all():
+    assert drop_out_of_scope("가\n\n나", []) == ("가\n\n나", 0)
 ```
 
 - [ ] **Step 3: 실패 확인** — Run: `pytest tests/ingest -v` / Expected: FAIL
-- [ ] **Step 4: 구현** — 추출은 `pdfplumber`, 임베딩은 `OPENAI_EMBED_MODEL`(1일차에 OpenAI 문서로 모델명·차원을 확인해 `.env`와 `EMBED_DIM`에 기입).
+- [ ] **Step 4: 구현** — 추출은 결정기록 016에서 고른 도구(PDF·HTML 각각), 임베딩은 `OPENAI_EMBED_MODEL`(1일차에 OpenAI 문서로 모델명·차원을 확인해 `.env`와 `EMBED_DIM`에 기입).
 - [ ] **Step 5: 통과 확인** — Run: `pytest tests/ingest -v` / Expected: PASS
 - [ ] **Step 6: Neon에 적재** — Neon SQL Editor에서 `ingest/schema.sql` 실행 → 문서마다 `python -m ingest --doc-id <id>` 실행
   - Verify: `SELECT d.doc_type, c.doc_id, count(*) FROM chunks c JOIN documents d ON d.id = c.doc_id GROUP BY 1, 2;`가 문서 수만큼 행을 반환하고, `document_models`에서 모델마다 연결된 문서가 기획서 3.2와 같다. 조각 수를 개발일지에 기록(기획서의 "수백~천 개 추정" 확인)
