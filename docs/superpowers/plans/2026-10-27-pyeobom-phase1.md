@@ -452,7 +452,7 @@ def test_drop_out_of_scope_without_keywords_keeps_all():
 ```
 
 - [ ] **Step 3: 실패 확인** — Run: `pytest tests/ingest -v` / Expected: FAIL
-- [ ] **Step 1-3: PDF 도구 재비교 (1일차 오후, 결정기록 016 수정)** — pdfplumber vs pypdfium2(필요하면 pypdf·pdftotext도)를 설명서 3개로 비교하고 결과를 결정기록 016에 "수정"으로, 노션 오늘 페이지에도 기록한다. 기준: 쪽 수, **소수점 유지**(`\d\.\d ?kg` 개수와 `\d \d ?kg` 개수), 깨진 바닥글 줄, `(cid:` 잡음, 세제 정량 표의 행 순서(LG 16쪽), 추출 시간. 참고(채팅 환경 측정): 삼성 pdfplumber 소수점 24곳 손실·바닥글 79줄·cid 123줄 / pypdfium2 손실 0·1줄·0
+- [x] **Step 1-3: PDF 도구 재비교 (1일차 오후, 결정기록 016 수정)** — pdfplumber vs pypdfium2(필요하면 pypdf·pdftotext도)를 설명서 3개로 비교하고 결과를 결정기록 016에 "수정"으로, 노션 오늘 페이지에도 기록한다. 기준: 쪽 수, **소수점 유지**(`\d\.\d ?kg` 개수와 `\d \d ?kg` 개수), 깨진 바닥글 줄, `(cid:` 잡음, 세제 정량 표의 행 순서(LG 16쪽), 추출 시간. ✅ 2026-10-28 사용자 컴퓨터에서 재측정 완료(pypdfium2 5.14.0): 삼성 pdfplumber 소수점 24곳 손실·반복 글자 바닥글 79줄·cid 202줄(바닥글 제외 본문 123줄)·6.9초 / pypdfium2 손실 0·0줄·0·0.2초. "Untitled-1 …" 정상 글자 바닥글은 쪽마다 1줄 남아 `clean_text` 필요
 - [ ] **Step 4: 구현** — 추출은 결정기록 016(수정)대로 **PDF는 pypdfium2**, HTML은 본문 영역 뽑기(+ 제목·탭 이름), 임베딩은 `OPENAI_EMBED_MODEL`(1일차에 OpenAI 문서로 모델명·차원을 확인해 `.env`와 `EMBED_DIM`에 기입).
 - [ ] **Step 5: 통과 확인** — Run: `pytest tests/ingest -v` / Expected: PASS
 - [ ] **Step 6: Neon에 적재** — Neon SQL Editor에서 `ingest/schema.sql` 실행 → 문서마다 `python -m ingest --doc-id <id>` 실행
