@@ -18,3 +18,12 @@ def test_masks_pii(raw, expected):
 
 def test_keeps_normal_question():
     assert mask_pii("에러 코드 4E가 떴어요") == ("에러 코드 4E가 떴어요", False)
+
+
+@pytest.mark.parametrize("q", ["세탁기로 30분 돌렸어요", "희망 온도로 18도 맞췄어요"])
+def test_particle_ro_with_number_is_not_address(q):
+    assert mask_pii(q) == (q, False)
+
+
+def test_road_name_address_is_masked():
+    assert mask_pii("망원로 123에 살아요") == ("[주소]에 살아요", True)
