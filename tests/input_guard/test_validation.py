@@ -34,3 +34,9 @@ def test_invalid_model_rejected(m):
 
 def test_supported_model_accepted():
     assert validate_model_id("washer-a", {"washer-a"}) == "washer-a"
+
+
+def test_too_long_message_uses_max_len():
+    with pytest.raises(AppError) as e:
+        validate_question("가" * 301, 300)
+    assert e.value.message == "질문은 300자 이내로 입력해 주세요"

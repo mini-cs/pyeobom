@@ -6,7 +6,7 @@ def validate_question(question: str | None, max_len: int) -> str:
     if not text:
         raise make_error("EMPTY_QUESTION")
     if len(text) > max_len:
-        raise make_error("QUESTION_TOO_LONG")
+        raise make_error("QUESTION_TOO_LONG", max_len=max_len)
     return text
 
 
