@@ -57,3 +57,11 @@ def test_examples_per_model_and_not_eval_questions():
         eval_questions = [r["question"] for r in csv.DictReader(f)]
     for q in (q for qs in examples.values() for q in qs):   # 평가 질문과 같거나 겹치는 문장은 예시로 쓰지 않는다
         assert not any(q in e or e in q for e in eval_questions), q
+
+
+def test_intro_is_not_toggled_by_focus_or_blur():
+    # 결정기록 012 수정(2026-10-29): 검색창 포커스로 접지 않고, 첫 질문을 실제로 보낼 때 한 줄 머리말로 바꾼다
+    js, css, html = read("app.js"), read("styles.css"), read("index.html")
+    assert not re.search(r"addEventListener\(\s*[\"'](focus|blur|focusin|focusout)[\"']", js)
+    assert "is-compact" in js and ".is-compact" in css
+    assert "가전 설명서, 대신 펴 봐 드려요" in html.split("<body>", 1)[1]   # 본문에 한 줄 머리말 문구가 있음
