@@ -25,7 +25,7 @@ def test_code_fence_is_tolerated():
 
 
 def test_quote_whitespace_is_normalized():
-    raw = VALID.replace("돌려 빼 주세요.", "돌려  빼\n주세요.")
+    raw = VALID.replace("돌려 빼 주세요.", "돌려  빼\\n주세요.")  # JSON 안의 \n(줄바꿈)과 겹친 공백
     assert parse_and_verify(raw, CH) is not None
 
 
