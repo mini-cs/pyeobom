@@ -599,10 +599,12 @@ def test_api_key_never_in_error(fake_client):
 - [ ] **Step 2: 실패 확인** — Run: `pytest tests/answer/test_llm.py -v` / Expected: FAIL
 - [ ] **Step 3: 구현** — 모델은 `OPENAI_CHAT_MODEL`, 최대 출력 `OPENAI_MAX_OUTPUT_TOKENS=600`. JSON 출력 강제 옵션은 OpenAI 최신 문서에서 확인해 지원되면 사용(없어도 Task 8 검증이 막아 줌). 예상 밖 예외는 `SERVICE_UNAVAILABLE`로 바꾸고 원인은 키를 지운 뒤 서버 로그에만.
 - **메모 (2026-10-29, 결정기록 017):**
-  - **429 구분:** OpenAI 429 중 `error.code`가 `organization_spend_limit_exceeded`·`project_spend_limit_exceeded`이면 **재시도하지 않고** `SERVICE_UNAVAILABLE`로 바꾼다. 일반 요청 속도 제한 429만 1회 재시도한다. 이 구분을 테스트로 만든다(가짜 client가 code별 429를 던짐, 재시도 횟수 확인).
-    - OpenAI Error codes 문서는 `credit_balance_exhausted`·`organization_usage_limit_exceeded`도 "재시도해도 복구되지 않음"으로 안내한다. 같은 목록에 넣을지 구현 때 정한다.
+  - **429 구분 (2026-10-29 확정, 결정기록 017 "429 처리"):**
+    - **일반 속도 제한 429만 1회 재시도한다.** 문서상 `error.code`가 없는 "Rate limit reached for requests"와 `slow_down`(type `rate_limit_error`)이다.
+    - 나머지 429는 재시도 없이 `SERVICE_UNAVAILABLE`로 바꾼다: `credit_balance_exhausted`·`organization_spend_limit_exceeded`·`project_spend_limit_exceeded`·`organization_usage_limit_exceeded`, 그리고 모르는 코드
+    - **테스트:** 가짜 client가 code별 429를 던지게 하고 호출 횟수를 확인한다. `@pytest.mark.parametrize("code,calls", [(None, 2), ("slow_down", 2), ("credit_balance_exhausted", 1), ("organization_spend_limit_exceeded", 1), ("project_spend_limit_exceeded", 1), ("organization_usage_limit_exceeded", 1), ("unknown_code", 1)])`
   - **JSON 출력:** Responses API `text.format`(json_schema, strict)을 쓴다. `gpt-6-luna`의 Structured outputs 지원은 모델 페이지로 확인했다. 실제 동작은 첫 호출에서 확인한다.
-  - **추론 강도:** v1은 `low` 제안(사용자 확인 필요). 추론 토큰 때문에 `max_output_tokens=600`에서 답이 비지 않는지 확인한다.
+  - **추론 강도:** v1은 `low`(2026-10-29 확정). `settings.reasoning_effort`(환경 변수 `OPENAI_REASONING_EFFORT`)를 Responses API `reasoning.effort`로 넘긴다. 추론 토큰 때문에 `max_output_tokens=600`에서 답이 비지 않는지 확인한다.
 - [ ] **Step 4: 통과 확인** — 같은 명령 / Expected: PASS
 - [ ] **Step 5: Commit** — 커밋 메시지 규칙에 따라 제목·본문 작성, 기본 제목: `feat(answer): OpenAI 호출에 타임아웃·재시도·실패 흉내 스위치 추가`
 
@@ -696,6 +698,7 @@ def test_unexpected_error_hides_trace(client_with_crash):
 
 - [ ] **Step 1: 디자인 가이드 확정 (1일차)** — 직접 캡처한 레퍼런스 2~3개(이미지는 `docs/design/references/`, .gitignore)에서 배치·분위기만 뽑아 색·글꼴·글자 크기·간격·버튼/카드 모양을 토큰으로 정리. 출처 링크만 문서에 남긴다
 - [ ] **Step 2: 마크업** — `<head>`에 `<title>`·`meta description`·`og:title`·`og:description`(Global Constraints 문구). 본문은 기획서 4.1 순서: 소개 영역(서비스명 `펴봄`·제목·부제·신뢰 포인트 3개) → 선택 모델 + "변경"(모델 목록, `model_name_hint` 표시) → 검색창 + 남은 글자 수(500) → 예시 질문 버튼 → 답변 카드(제목·조치·근거 박스[설명서면 "사용설명서 N쪽", 가이드면 "공식 해결 가이드: 제목" + 경고 문구]·인용·"공식 문서 열기"(인용의 `url`)) → 하단 고지(정확한 문구)
+- **메모 (2026-10-29):** 설명서는 정확한 PDF 주소가 없어 `official_url`이 제조사 설명서 다운로드 페이지다. 그래서 "공식 문서 열기" 대신 **"공식 설명서 받기 (검색어: <model_name_hint>)"** 형태로 쓴다. 검색어 자리에는 그 모델을 찾을 검색어를 넣는다(예: `SQ06FA1WDS`). 가이드는 `source_url`이 실제 페이지라 "공식 문서 열기" 그대로 둔다.
 - [ ] **Step 3: 상태 구현(`app.js`)** — 검색창 동작 규칙(기획서 4.2): ① 검색창·예시 질문 버튼을 누르면 소개 영역(제목·부제·신뢰 포인트)이 약 0.3초 동안 접힘 ② 입력이 빈 채로 포커스를 잃으면 다시 펼침 ③ 질문 전송 후에는 접힌 상태 유지 ④ 서비스명 "펴봄"은 항상 표시. 접힘은 CSS 클래스 토글 + `transition`으로 하고, `@media (prefers-reduced-motion: reduce)`에서는 `transition: none`. 예시 질문 버튼은 `mousedown`에서 기본 동작을 막아 검색창 포커스가 풀리지 않게 한다 / 첫 화면 / 로딩(진행 표시 + 전송 잠금) / 결과 / 찾지 못함(`official_url` 안내) / 오류(`message` 표시). `pii_masked`가 true면 "개인정보는 입력하지 마세요. 입력하신 전화번호·이메일 등은 가린 뒤 처리했어요" 안내. 빈 질문·500자 초과는 화면에서도 막는다(서버도 다시 검사)
 - [ ] **Step 4: 수동 확인** — 아래가 모두 되면 통과, 결과를 `docs/안정성-테스트.md`에 기록
   - 전송 버튼을 빠르게 5번 눌러도 네트워크 탭에 요청 1건(Review Focus 5)
