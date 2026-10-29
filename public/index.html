@@ -1,1 +1,63 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><title>펴봄 — 가전 설명서, 대신 펴 봐 드려요</title><p>펴봄 준비 중입니다.</p></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>펴봄 — 가전 설명서, 대신 펴 봐 드려요</title>
+  <meta name="description" content="공식 설명서에서 근거를 찾아 페이지와 함께 알려 드려요">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="펴봄 — 가전 설명서, 대신 펴 봐 드려요">
+  <meta property="og:description" content="공식 설명서에서 근거를 찾아 페이지와 함께 알려 드려요">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">펴봄</span>
+  </header>
+
+  <main class="page">
+    <section class="intro" id="intro" aria-labelledby="intro-title">
+      <h1 id="intro-title">세탁기·에어컨, 설명서 대신 물어보세요</h1>
+      <p class="intro-sub">공식 설명서에서 근거를 찾아 페이지와 함께 알려 드려요</p>
+      <ul class="trust">
+        <li>공식 설명서 근거</li>
+        <li>근거 페이지 표시</li>
+        <li>모르면 모른다고 해요</li>
+      </ul>
+    </section>
+
+    <section class="model" aria-label="선택한 모델">
+      <div class="model-card">
+        <span class="model-label">내 모델</span>
+        <strong class="model-name" id="model-name">모델 목록을 불러오는 중…</strong>
+        <button type="button" class="link-button" id="model-change" aria-expanded="false" aria-controls="model-picker">변경</button>
+      </div>
+      <div class="model-picker" id="model-picker" hidden>
+        <p class="picker-title">모델을 골라 주세요</p>
+        <ul class="model-list" id="model-list"></ul>
+      </div>
+    </section>
+
+    <form class="ask" id="ask-form" novalidate>
+      <label for="question" class="visually-hidden">질문</label>
+      <textarea id="question" name="question" rows="2" maxlength="500" autocomplete="off"
+                placeholder="무엇이 궁금한가요? 예) 통세척 방법, 4E 에러"></textarea>
+      <div class="ask-row">
+        <span class="counter" id="counter">500자 남음</span>
+        <button type="submit" class="send" id="send">물어보기</button>
+      </div>
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+      <p class="notice" id="pii-note" hidden>개인정보는 입력하지 마세요. 입력하신 전화번호·이메일 등은 가린 뒤 처리했어요</p>
+    </form>
+
+    <div class="examples" id="examples" aria-label="예시 질문"></div>
+
+    <section class="result" id="result" aria-live="polite">
+      <p class="empty">모델을 확인하고 궁금한 것을 적어 보세요. 공식 설명서에서 근거를 찾아 드려요.</p>
+    </section>
+  </main>
+
+  <footer class="footer">비영리 학습용 포트폴리오이며, 설명서 저작권은 각 제조사에 있습니다. 정확한 내용은 공식 설명서를 확인하세요.</footer>
+</body>
+</html>

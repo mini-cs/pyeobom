@@ -260,6 +260,7 @@ def test_model_ids_exist(rows, model_ids): assert {r["model_id"] for r in rows} 
 | `SERVICE_UNAVAILABLE` | 503 | 일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요 |
 | `AI_TIMEOUT` | 504 | 답변이 늦어지고 있어요. 잠시 후 다시 시도해 주세요 |
 | `DB_UNAVAILABLE` | 503 | 일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요 |
+| `INVALID_REQUEST` | 400 | 요청 형식이 올바르지 않아요. 새로고침한 뒤 다시 시도해 주세요 |
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
@@ -625,8 +626,8 @@ def test_api_key_never_in_error(fake_client):
   - `@dataclass Deps(embed_query, search, complete, supported_ids: set[str], official_url: Callable[[str], str])` — `search(model_id: str, query_vec: list[float], question: str, k: int) -> list[Chunk]` (Task 14에서 hybrid로 교체되는 경계), `complete(messages) -> str`
   - `answer_question(model_id: str, question: str, deps: Deps, settings: Settings, debug: bool = False) -> dict`
     - 순서: 모델 검사 → 질문 검사 → 개인정보 가리기 → 임베딩 → 검색(k) → 조각 없으면 찾지 못함 → 프롬프트(`settings.prompt_version`) → 호출 → 검증 → 실패 시 호출 1회 더 → 또 실패면 찾지 못함
-    - 반환: `{"found", "answer", "citations": [{"doc_type","title","page","url","quote"}], "official_url", "latency_ms": int, "pii_masked": bool}` (가이드 인용은 `"warning": GUIDE_WARNING` 포함) + `debug=True`면 `"retrieved_refs": list[str]`
-  - `POST /api/ask` 본문 `{"model_id", "question"}` → 위 dict / `AppError` → `status`와 `{"error_code","message"}` / 그 외 예외 → 500 `{"error_code":"SERVICE_UNAVAILABLE", ...}` (스택 노출 없음)
+    - 반환: `{"found", "answer", "citations": [{"doc_type","title","page","url","quote"}], "official_url", "latency_ms": int, "pii_masked": bool}` (가이드 인용은 `"warning": GUIDE_WARNING` 포함) + `debug=True`면 `"retrieved_refs": list[str]`과 단계별 시간 `embed_ms`·`db_connect_ms`·`search_ms`·`llm_ms`(정수 ms, 2026-10-29 추가)
+  - `POST /api/ask` 본문 `{"model_id", "question"}`(디버그: `POST /api/ask?debug=true`) → 위 dict / `AppError` → `status`와 `{"error_code","message"}` / 그 외 예외 → 500 `{"error_code":"SERVICE_UNAVAILABLE", ...}` (스택 노출 없음) / 본문이 JSON이 아니거나 형식이 틀리면 400 `INVALID_REQUEST`(같은 오류 형식, 2026-10-29 추가)
   - `get_deps()` — 실제 의존성을 조립하는 FastAPI 의존성(테스트에서 override). 검색은 `search_vector(conn, model_id, query_vec, k)`를 `Deps.search` 시그니처에 맞게 감싸고(질문 인자는 무시), Task 14부터 `settings.search_mode == "hybrid"`면 `search_hybrid`로 감싼다
 
 - [ ] **Step 1: 실패하는 서비스 테스트 작성** (가짜 deps가 받은 입력을 기록)
@@ -699,7 +700,7 @@ def test_unexpected_error_hides_trace(client_with_crash):
 - [ ] **Step 1: 디자인 가이드 확정 (1일차)** — 직접 캡처한 레퍼런스 2~3개(이미지는 `docs/design/references/`, .gitignore)에서 배치·분위기만 뽑아 색·글꼴·글자 크기·간격·버튼/카드 모양을 토큰으로 정리. 출처 링크만 문서에 남긴다
 - [ ] **Step 2: 마크업** — `<head>`에 `<title>`·`meta description`·`og:title`·`og:description`(Global Constraints 문구). 본문은 기획서 4.1 순서: 소개 영역(서비스명 `펴봄`·제목·부제·신뢰 포인트 3개) → 선택 모델 + "변경"(모델 목록, `model_name_hint` 표시) → 검색창 + 남은 글자 수(500) → 예시 질문 버튼 → 답변 카드(제목·조치·근거 박스[설명서면 "사용설명서 N쪽", 가이드면 "공식 해결 가이드: 제목" + 경고 문구]·인용·"공식 문서 열기"(인용의 `url`)) → 하단 고지(정확한 문구)
 - **메모 (2026-10-29):** 설명서는 정확한 PDF 주소가 없어 `official_url`이 제조사 설명서 다운로드 페이지다. 그래서 "공식 문서 열기" 대신 **"공식 설명서 받기 (검색어: <model_name_hint>)"** 형태로 쓴다. 검색어 자리에는 그 모델을 찾을 검색어를 넣는다(예: `SQ06FA1WDS`). 가이드는 `source_url`이 실제 페이지라 "공식 문서 열기" 그대로 둔다.
-- [ ] **Step 3: 상태 구현(`app.js`)** — 검색창 동작 규칙(기획서 4.2): ① 검색창·예시 질문 버튼을 누르면 소개 영역(제목·부제·신뢰 포인트)이 약 0.3초 동안 접힘 ② 입력이 빈 채로 포커스를 잃으면 다시 펼침 ③ 질문 전송 후에는 접힌 상태 유지 ④ 서비스명 "펴봄"은 항상 표시. 접힘은 CSS 클래스 토글 + `transition`으로 하고, `@media (prefers-reduced-motion: reduce)`에서는 `transition: none`. 예시 질문 버튼은 `mousedown`에서 기본 동작을 막아 검색창 포커스가 풀리지 않게 한다 / 첫 화면 / 로딩(진행 표시 + 전송 잠금) / 결과 / 찾지 못함(`official_url` 안내) / 오류(`message` 표시). `pii_masked`가 true면 "개인정보는 입력하지 마세요. 입력하신 전화번호·이메일 등은 가린 뒤 처리했어요" 안내. 빈 질문·500자 초과는 화면에서도 막는다(서버도 다시 검사)
+- [ ] **Step 3: 상태 구현(`app.js`)** — 검색창 동작 규칙(기획서 4.2): ① 검색창·예시 질문 버튼을 누르면 소개 영역(제목·부제·신뢰 포인트)이 약 0.3초 동안 접힘 ② 입력이 빈 채로 포커스를 잃으면 다시 펼침 ③ 질문 전송 후에는 접힌 상태 유지 ④ 서비스명 "펴봄"은 항상 표시. 접힘은 CSS 클래스 토글 + `transition`으로 하고, `@media (prefers-reduced-motion: reduce)`에서는 `transition: none`. 예시 질문 버튼은 `mousedown`에서 기본 동작을 막아 검색창 포커스가 풀리지 않게 한다 / 첫 화면 / 로딩(진행 표시 + 전송 잠금) / 결과 / 찾지 못함(`official_url` 안내) / 오류(`message` 표시, `error_code`로 안내를 고름 — `INVALID_REQUEST`는 "새로고침 후 다시 시도"). `pii_masked`가 true면 "개인정보는 입력하지 마세요. 입력하신 전화번호·이메일 등은 가린 뒤 처리했어요" 안내. 빈 질문·500자 초과는 화면에서도 막는다(서버도 다시 검사)
 - [ ] **Step 4: 수동 확인** — 아래가 모두 되면 통과, 결과를 `docs/안정성-테스트.md`에 기록
   - 전송 버튼을 빠르게 5번 눌러도 네트워크 탭에 요청 1건(Review Focus 5)
   - 폭 360px 화면에서 가로 스크롤 없음
