@@ -43,3 +43,17 @@ def test_script_never_injects_api_text_as_html():
 def test_reduced_motion_disables_collapse_animation():
     css = read("styles.css")
     assert "prefers-reduced-motion: reduce" in css and "transition: none" in css
+
+
+def test_examples_per_model_and_not_eval_questions():
+    import csv
+    import json
+    js = read("app.js")
+    block = re.search(r"const EXAMPLES = (\{.*?\});", js, re.S)[1]
+    examples = json.loads(re.sub(r",(\s*[}\]])", r"\1", block))   # 끝 쉼표를 지우고 JSON으로 읽는다
+    model_ids = {m["id"] for m in json.loads((PUBLIC.parent / "data" / "models.json").read_text(encoding="utf-8"))}
+    assert set(examples) == model_ids and all(len(v) == 2 for v in examples.values())
+    with (PUBLIC.parent / "evaluation" / "questions.csv").open(encoding="utf-8") as f:
+        eval_questions = [r["question"] for r in csv.DictReader(f)]
+    for q in (q for qs in examples.values() for q in qs):   # 평가 질문과 같거나 겹치는 문장은 예시로 쓰지 않는다
+        assert not any(q in e or e in q for e in eval_questions), q
