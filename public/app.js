@@ -1,9 +1,11 @@
 // 펴봄 화면: 모델 고르기 → 질문 → 답변 카드(근거) / 찾지 못함 / 오류. API 글자는 textContent로만 넣는다(XSS 방지).
 const MAX_LEN = 500;
 const STORE_KEY = "pyeobom.model";
+// 모델별 예시 질문: 실제 /api/ask로 근거가 나오는 것을 확인한 문장, 평가 질문 30개와 겹치지 않게(2026-10-29)
 const EXAMPLES = {
-  washer: ["통세척은 어떻게 해요?", "에러 코드가 떴어요"],
-  aircon: ["필터 청소는 어떻게 해요?", "찬바람이 안 나와요"],
+  "washer-samsung-wd90h25": ["이불 코스는 어떻게 해요?", "물이 안 빠지고 5C가 떠요"],
+  "washer-lg-fx25": ["통세척은 어떻게 해요?", "UE 에러가 떴어요"],
+  "aircon-lg-sq06fa1wds": ["필터 청소는 어떻게 해요?", "꺼짐 예약은 어떻게 해요?"],
 };
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
 
@@ -68,7 +70,7 @@ function renderModels() {
 }
 
 function renderExamples() {
-  const items = EXAMPLES[current?.appliance] || [];
+  const items = EXAMPLES[current?.id] || [];
   ui.examples.replaceChildren(...items.map((q) => {
     const b = el("button", "example", q);
     b.type = "button";
