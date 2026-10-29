@@ -90,3 +90,17 @@ def test_guide_citation_carries_warning(fake):
     fake.outputs = [GUIDE_ONLY_ANSWER]
     c = answer_question("washer-a", "5C 에러", fake.deps, S)["citations"][0]
     assert c["page"] is None and c["warning"] == GUIDE_WARNING == "공용 콘텐츠라 모델에 따라 다를 수 있어요"
+
+
+TIMING_KEYS = {"embed_ms", "db_connect_ms", "search_ms", "llm_ms"}
+
+
+def test_debug_has_stage_timings(fake):
+    fake.deps.timings["db_connect_ms"] = 5  # 실제 검색(get_deps)이 DB 연결 시간을 여기 적는다
+    r = answer_question("washer-a", "통세척", fake.deps, S, debug=True)
+    assert TIMING_KEYS <= r.keys() and all(isinstance(r[k], int) and r[k] >= 0 for k in TIMING_KEYS)
+    assert r["db_connect_ms"] == 5
+
+
+def test_stage_timings_hidden_without_debug(fake):
+    assert not TIMING_KEYS & answer_question("washer-a", "통세척", fake.deps, S).keys()

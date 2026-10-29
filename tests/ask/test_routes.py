@@ -66,3 +66,29 @@ def test_unexpected_error_hides_trace(client_with_crash):
     r = client_with_crash.post("/api/ask", json=OK_BODY)
     assert r.status_code == 500 and r.json()["error_code"] == "SERVICE_UNAVAILABLE"
     assert "Traceback" not in r.text and "secret" not in r.text
+
+
+def test_debug_query_param_adds_timings(client_with_fake):
+    r = client_with_fake.post("/api/ask?debug=true", json=OK_BODY).json()
+    assert {"retrieved_refs", "embed_ms", "db_connect_ms", "search_ms", "llm_ms"} <= r.keys()
+    assert "llm_ms" not in client_with_fake.post("/api/ask", json=OK_BODY).json()
+
+
+INVALID_REQUEST = {"error_code": "INVALID_REQUEST", "message": "요청 형식이 올바르지 않아요. 새로고침한 뒤 다시 시도해 주세요"}
+
+
+def test_non_json_body_is_invalid_request(client_with_fake):
+    r = client_with_fake.post("/api/ask", content="not json", headers={"Content-Type": "application/json"})
+    assert r.status_code == 400 and r.json() == INVALID_REQUEST
+
+
+def test_broken_encoding_is_invalid_request(client_with_fake):
+    # Windows 코드 페이지로 보낸 한글처럼 UTF-8이 아닌 바이트
+    r = client_with_fake.post("/api/ask", content='{"model_id":"washer-a","question":"탈수"}'.encode("cp949"),
+                              headers={"Content-Type": "application/json"})
+    assert r.status_code == 400 and r.json() == INVALID_REQUEST
+
+
+def test_wrong_field_type_is_invalid_request(client_with_fake):
+    r = client_with_fake.post("/api/ask", json={"model_id": "washer-a", "question": 123})
+    assert r.status_code == 400 and r.json() == INVALID_REQUEST
