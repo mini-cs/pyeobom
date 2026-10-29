@@ -74,12 +74,14 @@ a { color: var(--color-primary); }
   padding-right: var(--space-4);
 }
 
-.topbar { padding-top: var(--space-4); padding-bottom: var(--space-2); }
+.topbar { padding-top: var(--space-4); padding-bottom: var(--space-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand { font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--color-primary); }
+.tagline { font-size: var(--text-sm); color: var(--color-text-muted); opacity: 0; transition: opacity var(--motion-collapse); }
+.is-compact .tagline { opacity: 1; }
 
 .page { display: flex; flex-direction: column; gap: var(--space-4); padding-bottom: var(--space-8); }
 
-/* 소개 영역: 검색창을 누르면 접힌다(기획서 4.2) */
+/* 소개 영역: 첫 질문을 실제로 보내면 접고, 위 머리말이 한 줄("펴봄 — …")이 된다(결정기록 012 수정) */
 .intro {
   max-height: 320px;
   overflow: hidden;
@@ -87,7 +89,7 @@ a { color: var(--color-primary); }
   padding: var(--space-4) 0 var(--space-2);
   transition: max-height var(--motion-collapse), opacity var(--motion-collapse), padding var(--motion-collapse);
 }
-.is-collapsed .intro { max-height: 0; opacity: 0; padding: 0; }
+.is-compact .intro { max-height: 0; opacity: 0; padding: 0; }
 .intro h1 { font-size: var(--text-xl); line-height: var(--leading-tight); font-weight: var(--weight-bold); }
 .intro-sub { margin-top: var(--space-2); color: var(--color-text-muted); }
 .trust { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); padding: 0; list-style: none; }
@@ -229,6 +231,6 @@ a { color: var(--color-primary); }
 .footer { padding-top: var(--space-4); padding-bottom: var(--space-8); text-align: center; font-size: var(--text-xs); color: var(--color-text-muted); }
 
 @media (prefers-reduced-motion: reduce) {
-  .intro, .send { transition: none; }
+  .intro, .tagline, .send { transition: none; }
   .progress::after { animation: none; width: 100%; }
 }

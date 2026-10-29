@@ -19,7 +19,6 @@ const ui = {
 let models = [];
 let current = null;
 let busy = false;
-let sent = false;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -49,10 +48,13 @@ function recall() {
   try { return localStorage.getItem(STORE_KEY); } catch { return null; }
 }
 
-// ── 소개 영역 접기(기획서 4.2) ──
-function collapse(on) {
-  document.body.classList.toggle("is-collapsed", on);
-  ui.intro.setAttribute("aria-hidden", String(on));
+// ── 소개 영역 → 한 줄 머리말(결정기록 012 수정) ──
+// 첫 질문을 실제로 보낼 때 한 번 바꾸고 다시 펼치지 않는다. 포커스는 옮기지 않는다(입력·답변 읽기를 방해하지 않게)
+function compact() {
+  if (document.body.classList.contains("is-compact")) return;
+  document.body.classList.add("is-compact");
+  ui.intro.setAttribute("aria-hidden", "true");
+  document.querySelector(".tagline").removeAttribute("aria-hidden");
 }
 
 // ── 모델 ──
@@ -74,11 +76,9 @@ function renderExamples() {
   ui.examples.replaceChildren(...items.map((q) => {
     const b = el("button", "example", q);
     b.type = "button";
-    b.addEventListener("mousedown", (e) => e.preventDefault());  // 검색창 포커스를 잃지 않게
     b.addEventListener("click", () => {
       ui.question.value = q;
       updateCounter();
-      collapse(true);
       ask();
     });
     return b;
@@ -185,8 +185,7 @@ async function ask() {
   if (question.length > MAX_LEN) return showFormError(`질문은 ${MAX_LEN}자 이내로 입력해 주세요`);
   showFormError("");
   ui.pii.hidden = true;  // 이전 질문의 안내가 남지 않게
-  sent = true;
-  collapse(true);
+  compact();  // 화면 검사(빈 질문·글자 수)를 통과해 실제로 요청을 보낼 때만
   setBusy(true);
   renderLoading();
   try {
@@ -214,10 +213,6 @@ async function ask() {
 // ── 이벤트 ──
 ui.modelChange.addEventListener("click", () => togglePicker(ui.picker.hidden));
 ui.question.addEventListener("input", updateCounter);
-ui.question.addEventListener("focus", () => collapse(true));
-ui.question.addEventListener("blur", () => {
-  if (!ui.question.value.trim() && !sent) collapse(false);
-});
 ui.question.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {  // 한글 조합 중 Enter는 무시
     e.preventDefault();
