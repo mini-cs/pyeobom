@@ -598,6 +598,11 @@ def test_api_key_never_in_error(fake_client):
 
 - [ ] **Step 2: 실패 확인** — Run: `pytest tests/answer/test_llm.py -v` / Expected: FAIL
 - [ ] **Step 3: 구현** — 모델은 `OPENAI_CHAT_MODEL`, 최대 출력 `OPENAI_MAX_OUTPUT_TOKENS=600`. JSON 출력 강제 옵션은 OpenAI 최신 문서에서 확인해 지원되면 사용(없어도 Task 8 검증이 막아 줌). 예상 밖 예외는 `SERVICE_UNAVAILABLE`로 바꾸고 원인은 키를 지운 뒤 서버 로그에만.
+- **메모 (2026-10-29, 결정기록 017):**
+  - **429 구분:** OpenAI 429 중 `error.code`가 `organization_spend_limit_exceeded`·`project_spend_limit_exceeded`이면 **재시도하지 않고** `SERVICE_UNAVAILABLE`로 바꾼다. 일반 요청 속도 제한 429만 1회 재시도한다. 이 구분을 테스트로 만든다(가짜 client가 code별 429를 던짐, 재시도 횟수 확인).
+    - OpenAI Error codes 문서는 `credit_balance_exhausted`·`organization_usage_limit_exceeded`도 "재시도해도 복구되지 않음"으로 안내한다. 같은 목록에 넣을지 구현 때 정한다.
+  - **JSON 출력:** Responses API `text.format`(json_schema, strict)을 쓴다. `gpt-6-luna`의 Structured outputs 지원은 모델 페이지로 확인했다. 실제 동작은 첫 호출에서 확인한다.
+  - **추론 강도:** v1은 `low` 제안(사용자 확인 필요). 추론 토큰 때문에 `max_output_tokens=600`에서 답이 비지 않는지 확인한다.
 - [ ] **Step 4: 통과 확인** — 같은 명령 / Expected: PASS
 - [ ] **Step 5: Commit** — 커밋 메시지 규칙에 따라 제목·본문 작성, 기본 제목: `feat(answer): OpenAI 호출에 타임아웃·재시도·실패 흉내 스위치 추가`
 
