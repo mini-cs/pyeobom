@@ -16,6 +16,7 @@ class Settings:
     prompt_version: str = "v1"
     search_mode: str = "vector"
     force_fail: bool = False
+    reasoning_effort: str = "low"
 
 
 @lru_cache
@@ -34,4 +35,5 @@ def get_settings() -> Settings:
         prompt_version=env("PROMPT_VERSION") or "v1",
         search_mode=env("SEARCH_MODE") or "vector",
         force_fail=env("FORCE_FAIL", "").strip().lower() in ("1", "true", "yes"),
+        reasoning_effort=env("OPENAI_REASONING_EFFORT") or "low",
     )

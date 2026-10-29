@@ -1,0 +1,122 @@
+[
+  {
+    "id": "manual-samsung-wd90h25",
+    "doc_type": "manual",
+    "title": "삼성 BESPOKE AI 콤보 세탁건조기 사용설명서",
+    "source_url": "https://www.samsungsvc.co.kr/download",
+    "scope_note": "모델 전용 — 표지 모델명 WD90H25AH*/WD90H25BH*",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/manuals/OID140081_IB_WD80H-AD_7LCD_KO_260331.pdf",
+    "fetched_at": "2026-10-27"
+  },
+  {
+    "id": "manual-lg-fx25",
+    "doc_type": "manual",
+    "title": "LG 드럼세탁기 사용설명서",
+    "source_url": "https://www.lge.co.kr/support/product-manuals",
+    "scope_note": "모델 전용 — 표지 모델명 FX25*N*/FX24*N*/FX23*N* (문서 번호 MFL71792818)",
+    "model_ids": ["washer-lg-fx25"],
+    "file": "data/manuals/WM_KOR_MFL71792818_10_251204_00_OM_WEB.pdf",
+    "fetched_at": "2026-10-27"
+  },
+  {
+    "id": "manual-lg-sq06fa1wds",
+    "doc_type": "manual",
+    "title": "LG 벽걸이 에어컨 사용설명서",
+    "source_url": "https://www.lge.co.kr/support/product-manuals",
+    "scope_note": "LG 벽걸이 에어컨 공용 설명서 — SQ06FA1WDS로 검색해 받음 (문서 번호 MFL71890636)",
+    "model_ids": ["aircon-lg-sq06fa1wds"],
+    "file": "data/manuals/[CW_RAC_24515]_250626_MFL71890636_01_Domestic_2025_WLM_2LED_CO.pdf",
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-lg-drum-errors",
+    "doc_type": "guide",
+    "title": "[LG 드럼세탁기 에러코드] 표시창에 에러표시가 나타나요",
+    "source_url": "https://www.lge.co.kr/support/solutions-1001261",
+    "scope_note": "LG 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
+    "model_ids": ["washer-lg-fx25"],
+    "file": "data/guides/guide-lg-drum-errors.html",
+    "content_selector": "#viewContent",
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-samsung-drum-oc",
+    "doc_type": "guide",
+    "title": "[oC, oF 점검 코드] 물 수위 감지 못함 표시",
+    "source_url": "https://www.samsungsvc.co.kr/solution/1491870",
+    "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음, 플렉스워시 전용 문단 제외",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/guides/guide-samsung-drum-oc.html",
+    "content_selector": "div.editor-view",
+    "exclude_keywords": ["플렉스워시"],
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-samsung-drum-hc",
+    "doc_type": "guide",
+    "title": "[HC, HE 점검 코드] 세탁 히터 동작 이상",
+    "source_url": "https://www.samsungsvc.co.kr/solution/1491476",
+    "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/guides/guide-samsung-drum-hc.html",
+    "content_selector": "div.editor-view",
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-samsung-drum-fc",
+    "doc_type": "guide",
+    "title": "[FC, FE 점검 코드] 건조 팬 모터 동작 이상",
+    "source_url": "https://www.samsungsvc.co.kr/solution/1491469",
+    "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음, 건조 기능이 있는 모델에만 연결",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/guides/guide-samsung-drum-fc.html",
+    "content_selector": "div.editor-view",
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-samsung-drum-lc",
+    "doc_type": "guide",
+    "title": "[LC, LE 점검 코드] 누수감지 점검",
+    "source_url": "https://www.samsungsvc.co.kr/solution/1491460",
+    "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음, 플렉스워시 소제목 단락(LC1 포함) 제외",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/guides/guide-samsung-drum-lc.html",
+    "content_selector": "div.editor-view",
+    "exclude_keywords": ["플렉스워시"],
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-samsung-drum-5c",
+    "doc_type": "guide",
+    "title": "5C, SC, 5E, SE 에러 코드가 발생하고 배수가 안돼요",
+    "source_url": "https://www.samsungsvc.co.kr/solution/1488876",
+    "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/guides/guide-samsung-drum-5c.html",
+    "content_selector": "div.editor-view",
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-samsung-drum-4c",
+    "doc_type": "guide",
+    "title": "[4C, 4E 점검 코드] 물이 나오지 않아요",
+    "source_url": "https://www.samsungsvc.co.kr/solution/1488864",
+    "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
+    "model_ids": ["washer-samsung-wd90h25"],
+    "file": "data/guides/guide-samsung-drum-4c.html",
+    "content_selector": "div.editor-view",
+    "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "guide-lg-aircon-ch-errors",
+    "doc_type": "guide",
+    "title": "LG 에어컨에서 에러 코드 CH05, 53, E0, CH32, 33, 36, 38, F4, CH66, 90, 91, 92, 93이 나타날 때 해결하는 방법",
+    "source_url": "https://www.lge.co.kr/support/solutions-20155402875418",
+    "scope_note": "LG 에어컨 공용(모든 모델 대상) — 모델에 따라 다를 수 있음",
+    "model_ids": ["aircon-lg-sq06fa1wds"],
+    "file": "data/guides/guide-lg-aircon-ch-errors.html",
+    "content_selector": "#viewContent",
+    "fetched_at": "2026-10-28"
+  }
+]
