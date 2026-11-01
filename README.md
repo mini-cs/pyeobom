@@ -18,6 +18,7 @@ py -3.14 -m venv .venv
 - **구조:** 루트 `index.py`가 FastAPI 앱을 노출하고, `public/`은 Vercel CDN이 제공합니다. `vercel.json`이 `framework: fastapi`와 함수 지역 `regions: ["sin1"]`을 고정합니다(결정기록 013·018).
 - **데이터베이스:** Neon Postgres + pgvector(`ap-southeast-1`)입니다. 스키마는 `ingest/schema.sql`, 적재는 `python -m ingest --doc-id <id>`로 로컬에서 합니다.
 - **환경 변수:** `.env.example`의 키를 Vercel 대시보드의 Production·Preview에 직접 입력합니다. 값은 저장소·화면·로그에 남기지 않습니다. `FORCE_FAIL`은 운영(Production)에 넣지 않습니다.
+- **검색 방식 `SEARCH_MODE`:** 운영은 `vector`(벡터 검색 + 근거에 없는 에러 코드면 진단 안내 쪽 덧붙임, 결정기록 019)입니다. `hybrid`(질문 단어·코드 키워드를 섞음)는 시도 후 채택하지 않은 실험용입니다(결정기록 020).
 - **배포 흐름:** 기능 브랜치 → PR(미리보기 배포에서 확인) → `main`에 merge commit으로 병합하면 운영에 배포됩니다.
 
 자세한 내용은 [기획서](docs/기획서.md)를 참고하세요.

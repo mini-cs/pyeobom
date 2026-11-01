@@ -5,6 +5,7 @@ questions.csv 30개를 answer_question(debug=True)으로 직접 돌려(HTTP 아�
 로컬 .env의 접속 주소·키를 쓰지만 출력하지 않는다. 조회만 하고 DB를 바꾸지 않는다.
 """
 import argparse
+import os
 import csv
 import datetime
 from dataclasses import replace
@@ -47,10 +48,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m evaluation")
     parser.add_argument("--label", required=True)
     parser.add_argument("--prompt", default="v1")
-    parser.add_argument("--search", default="vector", choices=["vector"])  # hybrid는 Task 14에서 추가
+    parser.add_argument("--search", default="vector", choices=["vector", "hybrid"])
     args = parser.parse_args()
 
     load_env()
+    os.environ["SEARCH_MODE"] = args.search  # get_deps가 설정에서 검색 방식을 읽는다
     from app.ask.routes import get_deps  # load_env 뒤에 설정을 읽게 한다
     from app.ask.service import answer_question
     from app.core.config import get_settings
