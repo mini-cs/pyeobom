@@ -34,3 +34,11 @@ def test_chunk_carries_citation_fields(conn):
     c = chunks[0]
     assert (c.doc_type, c.page, c.ref) == ("manual", 38, "manual:38") and "4.0 kg" in c.content
     assert c.title and c.source_url.startswith("https://")
+
+
+@pytest.mark.integration
+def test_fetch_manual_pages_returns_only_that_models_manual(conn):
+    from app.retrieval.search import fetch_manual_pages
+    chunks = fetch_manual_pages(conn, "aircon-lg-sq06fa1wds", [34, 49])
+    assert chunks and {c.page for c in chunks} == {34, 49} and {c.doc_type for c in chunks} == {"manual"}
+    assert fetch_manual_pages(conn, "washer-samsung-wd90h25", []) == []

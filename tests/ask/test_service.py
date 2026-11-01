@@ -112,3 +112,40 @@ def test_debug_has_cited_refs(fake):
     r = answer_question("washer-a", "5C 에러", fake.deps, S, debug=True)
     assert r["cited_refs"] == ["guide:guide-drum-5c"]
     assert "cited_refs" not in answer_question("washer-a", "통세척", Fake().deps, S)
+
+
+DIAG = Chunk(9, "manual-washer-a", "manual", "A 세탁기 사용설명서", "https://example.com/a.pdf", 54, "고장 진단하기: 앱으로 고장 원인을 진단할 수 있습니다.", 0.0)
+
+
+def with_diagnostic(fake, chunks):
+    fake.diag_calls = []
+    def diagnostic(model_id):
+        fake.diag_calls.append(model_id)
+        return chunks
+    fake.deps.diagnostic = diagnostic
+    return fake
+
+
+def test_code_in_chunks_adds_no_diagnostic(fake):
+    with_diagnostic(fake, [DIAG])
+    r = answer_question("washer-a", "5C 에러가 떴어요", fake.deps, S, debug=True)
+    assert r["retrieved_refs"] == ["manual:32", "guide:guide-drum-5c"] and r["diagnostic_added"] is False
+
+
+def test_code_missing_appends_diagnostic_chunks(fake):
+    with_diagnostic(fake, [DIAG, CH[0]])   # 이미 검색된 조각(id 7)은 겹쳐서 빠진다
+    r = answer_question("washer-a", "CH10이 떴어요", fake.deps, S, debug=True)
+    assert r["retrieved_refs"] == ["manual:32", "guide:guide-drum-5c", "manual:54"] and r["diagnostic_added"] is True
+    assert 'chunk_id="9"' in fake.complete_calls[0][-1]["content"]   # 덧붙인 조각이 AI 맥락에 들어감
+
+
+def test_model_without_diagnostic_refs_is_unchanged(fake):
+    with_diagnostic(fake, [])
+    r = answer_question("washer-a", "IE 에러가 떴어요", fake.deps, S, debug=True)
+    assert r["retrieved_refs"] == ["manual:32", "guide:guide-drum-5c"] and r["diagnostic_added"] is False
+
+
+def test_question_without_code_never_looks_up_diagnostic(fake):
+    with_diagnostic(fake, [DIAG])
+    answer_question("washer-a", "통세척", fake.deps, S)
+    assert fake.diag_calls == []
