@@ -9,7 +9,7 @@
 ## 구조
 
 ```mermaid
-flowchart LR
+flowchart TD
   U[휴대폰 브라우저<br>public/ 화면] -->|POST /api/ask| F[Vercel 함수 sin1<br>FastAPI index.py]
   F --> G[입력 검사<br>개인정보 가리기]
   G --> E[OpenAI 임베딩<br>text-embedding-3-small]
