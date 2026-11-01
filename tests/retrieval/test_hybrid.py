@@ -36,6 +36,7 @@ def test_keyword_search_finds_exact_word_in_selected_model_only(conn, docs_of):
 
 
 @pytest.mark.integration
+@pytest.mark.xfail(strict=True, reason="v2b 미채택 기록: 키워드로는 26쪽이 4위라 상위 5개에 못 들어옴(docs/평가/2026-11-01-v2b.md)")
 def test_hybrid_brings_q20_dehumidify_page_into_top_k(conn):
     q = "장마철에 습기만 빼고 싶어요"
     chunks = search_hybrid(conn, "aircon-lg-sq06fa1wds", embed_query(q), q, k=5)

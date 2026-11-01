@@ -74,3 +74,51 @@ def fetch_manual_pages(conn, model_id: str, pages: list[int]) -> list[Chunk]:
            WHERE dm.model_id = %s AND d.doc_type = 'manual' AND c.page = ANY(%s) ORDER BY c.page, c.id""",
         (model_id, pages)).fetchall()
     return [Chunk(*row) for row in rows]
+
+
+# ── v2b 하이브리드: 질문 단어 + 코드 키워드 ──
+_NOUN_PARTICLE = re.compile(r"(에서|으로|은|는|을|를|에|로|만|도|과|와|의)$")
+_DO_SUFFIX = re.compile(r"(했어요|해요|하고|하면|해서|하는)$")   # "청소해요" → "청소"
+_VERB_END = re.compile(r"(요|고|게|서|면|죠|까)$")               # 남은 동사·어미("싶어요", "빼고")는 버린다
+_STOP_WORDS = {"매번", "무슨", "에어컨", "세탁기", "제품", "다음", "어떻게"}
+KEYWORD_K = 2  # 키워드 결과는 최대 2개만 앞에 넣고 나머지는 벡터 검색으로 채운다
+
+
+def extract_keywords(question: str) -> list[str]:
+    """질문에서 조사·어미·흔한 말을 빼고 남은 2글자 이상 한글 단어(코드는 extract_code_tokens가 맡는다)."""
+    words = []
+    for raw in re.findall(r"[가-힣]+", question):
+        w = _NOUN_PARTICLE.sub("", raw)
+        w = _DO_SUFFIX.sub("", w)
+        if len(w) < 2 or _VERB_END.search(w) or w in _STOP_WORDS or w in words:
+            continue
+        words.append(w)
+    return words
+
+
+def search_keyword(conn, model_id: str, terms: list[str], query_vec: list[float], k: int) -> list[Chunk]:
+    """선택 모델 문서 안에서 단어가 그대로 든 조각. 맞은 단어 수가 많은 순, 같으면 벡터 거리 순."""
+    rows = conn.execute(
+        """SELECT c.id, c.doc_id, d.doc_type, d.title, d.source_url, c.page, c.content, c.embedding <=> %s::vector
+           FROM chunks c JOIN document_models dm ON dm.doc_id = c.doc_id JOIN documents d ON d.id = c.doc_id
+           WHERE dm.model_id = %s AND c.content ILIKE ANY(%s)""",
+        (query_vec, model_id, [f"%{t}%" for t in terms])).fetchall()
+    def hits(c: Chunk) -> int:
+        return sum(contains_code(t, c.content) if re.fullmatch(r"[A-Z0-9]+", t) else t in c.content for t in terms)
+    scored = [(hits(c), c) for c in (Chunk(*r) for r in rows)]
+    return [c for n, c in sorted(scored, key=lambda x: (-x[0], x[1].score)) if n > 0][:k]
+
+
+def merge_results(keyword: list[Chunk], vector: list[Chunk], k: int) -> list[Chunk]:
+    seen, merged = set(), []
+    for c in keyword + vector:
+        if c.id not in seen:
+            seen.add(c.id)
+            merged.append(c)
+    return merged[:k]
+
+
+def search_hybrid(conn, model_id: str, query_vec: list[float], question: str, k: int) -> list[Chunk]:
+    terms = extract_code_tokens(question) + extract_keywords(question)
+    keyword = search_keyword(conn, model_id, terms, query_vec, KEYWORD_K) if terms else []
+    return merge_results(keyword, search_vector(conn, model_id, query_vec, k), k)
