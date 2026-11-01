@@ -61,9 +61,9 @@ SEARCH_MODE=vector
 
 | 문서 | 받는 곳 | 저장 위치 |
 |---|---|---|
-| 삼성 세탁건조기 설명서 | 삼성전자서비스 다운로드 자료실(https://www.samsungsvc.co.kr/download). 표지 모델명 `WD90H25AH*`/`WD90H25BH*`인지 확인 | `data/manuals/OID140081_IB_WD80H-AD_7LCD_KO_260331.pdf` |
-| LG 드럼세탁기 설명서 | LG전자 제품 설명서(https://www.lge.co.kr/support/product-manuals). 표지 모델명 `FX25*N*`/`FX24*N*`/`FX23*N*`, 문서 번호 `MFL71792818`인지 확인 | `data/manuals/WM_KOR_MFL71792818_10_251204_00_OM_WEB.pdf` |
-| LG 벽걸이 에어컨 설명서 | 같은 페이지에서 `SQ06FA1WDS`로 검색해 받은 공용 설명서. 문서 번호 `MFL71890636`인지 확인 | `data/manuals/[CW_RAC_24515]_250626_MFL71890636_01_Domestic_2025_WLM_2LED_CO.pdf` |
+| 삼성 세탁건조기 설명서 | 삼성전자서비스 다운로드 자료실(https://www.samsungsvc.co.kr/download)에서 `WD90H25AHTN1`로 검색해 받음(표지 모델명 `WD90H25AH*` 계열) | `data/manuals/OID140081_IB_WD80H-AD_7LCD_KO_260331.pdf` |
+| LG 드럼세탁기 설명서 | LG전자 제품 설명서(https://www.lge.co.kr/support/product-manuals)에서 `FX24GNG`로 검색해 받음(표지 모델명 `FX25*N*`/`FX24*N*`/`FX23*N*`, 문서 번호 `MFL71792818`) | `data/manuals/WM_KOR_MFL71792818_10_251204_00_OM_WEB.pdf` |
+| LG 벽걸이 에어컨 설명서 | 같은 페이지에서 `SQ06FA1WDS`로 검색해 받음(공용 설명서, 문서 번호 `MFL71890636`) | `data/manuals/[CW_RAC_24515]_250626_MFL71890636_01_Domestic_2025_WLM_2LED_CO.pdf` |
 | 해결 가이드 8개 | `data/documents.json`의 각 `source_url` | `data/guides/<id>.html` |
 
 - 가이드는 브라우저에서 **"웹페이지 전체 저장"**으로 저장합니다. 인쇄(PDF 저장)를 하면 탭 안에 숨은 설명이 빠질 수 있습니다.
