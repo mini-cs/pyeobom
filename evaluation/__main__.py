@@ -1,0 +1,92 @@
+"""python -m evaluation --label v1 --prompt v1 --search vector
+
+questions.csv 30개를 answer_question(debug=True)으로 직접 돌려(HTTP 아님) 채점한다.
+결과: evaluation/results/<label>-<날짜>.csv(사람 판정용 human_verdict 열), docs/평가/<날짜>-<label>.md(요약 + 문항별 표).
+로컬 .env의 접속 주소·키를 쓰지만 출력하지 않는다. 조회만 하고 DB를 바꾸지 않는다.
+"""
+import argparse
+import csv
+import datetime
+from dataclasses import replace
+from pathlib import Path
+
+from ingest.__main__ import load_env
+
+ROOT = Path(__file__).resolve().parents[1]
+COLUMNS = ["id", "type", "model_id", "question", "expected_found", "got_found", "correct", "ref_hit", "hallucinated",
+           "error", "latency_ms", "failure", "expected_ref", "cited_refs", "retrieved_refs", "answer", "human_verdict"]
+
+
+def _mark(v) -> str:
+    return "" if v is None else ("O" if v is True else "X" if v is False else str(v))
+
+
+def write_report(path: Path, label: str, args, summary: dict, rows: list[dict]) -> None:
+    lines = [
+        f"# 평가 리포트 {label} ({datetime.date.today()})", "",
+        f"- 실행: `python -m evaluation --label {args.label} --prompt {args.prompt} --search {args.search}`",
+        "- 문항: `evaluation/questions.csv` 30개 (2026-10-28 고정)", "",
+        "## 요약", "",
+        "| 정답률 | 근거 적중률 | 환각률 | 오류율 | 응답 시간 평균 | 최대 | 실패: 검색 | 실패: 답변 |",
+        "|---|---|---|---|---|---|---|---|",
+        f"| {summary['accuracy']}% | {summary['ref_hit_rate']}% | {summary['hallucination_rate']}% | {summary['error_rate']}% "
+        f"| {summary['latency_avg_ms']}ms | {summary['latency_max_ms']}ms | {summary['failures']['retrieval']} | {summary['failures']['answer']} |",
+        "", "- 정답률·근거 적중률은 답 있는 문항, 환각률은 함정 문항, 오류율은 전체가 분모다.", "",
+        "## 문항별", "",
+        "| id | 유형 | 기대 | 결과 | 정답 | 근거 적중 | 환각 | 실패 | 기대 근거 | 실제 인용 | ms |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        lines.append(f"| {r['id']} | {r['type']} | {r['expected_found']} | {_mark(r['got_found']) if not r['error'] else '오류'} "
+                     f"| {_mark(r['correct'])} | {_mark(r['ref_hit'])} | {_mark(r['hallucinated'])} | {r['failure'] or ''} "
+                     f"| {r['expected_ref']} | {r['cited_refs']} | {r['latency_ms'] or ''} |")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="python -m evaluation")
+    parser.add_argument("--label", required=True)
+    parser.add_argument("--prompt", default="v1")
+    parser.add_argument("--search", default="vector", choices=["vector"])  # hybrid는 Task 14에서 추가
+    args = parser.parse_args()
+
+    load_env()
+    from app.ask.routes import get_deps  # load_env 뒤에 설정을 읽게 한다
+    from app.ask.service import answer_question
+    from app.core.config import get_settings
+    from app.core.errors import AppError
+    from evaluation.scoring import score_case, summarize
+
+    settings = replace(get_settings(), prompt_version=args.prompt, search_mode=args.search)
+    with (ROOT / "evaluation" / "questions.csv").open(encoding="utf-8-sig", newline="") as f:
+        cases = list(csv.DictReader(f))
+
+    rows, scores = [], []
+    for case in cases:
+        try:
+            resp = answer_question(case["model_id"], case["question"], get_deps(), settings, debug=True)
+        except AppError as e:
+            resp = {"error_code": e.code}
+        score = score_case(case, resp)
+        scores.append(score)
+        rows.append(score | {"model_id": case["model_id"], "question": case["question"], "expected_ref": case["expected_ref"],
+                             "cited_refs": "|".join(resp.get("cited_refs", [])),
+                             "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
+                             "answer": resp.get("answer", resp.get("error_code", ""))})
+        print(f"{case['id']} {score['type']:16s} 정답={_mark(score['correct'])} 근거={_mark(score['ref_hit'])} "
+              f"환각={_mark(score['hallucinated'])} 실패={score['failure'] or ''} {score['latency_ms'] or '오류'}ms", flush=True)
+
+    today = datetime.date.today().isoformat()
+    out_csv = ROOT / "evaluation" / "results" / f"{args.label}-{today}.csv"
+    out_csv.parent.mkdir(exist_ok=True)
+    with out_csv.open("w", encoding="utf-8-sig", newline="") as f:  # 엑셀에서 한글이 깨지지 않게 BOM
+        writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    summary = summarize(scores)
+    write_report(ROOT / "docs" / "평가" / f"{today}-{args.label}.md", args.label, args, summary, rows)
+    print(summary)
+
+
+if __name__ == "__main__":
+    main()
