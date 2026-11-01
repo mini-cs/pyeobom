@@ -22,3 +22,11 @@ def test_supported_ids_are_unique():
 def test_api_models_hides_internal_fields():
     body = TestClient(create_app()).get("/api/models").json()
     assert body and set(body[0]) == {"id", "display_name", "appliance", "official_url", "model_name_hint"}
+
+
+def test_diagnostic_refs_point_to_manual_pages():
+    import re
+    refs = {m["id"]: m["diagnostic_refs"] for m in load_models()}
+    assert all(re.fullmatch(r"manual:\d+", r) for rs in refs.values() for r in rs)
+    assert refs == {"washer-samsung-wd90h25": [], "washer-lg-fx25": ["manual:54"],
+                    "aircon-lg-sq06fa1wds": ["manual:34", "manual:49"]}   # 결정기록 019

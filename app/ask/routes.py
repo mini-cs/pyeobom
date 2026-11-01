@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.core.db import get_conn
 from app.core.errors import AppError, make_error
 from app.retrieval.embeddings import embed_query
-from app.retrieval.search import search_vector
+from app.retrieval.search import fetch_manual_pages, search_vector
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,8 +37,16 @@ def get_deps() -> Deps:
             timings["db_connect_ms"] = int((time.perf_counter() - start) * 1000)
             return search_vector(conn, model_id, query_vec, k)  # 질문은 쓰지 않음(Task 14 hybrid에서 씀)
 
+    def diagnostic(model_id: str):
+        pages = [int(ref.split(":")[1]) for ref in models[model_id].get("diagnostic_refs", [])]
+        if not pages:
+            return []
+        with get_conn() as conn:
+            return fetch_manual_pages(conn, model_id, pages)
+
     return Deps(embed_query=embed_query, search=search, complete=lambda msgs: complete_json(msgs, get_settings()),
-                supported_ids=set(models), official_url=lambda m: models[m]["official_url"], timings=timings)
+                supported_ids=set(models), official_url=lambda m: models[m]["official_url"], timings=timings,
+                diagnostic=diagnostic)
 
 
 def _error(e: AppError) -> JSONResponse:

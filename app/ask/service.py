@@ -7,7 +7,7 @@ from app.answer.prompting import build_messages
 from app.core.config import Settings
 from app.input_guard.pii import mask_pii
 from app.input_guard.validation import validate_model_id, validate_question
-from app.retrieval.search import Chunk
+from app.retrieval.search import Chunk, contains_code, extract_code_tokens
 
 
 @dataclass
@@ -18,6 +18,7 @@ class Deps:
     supported_ids: set[str]
     official_url: Callable[[str], str]
     timings: dict[str, int] = field(default_factory=dict)  # 실제 검색이 db_connect_ms를 적는다
+    diagnostic: Callable[[str], list[Chunk]] = lambda model_id: []  # 모델의 진단 안내 쪽 조각(결정기록 019)
 
 
 def _ms(since: float) -> int:
@@ -35,6 +36,12 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
     embed_ms = _ms(t)
     t = time.perf_counter()
     chunks = deps.search(model_id, query_vec, question, settings.top_k)
+    # 질문의 에러 코드가 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(프롬프트 규칙 4가 진단 안내를 지시)
+    tokens, diagnostic_added = extract_code_tokens(question), False
+    if tokens and not all(any(contains_code(code, c.content) for c in chunks) for code in tokens):
+        seen = {c.id for c in chunks}
+        extra = [c for c in deps.diagnostic(model_id) if c.id not in seen]
+        chunks, diagnostic_added = chunks + extra, bool(extra)
     search_total_ms = _ms(t)
     result, llm_ms = None, 0
     if chunks:
@@ -62,6 +69,7 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
     }
     if debug:
         db_connect_ms = deps.timings.get("db_connect_ms", 0)
-        body |= {"retrieved_refs": [c.ref for c in chunks], "cited_refs": [c.ref for c in result.citations], "embed_ms": embed_ms, "db_connect_ms": db_connect_ms,
+        body |= {"retrieved_refs": [c.ref for c in chunks], "cited_refs": [c.ref for c in result.citations],
+                 "diagnostic_added": diagnostic_added, "embed_ms": embed_ms, "db_connect_ms": db_connect_ms,
                  "search_ms": max(search_total_ms - db_connect_ms, 0), "llm_ms": llm_ms}
     return body
