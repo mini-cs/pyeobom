@@ -92,3 +92,17 @@ def test_broken_encoding_is_invalid_request(client_with_fake):
 def test_wrong_field_type_is_invalid_request(client_with_fake):
     r = client_with_fake.post("/api/ask", json={"model_id": "washer-a", "question": 123})
     assert r.status_code == 400 and r.json() == INVALID_REQUEST
+
+
+def test_get_deps_uses_hybrid_when_search_mode_is_hybrid(monkeypatch):
+    import app.ask.routes as routes
+    calls = []
+    monkeypatch.setattr(routes, "get_conn", lambda: __import__("contextlib").nullcontext("conn"))
+    monkeypatch.setattr(routes, "search_vector", lambda *a: calls.append("vector") or [])
+    monkeypatch.setattr(routes, "search_hybrid", lambda *a: calls.append("hybrid") or [])
+    for mode in ("vector", "hybrid"):
+        monkeypatch.setenv("SEARCH_MODE", mode)
+        routes.get_settings.cache_clear()
+        routes.get_deps().search("washer-a", [0.1], "질문", 5)
+    routes.get_settings.cache_clear()
+    assert calls == ["vector", "hybrid"]
