@@ -104,3 +104,11 @@ def test_debug_has_stage_timings(fake):
 
 def test_stage_timings_hidden_without_debug(fake):
     assert not TIMING_KEYS & answer_question("washer-a", "통세척", fake.deps, S).keys()
+
+
+def test_debug_has_cited_refs(fake):
+    # 평가(Task 13)가 인용의 근거 표기(manual:<쪽>·guide:<id>)로 근거 적중을 채점한다
+    fake.outputs = [GUIDE_ONLY_ANSWER]
+    r = answer_question("washer-a", "5C 에러", fake.deps, S, debug=True)
+    assert r["cited_refs"] == ["guide:guide-drum-5c"]
+    assert "cited_refs" not in answer_question("washer-a", "통세척", Fake().deps, S)
