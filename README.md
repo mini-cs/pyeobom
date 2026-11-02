@@ -124,7 +124,7 @@ done
 - **데이터베이스:** Neon Postgres + pgvector(`ap-southeast-1`)이고, 함수와 같은 싱가포르에 둡니다.
 - **환경 변수:** `.env.example`의 키를 Vercel 대시보드의 Production·Preview에 직접 입력합니다. 값은 저장소·화면·로그에 남기지 않습니다. `FORCE_FAIL`은 운영(Production)에 넣지 않습니다.
 - **검색 방식 `SEARCH_MODE`:** 운영은 `vector`입니다. 벡터 검색을 하고, 근거에 없는 에러 코드면 진단 안내 쪽을 덧붙입니다(결정기록 019). `hybrid`(질문 단어·코드 키워드를 섞음)는 시도한 뒤 채택하지 않은 실험용입니다(결정기록 020).
-- **시연 자료:** 시연 영상 [영상 링크], 제출 폴더 [폴더 링크] (핵심 흐름, 이상 입력·개인정보, 환각 방지, 실패 대응). 저장소에는 넣지 않았습니다.
+- **시연 영상:** https://docs.google.com/videos/d/1exAuemfmZ3Bfjfu3rhLOHd91pgpmKbe9hXKamyf2qUY/play?usp=sharing (핵심 흐름, 이상 입력·개인정보, 환각 방지, 실패 대응). 저장소에는 넣지 않았습니다.
 - **배포 흐름:** 기능 브랜치 → PR(미리보기 배포에서 확인) → `main`에 merge commit으로 병합하면 운영에 배포됩니다.
 
 ## 결과 요약 (테스트 질문 30개)
