@@ -9,3 +9,4 @@ __pycache__/
 .vercel/
 data/guides/
 experiments/**/out/
+docs/시연영상/
