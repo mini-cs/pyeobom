@@ -34,12 +34,20 @@ flowchart TD
 
 ## 로컬 실행
 
-**필요한 것:** Python 3.14, Neon 계정(무료), OpenAI API 키
+**필요한 것:** Python 3.14(Windows는 `py` 런처), Git, Neon 계정(무료), OpenAI API 키
+
+아래 명령은 Windows의 **Git Bash** 기준입니다. PowerShell·명령 프롬프트에서는 `.venv/Scripts/python`을 `.venv\Scripts\python`으로 바꿔 입력합니다.
 
 ```bash
+git clone https://github.com/mini-cs/pyeobom.git
+cd pyeobom
 py -3.14 -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt
+.venv/Scripts/python -m pytest -m "not integration"   # 여기까지는 키·DB·설명서 없이 됩니다
 ```
+
+- 마지막 줄은 모두 통과해야 합니다. 해결 가이드 HTML(`data/guides/`)을 받기 전에는 테스트 1개가 건너뛰어집니다(skipped).
+- 설치는 1~2분 걸립니다.
 
 `.env.example`을 `.env`로 복사하고 비밀 값 두 개만 직접 채웁니다. 나머지는 예시 값 그대로 써도 됩니다.
 
