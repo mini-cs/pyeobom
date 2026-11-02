@@ -34,12 +34,20 @@ flowchart TD
 
 ## 로컬 실행
 
-**필요한 것:** Python 3.14, Neon 계정(무료), OpenAI API 키
+**필요한 것:** Python 3.14(Windows는 `py` 런처), Git, Neon 계정(무료), OpenAI API 키
+
+아래 명령은 Windows의 **Git Bash** 기준입니다. PowerShell·명령 프롬프트에서는 `.venv/Scripts/python`을 `.venv\Scripts\python`으로 바꿔 입력합니다.
 
 ```bash
+git clone https://github.com/mini-cs/pyeobom.git
+cd pyeobom
 py -3.14 -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt
+.venv/Scripts/python -m pytest -m "not integration"   # 여기까지는 키·DB·설명서 없이 됩니다
 ```
+
+- 마지막 줄은 모두 통과해야 합니다. 해결 가이드 HTML(`data/guides/`)을 받기 전에는 테스트 1개가 건너뛰어집니다(skipped).
+- 설치는 1~2분 걸립니다.
 
 `.env.example`을 `.env`로 복사하고 비밀 값 두 개만 직접 채웁니다. 나머지는 예시 값 그대로 써도 됩니다.
 
@@ -116,6 +124,7 @@ done
 - **데이터베이스:** Neon Postgres + pgvector(`ap-southeast-1`)이고, 함수와 같은 싱가포르에 둡니다.
 - **환경 변수:** `.env.example`의 키를 Vercel 대시보드의 Production·Preview에 직접 입력합니다. 값은 저장소·화면·로그에 남기지 않습니다. `FORCE_FAIL`은 운영(Production)에 넣지 않습니다.
 - **검색 방식 `SEARCH_MODE`:** 운영은 `vector`입니다. 벡터 검색을 하고, 근거에 없는 에러 코드면 진단 안내 쪽을 덧붙입니다(결정기록 019). `hybrid`(질문 단어·코드 키워드를 섞음)는 시도한 뒤 채택하지 않은 실험용입니다(결정기록 020).
+- **시연 자료:** 제출 폴더(장면별 GIF 4개: 핵심 흐름, 이상 입력·개인정보, 환각 방지, 실패 대응). 저장소에는 넣지 않았습니다.
 - **배포 흐름:** 기능 브랜치 → PR(미리보기 배포에서 확인) → `main`에 merge commit으로 병합하면 운영에 배포됩니다.
 
 ## 결과 요약 (테스트 질문 30개)
@@ -132,6 +141,7 @@ done
 - **v2b 미채택 이유:** 자동 점수는 올랐지만, 겨냥한 문항(q20 "장마철에 습기만 빼고 싶어요")의 정답 근거(제습 26쪽)가 검색에 들어오지 않았습니다. 점수 상승은 표현 차이와 실행 변동이었습니다(결정기록 020).
 - **응답 시간 (운영, 이어지는 요청):** 평균 약 2.7초이고, 대부분이 AI 답변 호출입니다. 한동안 쓰지 않다가 처음 보내는 요청은 약 7.7초입니다(결정기록 018).
 - 자세한 내용: `docs/평가/2026-11-01-v1.md`, `-v2a.md`, `-v2b.md`
+- 회고: [docs/회고.md](docs/회고.md)
 
 ## 한계
 
@@ -167,11 +177,12 @@ done
 | 012 | 서비스명 '펴봄'과 첫 화면 소개 영역(랜딩 A안) |
 | 013 | Vercel 파이썬 배포 구조 |
 | 014 | 근거 문서 선정 |
+| 015 | 1차 최종 설정 (각 결정기록 요약) |
 | 016 | 추출 도구 선택 (+ 부록: 측정 기록) |
 | 017 | 임베딩·답변 모델 선택 |
 | 018 | 배포 지역: Vercel 함수 sin1 + Neon 싱가포르 |
 | 019 | v2a: 근거에 없는 에러 코드는 진단 안내 쪽을 덧붙인다 |
 | 020 | v2b(질문 단어·코드 키워드 하이브리드 검색): 시도 후 미채택 |
 
-- 015는 계획상 "최종 설정" 결정기록 자리로 남겨 두었습니다(아직 작성 전).
+- 최종 설정을 한곳에서 보려면 015를 보면 됩니다.
 - 그 밖의 문서: 기획서 `docs/기획서.md`, 구현 계획 `docs/superpowers/plans/2026-10-27-pyeobom-phase1.md`, 개발일지 `docs/개발일지/`, AI 실수 기록 `docs/AI-실수-기록.md`, 안정성 기록 `docs/안정성-테스트.md`
