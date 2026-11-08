@@ -14,6 +14,7 @@ from app.catalog.registry import load_models
 from app.core.config import get_settings
 from app.core.db import get_conn
 from app.core.errors import AppError, make_error
+from app.core.observability import get_tracer
 from app.retrieval.embeddings import embed_query
 from app.retrieval.search import fetch_manual_pages, search_hybrid, search_vector
 
@@ -33,8 +34,10 @@ def get_deps() -> Deps:
 
     def search(model_id: str, query_vec: list[float], question: str, k: int):
         start = time.perf_counter()
-        with get_conn() as conn:
-            timings["db_connect_ms"] = int((time.perf_counter() - start) * 1000)
+        with get_tracer().span("db_connect"):
+            conn = get_conn()  # 접속은 여기서 일어난다(with는 끝날 때 닫기만 함)
+        timings["db_connect_ms"] = int((time.perf_counter() - start) * 1000)
+        with conn:
             if get_settings().search_mode == "hybrid":  # v2b: 질문 단어 + 코드 키워드를 섞음
                 return search_hybrid(conn, model_id, query_vec, question, k)
             return search_vector(conn, model_id, query_vec, k)
@@ -46,7 +49,7 @@ def get_deps() -> Deps:
         with get_conn() as conn:
             return fetch_manual_pages(conn, model_id, pages)
 
-    return Deps(embed_query=embed_query, search=search, complete=lambda msgs: complete_json(msgs, get_settings()),
+    return Deps(embed_query=embed_query, search=search, complete=lambda msgs: complete_json(msgs, get_settings(), usage=timings),
                 supported_ids=set(models), official_url=lambda m: models[m]["official_url"], timings=timings,
                 diagnostic=diagnostic)
 

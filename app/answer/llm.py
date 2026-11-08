@@ -36,7 +36,8 @@ ANSWER_FORMAT = {
 }
 
 
-def complete_json(messages: list[dict], settings: Settings, client=None) -> str:
+def complete_json(messages: list[dict], settings: Settings, client=None, usage: dict | None = None) -> str:
+    """usage를 넘기면 성공한 응답의 토큰 수를 더해 둔다(Langfuse 추적용, 본문은 넣지 않음)."""
     if settings.force_fail:
         raise make_error("AI_TIMEOUT")  # 시연용 실패 흉내(운영 배포에서는 켜지 않음)
     if not settings.openai_api_key:
@@ -52,6 +53,9 @@ def complete_json(messages: list[dict], settings: Settings, client=None) -> str:
                 reasoning={"effort": settings.reasoning_effort},
                 text={"format": ANSWER_FORMAT},
             )
+            if usage is not None and getattr(resp, "usage", None):
+                for key in ("input_tokens", "output_tokens"):
+                    usage[key] = usage.get(key, 0) + getattr(resp.usage, key)
             return resp.output_text
         except (TimeoutError, openai.APITimeoutError):
             error = "AI_TIMEOUT"

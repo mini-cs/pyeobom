@@ -58,12 +58,15 @@
 - **해석:**
   - `page-has-heading-one`: 질문을 보내면 소개 영역이 접히면서 `aria-hidden="true"`가 붙는다(`public/app.js`의 `collapse`). 그래서 화면의 유일한 h1("세탁기·에어컨, 설명서 대신 물어보세요")이 보조 기술에서 사라진다. 빈 화면에서는 위반이 없다.
   - `aria-prohibited-attr`(확인 필요): 예시 질문 영역 `div#examples`에 역할(role) 없이 `aria-label`이 붙어 있다. axe가 자동으로 판정하지 못한 항목이라 위반 수에는 들어가지 않는다.
-  - 고치지 않았다(이번 계획은 측정만). 개편 화면에서 같은 상태로 다시 잰다.
+  - 두 가지 모두 이번에는 고치지 않는다(이번 계획은 측정만). **계획 3에서 수정, 개편 후 재측정.**
 
 ## Langfuse (단계별 시간·토큰·비용)
 
 - **환경:**
 - **방법:** 로컬에서만 추적을 켜고 1차 30문항 1회 실행
+  - 추적 코드: `app/core/observability.py` (Langfuse Python SDK v5). `LANGFUSE_PUBLIC_KEY`·`LANGFUSE_SECRET_KEY`가 없으면 아무것도 하지 않는다. Vercel 환경 변수에는 넣지 않는다.
+  - **보내는 것:** 단계별 시간(`ask` 안에 `embed`, `search`(그 안에 `db_connect`), `llm`), 토큰 수(`llm`의 `usage_details`), 가린 질문(`question_masked`), 모델 이름.
+  - **보내지 않는 것:** 프롬프트, 설명서 조각, 인용, 답 본문. OpenAI 자동 기록(래퍼·자동 계측)은 쓰지 않고, `should_export_span=is_langfuse_span`으로 이 코드가 만든 기록만 내보낸다. 넣을 수 있는 속성도 목록으로 제한한다(`tests/core/test_observability.py`로 고정).
 - **결과:**
 - **해석:**
 
@@ -94,7 +97,9 @@
 
 | 항목 | 예상 비용 (USD) | 실제 비용 (USD) | 누적 예상 (USD) | 확인 |
 |---|---|---|---|---|
-| (아직 없음) | | | 0 | |
+| axe 첫 실행(가로채기 함수 오류, 2026-11-08) | — | 확인하지 못함, 최대 1센트 미만 | 0.01 | 사후 기록. 가로채기 안에서 오류가 나 `/api/ask`가 실제 서버로 나갔는지 확인하지 못함. 나갔다면 질문 1개(약 0.035센트) |
+| Task 4 미리보기 확인 질문 1개 | 0.001 | | 0.011 | `check_budget` 통과 |
+| PR #24 병합 전 통합 테스트(`pytest -m integration`, 임베딩 약 15회·답변 AI 없음) | 0.001 | 0.001 미만(18 passed, 1 xfailed) | 0.012 | `check_budget` 통과 |
 
 ## 도구별 스킬 후보 (2026-11-08, 찾기만 함)
 
