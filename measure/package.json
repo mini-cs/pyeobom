@@ -1,0 +1,8 @@
+{
+  "name": "pyeobom-measure",
+  "private": true,
+  "description": "측정 도구용(axe-core). 배포와 무관하다",
+  "devDependencies": {
+    "axe-core": "^4.14.0"
+  }
+}

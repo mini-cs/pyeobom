@@ -1,0 +1,15 @@
+{
+  "found": true,
+  "answer": "이불 코스를 선택한 뒤 시작 버튼을 누르세요. (측정용 고정 응답)",
+  "citations": [
+    {
+      "doc_type": "manual",
+      "title": "코스 선택하기",
+      "page": 30,
+      "url": "https://www.samsung.com/sec/support/",
+      "quote": "측정용 가짜 인용 문장입니다."
+    }
+  ],
+  "official_url": "https://www.samsung.com/sec/support/",
+  "pii_masked": false
+}
