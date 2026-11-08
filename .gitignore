@@ -10,3 +10,4 @@ __pycache__/
 data/guides/
 experiments/**/out/
 docs/시연영상/
+measure/out/
