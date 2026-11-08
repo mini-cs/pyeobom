@@ -104,3 +104,11 @@ def test_api_key_never_in_error(fake_client):
     with pytest.raises(AppError) as e:
         complete_json(MSGS, settings(openai_api_key="sk-secret"), fake_client)
     assert "sk-secret" not in str(e.value) and "sk-secret" not in e.value.message and e.value.__cause__ is None
+
+
+def test_reports_token_usage_when_asked(fake_client):
+    fake_client.create = lambda **kw: SimpleNamespace(output_text="ok-json",
+                                                      usage=SimpleNamespace(input_tokens=1200, output_tokens=80))
+    usage = {}
+    assert complete_json(MSGS, settings(), fake_client, usage=usage) == "ok-json"
+    assert usage == {"input_tokens": 1200, "output_tokens": 80}
