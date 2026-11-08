@@ -7,6 +7,7 @@ questions.csv 30개를 answer_question(debug=True)으로 직접 돌려(HTTP 아�
 import argparse
 import os
 import csv
+import json
 import datetime
 from dataclasses import replace
 from pathlib import Path
@@ -49,6 +50,8 @@ def main() -> None:
     parser.add_argument("--label", required=True)
     parser.add_argument("--prompt", default="v1")
     parser.add_argument("--search", default="vector", choices=["vector", "hybrid"])
+    parser.add_argument("--save-contexts", action="store_true",
+                        help="AI에 넘긴 조각 본문을 evaluation/results/<label>-contexts.json에 저장(DeepEval용, 커밋 금지)")
     args = parser.parse_args()
 
     load_env()
@@ -57,16 +60,21 @@ def main() -> None:
     from app.ask.service import answer_question
     from app.core.config import get_settings
     from app.core.errors import AppError
+    from evaluation.contexts import capture_contexts
     from evaluation.scoring import score_case, summarize
 
     settings = replace(get_settings(), prompt_version=args.prompt, search_mode=args.search)
     with (ROOT / "evaluation" / "questions.csv").open(encoding="utf-8-sig", newline="") as f:
         cases = list(csv.DictReader(f))
 
-    rows, scores = [], []
+    rows, scores, contexts = [], [], {}
     for case in cases:
+        deps = get_deps()
+        if args.save_contexts:
+            contexts[case["id"]] = []
+            deps = capture_contexts(deps, contexts[case["id"]])
         try:
-            resp = answer_question(case["model_id"], case["question"], get_deps(), settings, debug=True)
+            resp = answer_question(case["model_id"], case["question"], deps, settings, debug=True)
         except AppError as e:
             resp = {"error_code": e.code}
         score = score_case(case, resp)
@@ -85,6 +93,8 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+    if args.save_contexts:
+        (out_csv.parent / f"{args.label}-contexts.json").write_text(json.dumps(contexts, ensure_ascii=False), encoding="utf-8")
     summary = summarize(scores)
     write_report(ROOT / "docs" / "평가" / f"{today}-{args.label}.md", args.label, args, summary, rows)
     print(summary)
