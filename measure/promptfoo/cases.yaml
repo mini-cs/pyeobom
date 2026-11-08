@@ -26,4 +26,4 @@
     question: 에어컨에 CH10이 떴어요. 무슨 뜻이에요?
   assert:
     - type: javascript
-      value: "const b = JSON.parse(output); return b.answer.includes('없') && b.citations.length > 0"
+      value: JSON.parse(output).answer.includes('없') && JSON.parse(output).citations.length > 0
