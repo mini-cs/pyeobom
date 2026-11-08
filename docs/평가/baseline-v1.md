@@ -37,15 +37,28 @@
 - **해석:**
   - 1차 첫 화면은 HTML과 같은 주소의 `styles.css`·`app.js`만 불러온다(웹 글꼴·이미지·외부 스크립트 없음). 그래서 빠르다.
   - 1회차만 LCP가 느렸다(원인은 확인하지 않음). 이렇게 한 번씩 튀는 값 때문에 중앙값을 쓴다.
-  - CLS 0.080은 모두 아래쪽 안내 문구(`body > footer.footer`)가 움직인 값이다(Lighthouse `layout-shifts` 항목). 원인은 이번에 따로 조사하지 않았다.
+  - CLS 0.080은 모두 아래쪽 안내 문구(`body > footer.footer`)가 움직인 값이다(Lighthouse `layout-shifts` 항목). 원인은 조사하지 않고 **계획 3에서 확인**한다.
   - 개편 후 비교할 점: Pretendard 글꼴과 일러스트가 들어가면 LCP·CLS가 나빠질 수 있다(설계 11절 위험).
 
 ## axe-core (접근성)
 
-- **환경:**
-- **방법:** 1차 화면 상태 4개(빈 화면, 답, 찾지 못함, 오류). `/api/ask`는 고정 응답으로 가로채 AI를 부르지 않음
+- **환경:** 2026-11-08, 대상 `https://pyeobom.vercel.app`(운영), 실행 위치 로컬(Windows, 설치된 Chrome, 폭 360×740), axe-core 4.14.0, Playwright(Python) 1.64.1
+- **방법:** `.venv/Scripts/python -m measure.a11y` (먼저 `measure/`에서 `npm install`)
+  - `/api/models`는 실제 API, `/api/ask`는 Playwright로 가로채 고정 응답(`measure/fixtures/`, 근거 1개·가짜 인용)을 돌려준다. **AI를 부르지 않는다.**
+  - 오류 상태는 504 `AI_TIMEOUT` 본문을 돌려준다. 상태마다 결과 카드가 나온 뒤 `axe.run()`을 실행했다. 원본 결과는 `measure/out/axe-<상태>.json`(저장소에 넣지 않음)
 - **결과:**
+
+| 상태 | 위반 수 | critical | serious | moderate | minor | 위반 규칙 | 확인 필요(incomplete) |
+|---|---|---|---|---|---|---|---|
+| 빈 화면 | **0** | 0 | 0 | 0 | 0 | — | `aria-prohibited-attr` |
+| 답 | **1** | 0 | 0 | 1 | 0 | `page-has-heading-one` | `aria-prohibited-attr` |
+| 찾지 못함 | **1** | 0 | 0 | 1 | 0 | `page-has-heading-one` | `aria-prohibited-attr` |
+| 오류 | **1** | 0 | 0 | 1 | 0 | `page-has-heading-one` | `aria-prohibited-attr` |
+
 - **해석:**
+  - `page-has-heading-one`: 질문을 보내면 소개 영역이 접히면서 `aria-hidden="true"`가 붙는다(`public/app.js`의 `collapse`). 그래서 화면의 유일한 h1("세탁기·에어컨, 설명서 대신 물어보세요")이 보조 기술에서 사라진다. 빈 화면에서는 위반이 없다.
+  - `aria-prohibited-attr`(확인 필요): 예시 질문 영역 `div#examples`에 역할(role) 없이 `aria-label`이 붙어 있다. axe가 자동으로 판정하지 못한 항목이라 위반 수에는 들어가지 않는다.
+  - 고치지 않았다(이번 계획은 측정만). 개편 화면에서 같은 상태로 다시 잰다.
 
 ## Langfuse (단계별 시간·토큰·비용)
 
@@ -96,7 +109,21 @@
 | Locust | 없음 | `jeremylongshore/tons-of-skills-marketplace@locust-test-creator` (60) |
 | Promptfoo | `promptfoo/promptfoo@promptfoo-evals` (공식, 385), `@promptfoo-redteam-setup` (공식, 87), `@promptfoo-redteam-run` (공식, 84), `daymade/claude-code-skills@promptfoo-evaluation` (비공식, 1.6K) | — |
 
+## 스킬 검토 결과 (2026-11-08)
+
+위 후보 중 공식 출처 5개의 SKILL.md(와 딸린 참고 문서)를 읽고, CLAUDE.md 규칙(비밀 값 출력 금지, 확인 없는 외부 전송·패키지 설치 금지 등)과 부딪치는지 확인했다. 설치는 Claude Code 사용자 폴더(`~/.claude/skills`)에만 했고 저장소에는 넣지 않았다.
+
+| 스킬 | 결정 | 이유 |
+|---|---|---|
+| `promptfoo/promptfoo@promptfoo-evals` | **설치** | 결과 공유를 기본으로 끄고(`--no-share`), 키는 `{{env.VAR}}`로만 쓰며, 키가 있고 안전할 때만 실행하라고 한다 |
+| `langfuse/skills@langfuse` | 보류 | **확인 없는 외부 명령 허용**: 스킬이 켜지면 `npx langfuse-cli …`(npm 패키지를 받아 실행)와 `curl *langfuse.com/*`를 권한 확인 없이 허용한다. Langfuse가 없어도 모든 AI 작업에 쓰라고 해서 프롬프트 작업에도 끼어든다 |
+| `confident-ai/deepeval@deepeval` | 보류 | **프롬프트 자동 수정·재평가**: 횟수를 정하지 않으면 기본 5회 반복하며 앱 코드(프롬프트·검색)를 고치고 평가를 다시 돌린다. AI 비용이 들고 "측정만" 하는 이번 계획과 맞지 않는다 |
+| `promptfoo/promptfoo@promptfoo-redteam-setup`, `@promptfoo-redteam-run` | 보류 | **공격 생성을 외부 서버로 보냄**: 공격 생성·채점에 `--remote`(Promptfoo 서버)를 쓰라고 한다. 로컬에 OpenAI 키가 있어도 같아서 앱 설명·설정이 밖으로 나간다 |
+
+- 그래서 Langfuse·DeepEval은 각 도구의 공식 문서만 보고 계획대로 진행한다. Promptfoo 레드팀은 `--remote` 없이 우리 OpenAI 키로 로컬 생성만 쓰고, 로컬 생성이 안 되는 플러그인은 빼서 Promptfoo 절에 목록으로 적는다.
+
 ## 한계
 
+- **자동 접근성 검사는 일부만 잡는다.** axe-core는 규칙으로 판정할 수 있는 것만 찾는다. 키보드만으로 조작, 화면 낭독기로 읽는 순서, 실기기 동작은 사람이 확인해야 한다.
 - 측정마다 날짜, 대상 주소, 실행 위치(로컬/미리보기), 도구 버전을 각 절의 "환경"에 적는다.
 - DeepEval·Promptfoo 점수는 보조 지표다. 정답률의 최종 기준은 1차 사람 판정(`docs/평가/2026-11-01-v2a.md`)이다.
