@@ -13,7 +13,7 @@ from locust import HttpUser, between, events, task
 import requests  # locust(gevent 패치) 다음에 불러와야 한다
 
 from ingest.__main__ import load_env
-from measure.load_common import assert_not_production, bypass_headers, question_pool, warm_up
+from measure.load_common import assert_not_production, bypass_headers, question_pool, warm_up, answer_failure
 
 load_env()
 POOL = question_pool(str(Path(__file__).resolve().parent.parent / "evaluation" / "questions.csv"))
@@ -26,7 +26,9 @@ def _refuse_production_then_warm_up(environment, **kwargs):
     headers = bypass_headers(os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET"))
 
     def post(body):
-        requests.post(f"{environment.host}/api/ask", json=body, headers=headers, timeout=60).raise_for_status()
+        resp = requests.post(f"{environment.host}/api/ask", json=body, headers=headers, timeout=60, allow_redirects=False)
+        if reason := answer_failure(resp.status_code, resp.text):
+            raise RuntimeError(f"깨우기 실패: {reason}")
 
     warm_up(post, POOL)
 
@@ -40,4 +42,7 @@ class AskUser(HttpUser):
 
     @task
     def ask(self):
-        self.client.post("/api/ask", json=random.choice(POOL), name="/api/ask", timeout=30)
+        with self.client.post("/api/ask", json=random.choice(POOL), name="/api/ask", timeout=30,
+                              allow_redirects=False, catch_response=True) as resp:
+            if reason := answer_failure(resp.status_code, resp.text):
+                resp.failure(reason)
