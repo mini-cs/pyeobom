@@ -62,13 +62,35 @@
 
 ## Langfuse (단계별 시간·토큰·비용)
 
-- **환경:**
+- **환경:** 2026-11-08 07:18~07:21 UTC, 실행 위치 로컬(한국 → Neon·OpenAI), Langfuse Cloud 일본 지역(`https://jp.cloud.langfuse.com`), Langfuse Python SDK 5.2.0, 답변 모델 `gpt-6-luna`(추론 강도 low), `main` `9e7d72b`
 - **방법:** 로컬에서만 추적을 켜고 1차 30문항 1회 실행
   - 추적 코드: `app/core/observability.py` (Langfuse Python SDK v5). `LANGFUSE_PUBLIC_KEY`·`LANGFUSE_SECRET_KEY`가 없으면 아무것도 하지 않는다. Vercel 환경 변수에는 넣지 않는다.
   - **보내는 것:** 단계별 시간(`ask` 안에 `embed`, `search`(그 안에 `db_connect`), `llm`), 토큰 수(`llm`의 `usage_details`), 가린 질문(`question_masked`), 모델 이름.
   - **보내지 않는 것:** 프롬프트, 설명서 조각, 인용, 답 본문. OpenAI 자동 기록(래퍼·자동 계측)은 쓰지 않고, `should_export_span=is_langfuse_span`으로 이 코드가 만든 기록만 내보낸다. 넣을 수 있는 속성도 목록으로 제한한다(`tests/core/test_observability.py`로 고정).
-- **결과:**
+  - 실행: `python -m evaluation --label baseline-langfuse`(평가 리포트 `docs/평가/2026-11-08-baseline-langfuse.md`). 집계는 Langfuse 공개 API(`observations`)로 같은 시간대 기록 150개(30문항 × 5단계)를 받아 계산했다.
+- **결과 (30문항):**
+
+| 단계 | 평균 | 중앙값 | 최대 |
+|---|---|---|---|
+| 전체(`ask`) | **4,873ms** | 4,718ms | 8,043ms |
+| 임베딩(`embed`) | 197ms | 188ms | 507ms |
+| DB 연결(`db_connect`) | 1,401ms | 1,391ms | 1,594ms |
+| 검색(`search`, DB 연결 포함) | 1,772ms | 1,704ms | 3,244ms |
+| 답변 AI(`llm`, 재요청 포함) | 2,904ms | 2,844ms | 6,148ms |
+
+| 질문당 | 평균 | 최대 |
+|---|---|---|
+| 입력 토큰 | 2,843 | 4,618 |
+| 출력 토큰 | 162 | 491 |
+| 답변 AI 비용 | **0.0365센트** ($0.000365) | 0.0707센트 |
+
+- 비용은 Langfuse에 등록된 `gpt-6-luna` 단가(입력 토큰당 $1e-7, 출력 토큰당 $5e-7)로 계산했다. 30문항 합계 $0.011. 임베딩 비용은 들어 있지 않다(질문 하나 수십 토큰이라 매우 작음).
+- 기록 확인: 30개 `ask` 모두 가린 질문(`question_masked`)이 있고, `input`/`output` 항목이 있는 기록은 0개였다.
 - **해석:**
+  - **실행 위치가 로컬(한국 → 싱가포르)이라 운영과 다르다.** 운영(Vercel `sin1`, 이어지는 요청 평균 약 2.7초)보다 약 2.2초 느린데, 대부분 DB 연결(평균 1.4초)이다. 운영 함수는 DB와 같은 지역이라 DB 연결이 1차 측정에서 약 45ms였다(결정기록 018).
+  - 로컬에서도 DB 연결을 빼면 시간이 가장 많이 드는 단계는 답변 AI(평균 2.9초)다. 개편에서 질문 바꾸기 단계가 AI 호출을 하나 더 하므로, 채택 조건 3(평균 응답 시간 증가 1.5초 이내)은 이 값을 기준으로 본다.
+  - 질문당 비용 0.0365센트는 1차 실측(약 0.035센트, 85회)과 거의 같다.
+  - 이번 실행의 자동 정답률은 72.0%(v2a 기록 68.0%)다. 같은 설정에서도 2문항 정도 바뀌는 변동 폭 안이다.
 
 ## DeepEval (AI 채점, 보조 지표)
 
@@ -100,6 +122,7 @@
 | axe 첫 실행(가로채기 함수 오류, 2026-11-08) | — | 확인하지 못함, 최대 1센트 미만 | 0.01 | 사후 기록. 가로채기 안에서 오류가 나 `/api/ask`가 실제 서버로 나갔는지 확인하지 못함. 나갔다면 질문 1개(약 0.035센트) |
 | Task 4 미리보기 확인 질문 1개 | 0.001 | | 0.011 | `check_budget` 통과 |
 | PR #24 병합 전 통합 테스트(`pytest -m integration`, 임베딩 약 15회·답변 AI 없음) | 0.001 | 0.001 미만(18 passed, 1 xfailed) | 0.012 | `check_budget` 통과 |
+| Langfuse 추적 30문항 1회(`python -m evaluation --label baseline-langfuse`, 1차 질문당 약 0.035센트 × 30, 재요청 여유 포함) | 0.015 | 0.011(답변 AI, Langfuse 집계) | 0.027 | `check_budget` 통과 |
 
 ## 도구별 스킬 후보 (2026-11-08, 찾기만 함)
 
