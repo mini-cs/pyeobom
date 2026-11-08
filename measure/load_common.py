@@ -1,0 +1,22 @@
+"""Locust 부하 측정 공용 함수(미리보기 전용, 운영 주소 차단)."""
+import csv
+from urllib.parse import urlparse
+
+PRODUCTION_HOST = "pyeobom.vercel.app"
+BYPASS_HEADER = "x-vercel-protection-bypass"  # Vercel 공식 문서 "Protection Bypass for Automation"(헤더 방식)
+
+
+def question_pool(csv_path: str) -> list[dict]:
+    with open(csv_path, encoding="utf-8-sig", newline="") as f:
+        return [{"model_id": r["model_id"], "question": r["question"]}
+                for r in csv.DictReader(f) if r["expected_found"] == "true"]
+
+
+def bypass_headers(secret: str | None) -> dict:
+    return {BYPASS_HEADER: secret} if secret else {}
+
+
+def assert_not_production(url: str) -> None:
+    host = urlparse(url if "//" in url else f"//{url}").hostname
+    if host == PRODUCTION_HOST:
+        raise ValueError("부하 측정은 운영 주소로 보내지 않는다(미리보기 주소만)")
