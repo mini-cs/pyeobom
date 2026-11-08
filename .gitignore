@@ -12,3 +12,5 @@ experiments/**/out/
 docs/시연영상/
 measure/out/
 node_modules/
+evaluation/results/*-contexts.json
+.deepeval/
