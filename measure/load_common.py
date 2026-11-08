@@ -20,3 +20,9 @@ def assert_not_production(url: str) -> None:
     host = urlparse(url if "//" in url else f"//{url}").hostname
     if host == PRODUCTION_HOST:
         raise ValueError("부하 측정은 운영 주소로 보내지 않는다(미리보기 주소만)")
+
+
+def warm_up(post, pool: list[dict], n: int = 2) -> None:
+    # 측정 전 서버·DB를 깨운다(결과에서 제외). post는 질문 하나를 보내는 함수
+    for body in pool[:n]:
+        post(body)
