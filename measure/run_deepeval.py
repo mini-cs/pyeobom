@@ -27,25 +27,33 @@ def main() -> None:
     parser.add_argument("csv")
     parser.add_argument("contexts")
     parser.add_argument("--model", default="gpt-5-nano")
-    parser.add_argument("--limit", type=int, default=None, help="앞에서 N문항만(비용 확인용)")
+    parser.add_argument("--reasoning-effort", default=None, help="채점 모델 추론 강도(예: minimal). 없으면 모델 기본값")
+    parser.add_argument("--offset", type=int, default=0, help="앞에서 N문항을 건너뜀(이어서 채점할 때)")
+    parser.add_argument("--limit", type=int, default=None, help="N문항만(비용 확인용)")
     args = parser.parse_args()
     load_env()
 
     from deepeval.metrics import AnswerRelevancyMetric, ContextualRelevancyMetric, FaithfulnessMetric
+    from deepeval.models import OpenAIModel
     from deepeval.test_case import LLMTestCase
 
     with open(args.csv, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     contexts = json.loads(Path(args.contexts).read_text(encoding="utf-8"))
-    cases = build_cases(rows, contexts)[: args.limit]
+    cases = build_cases(rows, contexts)[args.offset:]
+    cases = cases[: args.limit] if args.limit else cases
+    # generation_kwargs는 chat.completions.create로 그대로 전달된다(DeepEval 공식 문서)
+    judge = args.model
+    if args.reasoning_effort:
+        judge = OpenAIModel(model=args.model, generation_kwargs={"reasoning_effort": args.reasoning_effort})
 
     results, total_cost = [], 0.0
     for case in cases:
         test_case = LLMTestCase(input=case["input"], actual_output=case["actual_output"],
                                 retrieval_context=case["retrieval_context"])
         result = {"id": case["id"]}
-        for name, metric in zip(METRICS, (FaithfulnessMetric(model=args.model), AnswerRelevancyMetric(model=args.model),
-                                          ContextualRelevancyMetric(model=args.model))):
+        for name, metric in zip(METRICS, (FaithfulnessMetric(model=judge), AnswerRelevancyMetric(model=judge),
+                                          ContextualRelevancyMetric(model=judge))):
             metric.measure(test_case)
             result[name], result[f"{name}_reason"] = metric.score, metric.reason
             total_cost += metric.evaluation_cost or 0.0
@@ -53,10 +61,10 @@ def main() -> None:
         print(case["id"], " ".join(f"{m}={result[m]:.2f}" for m in METRICS), flush=True)
 
     OUT.mkdir(exist_ok=True)
-    label = Path(args.csv).stem
+    label = f"{Path(args.csv).stem}-{args.reasoning_effort or 'default'}-from{args.offset}"
     (OUT / f"deepeval-{label}.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     means = {m: round(statistics.mean(r[m] for r in results), 3) for m in METRICS}
-    print(json.dumps({"cases": len(results), "model": args.model, "mean": means, "cost_usd": round(total_cost, 5)}))
+    print(json.dumps({"cases": len(results), "model": args.model, "reasoning_effort": args.reasoning_effort, "mean": means, "cost_usd": round(total_cost, 5)}))
 
 
 if __name__ == "__main__":
