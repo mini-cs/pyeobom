@@ -90,7 +90,7 @@ def main() -> None:
                     row |= {"skipped": True, "reason": "skipped"}
                 else:
                     history = shorten_history(t["history"]) if cfg["shorten"] else t["history"]
-                    settings = replace(base_settings, rewrite_model=cfg["model"], reasoning_effort=cfg["effort"])
+                    settings = replace(base_settings, rewrite_model=cfg["model"], rewrite_reasoning_effort=cfg["effort"])
                     start = time.perf_counter()
                     r = rewrite_question(t["question"], history, cfg["model"], settings)
                     ms = int((time.perf_counter() - start) * 1000)
