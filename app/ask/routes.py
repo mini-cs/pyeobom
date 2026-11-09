@@ -50,7 +50,7 @@ def get_deps() -> Deps:
             return fetch_manual_pages(conn, model_id, pages)
 
     return Deps(embed_query=embed_query, search=search, complete=lambda msgs: complete_json(msgs, get_settings(), usage=timings),
-                supported_ids=set(models), official_url=lambda m: models[m]["official_url"], timings=timings,
+                supported_ids=set(models), official_url=lambda m: models[m]["official_url"], brand=lambda m: models[m]["brand"], timings=timings,
                 diagnostic=diagnostic)
 
 

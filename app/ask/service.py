@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from app.answer.check import GUIDE_WARNING, NOT_FOUND_MESSAGE, Answer, parse_and_verify
 from app.answer.prompting import build_messages
+from app.core.brand_guard import mentions_other_brand, other_brand_message
 from app.core.config import Settings
 from app.core.observability import get_tracer
 from app.input_guard.pii import mask_pii
@@ -20,6 +21,7 @@ class Deps:
     official_url: Callable[[str], str]
     timings: dict[str, int] = field(default_factory=dict)  # 실제 검색이 db_connect_ms를, AI 호출이 토큰 수를 적는다
     diagnostic: Callable[[str], list[Chunk]] = lambda model_id: []  # 모델의 진단 안내 쪽 조각(결정기록 019)
+    brand: Callable[[str], str] = lambda model_id: ""  # 모델의 제조사(models.json brand). 다른 브랜드 규칙에 쓴다
 
 
 def _ms(since: float) -> int:
@@ -34,33 +36,37 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
     tracer = get_tracer()  # 키가 없으면 무동작. 단계 시간·토큰·가린 질문만 기록한다
 
     with tracer.span("ask", question_masked=question, model_id=model_id):
-        t = time.perf_counter()
-        with tracer.span("embed"):
-            query_vec = deps.embed_query(question)
-        embed_ms = _ms(t)
-        t = time.perf_counter()
-        with tracer.span("search"):
-            chunks = deps.search(model_id, query_vec, question, settings.top_k)
-            # 질문의 에러 코드가 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(프롬프트 규칙 4가 진단 안내를 지시)
-            tokens, diagnostic_added = extract_code_tokens(question), False
-            if tokens and not all(any(contains_code(code, c.content) for c in chunks) for code in tokens):
-                seen = {c.id for c in chunks}
-                extra = [c for c in deps.diagnostic(model_id) if c.id not in seen]
-                chunks, diagnostic_added = chunks + extra, bool(extra)
-        search_total_ms = _ms(t)
-        result, llm_ms = None, 0
-        if chunks:
-            messages = build_messages(question, chunks, settings.prompt_version)
-            with tracer.span("llm", model=settings.openai_chat_model) as span:
-                for _ in range(2):  # 검증에 실패하면 한 번 더 묻고, 또 실패하면 찾지 못함
-                    t = time.perf_counter()
-                    raw = deps.complete(messages)
-                    llm_ms += _ms(t)
-                    result = parse_and_verify(raw, chunks)
-                    if result:
-                        break
-                span.update(input_tokens=deps.timings.get("input_tokens", 0),
-                            output_tokens=deps.timings.get("output_tokens", 0))
+        embed_ms = search_total_ms = llm_ms = 0
+        chunks, diagnostic_added, result = [], False, None
+        if mentions_other_brand(question, deps.brand(model_id)):  # 다른 제조사 질문은 AI 없이 안내(결정 A)
+            result = Answer(False, other_brand_message(deps.brand(model_id)), [])
+        else:
+            t = time.perf_counter()
+            with tracer.span("embed"):
+                query_vec = deps.embed_query(question)
+            embed_ms = _ms(t)
+            t = time.perf_counter()
+            with tracer.span("search"):
+                chunks = deps.search(model_id, query_vec, question, settings.top_k)
+                # 질문의 에러 코드가 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(프롬프트 규칙 4가 진단 안내를 지시)
+                tokens, diagnostic_added = extract_code_tokens(question), False
+                if tokens and not all(any(contains_code(code, c.content) for c in chunks) for code in tokens):
+                    seen = {c.id for c in chunks}
+                    extra = [c for c in deps.diagnostic(model_id) if c.id not in seen]
+                    chunks, diagnostic_added = chunks + extra, bool(extra)
+            search_total_ms = _ms(t)
+            if chunks:
+                messages = build_messages(question, chunks, settings.prompt_version)
+                with tracer.span("llm", model=settings.openai_chat_model) as span:
+                    for _ in range(2):  # 검증에 실패하면 한 번 더 묻고, 또 실패하면 찾지 못함
+                        t = time.perf_counter()
+                        raw = deps.complete(messages)
+                        llm_ms += _ms(t)
+                        result = parse_and_verify(raw, chunks)
+                        if result:
+                            break
+                    span.update(input_tokens=deps.timings.get("input_tokens", 0),
+                                output_tokens=deps.timings.get("output_tokens", 0))
     result = result or Answer(False, NOT_FOUND_MESSAGE, [])
 
     body = {
