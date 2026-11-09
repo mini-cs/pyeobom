@@ -23,11 +23,12 @@ def _mark(v) -> str:
     return "" if v is None else ("O" if v is True else "X" if v is False else str(v))
 
 
-def write_report(path: Path, label: str, args, summary: dict, rows: list[dict]) -> None:
+def write_report(path: Path, label: str, args, summary: dict, rows: list[dict], diffs: list[str] | None = None) -> None:
     lines = [
         f"# 평가 리포트 {label} ({datetime.date.today()})", "",
         f"- 실행: `python -m evaluation --label {args.label} --prompt {args.prompt} --search {args.search}`",
-        "- 문항: `evaluation/questions.csv` 30개 (2026-10-28 고정)", "",
+        "- 문항: `evaluation/questions.csv` 30개 (2026-10-28 고정)",
+        f"- 실행 설정: 결과 CSV 옆 `.settings.json`. " + ("**⚠ 운영 기본값과 다름: " + ", ".join(diffs) + "**" if diffs else "운영 기본값과 같음"), "",
         "## 요약", "",
         "| 정답률 | 근거 적중률 | 환각률 | 오류율 | 응답 시간 평균 | 최대 | 실패: 검색 | 실패: 답변 |",
         "|---|---|---|---|---|---|---|---|",
@@ -45,7 +46,7 @@ def write_report(path: Path, label: str, args, summary: dict, rows: list[dict]) 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _run_followups(args, settings, get_deps, answer_question, AppError) -> None:
+def _run_followups(args, settings, get_deps, answer_question, AppError, write_settings) -> None:
     from evaluation.followups import RESULT_COLUMNS, load_followups, run_all, summarize_followups
 
     def client(model_id, question, history):
@@ -60,6 +61,7 @@ def _run_followups(args, settings, get_deps, answer_question, AppError) -> None:
         writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
         writer.writeheader()
         writer.writerows(rows)
+    write_settings(out_csv, settings, args.label)
     # 사람 판정 칸은 비어 있으므로 여기서는 자동 지표만 의미가 있다(함정은 사람 판정 후 다시 집계)
     print(summarize_followups(rows) | {"turns": len(rows), "errors": sum(1 for r in rows if r["error"]), "csv": out_csv.name})
 
@@ -84,8 +86,10 @@ def main() -> None:
     from evaluation.scoring import score_case, summarize
 
     settings = replace(get_settings(), prompt_version=args.prompt, search_mode=args.search)
+    from evaluation.run_config import warn_if_different, write_settings
+    diffs = warn_if_different(settings)  # 로컬 .env 실험 설정이 섞이면 시작할 때 알린다
     if args.followups:
-        return _run_followups(args, settings, get_deps, answer_question, AppError)
+        return _run_followups(args, settings, get_deps, answer_question, AppError, write_settings)
     with (ROOT / "evaluation" / "questions.csv").open(encoding="utf-8-sig", newline="") as f:
         cases = list(csv.DictReader(f))
 
@@ -115,10 +119,11 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+    write_settings(out_csv, settings, args.label)
     if args.save_contexts:
         (out_csv.parent / f"{args.label}-contexts.json").write_text(json.dumps(contexts, ensure_ascii=False), encoding="utf-8")
     summary = summarize(scores)
-    write_report(ROOT / "docs" / "평가" / f"{today}-{args.label}.md", args.label, args, summary, rows)
+    write_report(ROOT / "docs" / "평가" / f"{today}-{args.label}.md", args.label, args, summary, rows, diffs)
     print(summary)
 
 
