@@ -49,9 +49,16 @@ def write_report(path: Path, label: str, args, summary: dict, rows: list[dict], 
 def _run_followups(args, settings, get_deps, answer_question, AppError, write_settings) -> None:
     from evaluation.followups import RESULT_COLUMNS, load_followups, run_all, summarize_followups
 
+    from evaluation.contexts import capture_contexts
+    captured: list[list[str]] = []  # 턴 순서대로(run_all이 대화·턴 순서로 부름)
+
     def client(model_id, question, history):
+        deps = get_deps()
+        if args.save_contexts:
+            captured.append([])
+            deps = capture_contexts(deps, captured[-1])
         try:
-            return answer_question(model_id, question, get_deps(), settings, debug=True, history=history)
+            return answer_question(model_id, question, deps, settings, debug=True, history=history)
         except AppError as e:
             return {"error_code": e.code}
 
@@ -62,6 +69,9 @@ def _run_followups(args, settings, get_deps, answer_question, AppError, write_se
         writer.writeheader()
         writer.writerows(rows)
     write_settings(out_csv, settings, args.label)
+    if args.save_contexts:  # DeepEval용 근거 본문(설명서 원문, 커밋 금지: .gitignore *-contexts.json)
+        contexts = {f"{r['dialog_id']}-{r['turn']}": c for r, c in zip(rows, captured)}
+        (out_csv.parent / f"{args.label}-contexts.json").write_text(json.dumps(contexts, ensure_ascii=False), encoding="utf-8")
     # 사람 판정 칸은 비어 있으므로 여기서는 자동 지표만 의미가 있다(함정은 사람 판정 후 다시 집계)
     print(summarize_followups(rows) | {"turns": len(rows), "errors": sum(1 for r in rows if r["error"]), "csv": out_csv.name})
 
