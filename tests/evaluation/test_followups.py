@@ -64,3 +64,16 @@ def test_run_dialog_keeps_going_after_error():
              {"dialog_id": "d02", "turn": "2", "model_id": "washer-a", "question": "질문2"}]
     results = run_dialog(turns, client)
     assert results[0].error == "AI_TIMEOUT" and results[1].error == ""
+
+
+def test_score_turn_checks_found_ref_and_rewrite():
+    from evaluation.followups import TurnResult, score_turn
+    row = {"dialog_id": "d01", "turn": "2", "type": "pronoun", "expected_found": "true", "expected_ref": "manual:42"}
+    ok = score_turn(row, TurnResult("d01", 2, rewritten_question="세탁조 청소는 얼마나 자주 해요?", found=True, cited_refs=["manual:42"]))
+    assert (ok["found_ok"], ok["ref_hit"], ok["hallucinated"], ok["rewrite_used"]) == (True, True, None, True)
+    trap = {"dialog_id": "d07", "turn": "2", "type": "trap", "expected_found": "false", "expected_ref": ""}
+    bad = score_turn(trap, TurnResult("d07", 2, found=True, cited_refs=["manual:56"]))
+    assert (bad["found_ok"], bad["ref_hit"], bad["hallucinated"], bad["rewrite_used"]) == (False, None, True, False)
+    base = score_turn({"dialog_id": "d01", "turn": "1", "type": "base", "expected_found": "true", "expected_ref": "manual:42"},
+                      TurnResult("d01", 1, found=True, cited_refs=["manual:43"]))
+    assert base["rewrite_used"] is None and base["ref_hit"] is False
