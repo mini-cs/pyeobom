@@ -45,6 +45,27 @@ def write_report(path: Path, label: str, args, summary: dict, rows: list[dict]) 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _run_followups(args, settings, get_deps, answer_question, AppError) -> None:
+    from evaluation.followups import RESULT_COLUMNS, load_followups, run_all
+
+    def client(model_id, question, history):
+        try:
+            return answer_question(model_id, question, get_deps(), settings, debug=True, history=history)
+        except AppError as e:
+            return {"error_code": e.code}
+
+    rows = run_all(load_followups(ROOT / "evaluation" / "followups.csv"), client)
+    out_csv = ROOT / "evaluation" / "results" / f"{args.label}-{datetime.date.today().isoformat()}.csv"
+    with out_csv.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    follow = [r for r in rows if r["turn"] != "1"]
+    print({"turns": len(rows), "followup_turns": len(follow),
+           "found_ok": sum(1 for r in rows if r["found_ok"]), "rewrite_used": sum(1 for r in follow if r["rewrite_used"]),
+           "hallucinated": sum(1 for r in rows if r["hallucinated"]), "errors": sum(1 for r in rows if r["error"]), "csv": out_csv.name})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m evaluation")
     parser.add_argument("--label", required=True)
@@ -52,6 +73,7 @@ def main() -> None:
     parser.add_argument("--search", default="vector", choices=["vector", "hybrid"])
     parser.add_argument("--save-contexts", action="store_true",
                         help="AI에 넘긴 조각 본문을 evaluation/results/<label>-contexts.json에 저장(DeepEval용, 커밋 금지)")
+    parser.add_argument("--followups", action="store_true", help="이어지는 질문 세트(evaluation/followups.csv)를 대화별로 실행")
     args = parser.parse_args()
 
     load_env()
@@ -64,6 +86,8 @@ def main() -> None:
     from evaluation.scoring import score_case, summarize
 
     settings = replace(get_settings(), prompt_version=args.prompt, search_mode=args.search)
+    if args.followups:
+        return _run_followups(args, settings, get_deps, answer_question, AppError)
     with (ROOT / "evaluation" / "questions.csv").open(encoding="utf-8-sig", newline="") as f:
         cases = list(csv.DictReader(f))
 

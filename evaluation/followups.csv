@@ -1,0 +1,33 @@
+# 확정: (사용자 확인 전) — 사용자가 원문과 대조해 확정하면 날짜를 적고 이후 수정 금지
+dialog_id,turn,model_id,question,expected_rewrite_intent,expected_found,expected_ref,type
+d01,1,washer-lg-fx25,세탁조 청소는 어떻게 해요?,,true,manual:42|manual:43,base
+d01,2,washer-lg-fx25,그건 얼마나 자주 해야 해요?,세탁조 청소는 얼마나 자주 해야 하나 (사용자가 쓴 '세탁조 청소' 유지. 앞 답의 '통살균 코스'·'세탁조 클리너'로 바꾸면 틀림),true,manual:42,pronoun
+d01,3,washer-lg-fx25,6개월 넘게 안 했으면요?,세탁조 청소를 6개월 넘게 안 했으면 어떻게 하나,true,manual:43,ellipsis
+d02,1,washer-lg-fx25,빨래를 헹굼만 한 번 더 하고 싶어요,,true,manual:34,base
+d02,2,washer-lg-fx25,탈수만 하고 싶을 땐요?,탈수만 하고 싶을 때는 어떻게 하나,true,manual:34,ellipsis
+d02,3,washer-lg-fx25,끝나는 시간을 미리 정해 둘 수도 있어요?,세탁기가 끝나는 시간을 미리 정해 둘 수 있나 (예약),true,manual:34,ellipsis
+d03,1,washer-lg-fx25,세탁 중에 OE가 뜨고 물이 안 빠지는 것 같아요. 어떻게 해요?,,true,manual:41|guide:guide-lg-drum-errors,base
+d03,2,washer-lg-fx25,그 거름망은 어디에 있어요?,OE 조치에 나온 배수 펌프 거름망은 어디에 있나 ('급수구 거름망'으로 바꾸면 틀림),true,manual:41,pronoun
+d04,1,washer-lg-fx25,아이가 버튼을 못 누르게 막고 싶어요,,true,manual:37|manual:36,base
+d04,2,washer-lg-fx25,탈수할 때 세탁기가 엄청 흔들리고 시끄러워요,주제가 바뀐 질문이라 그대로 (버튼 잠금을 붙이면 틀림),true,manual:58,topic_switch
+d05,1,washer-lg-fx25,뜨거운 물 넣고 돌렸더니 tE가 떴어요,,true,guide:guide-lg-drum-errors,base
+d05,2,washer-lg-fx25,제 번호는 010-1234-5678이에요. 그래도 계속 뜨면 어떻게 해요?,tE가 계속 뜨면 어떻게 하나 (바꾼 질문에 전화번호가 없어야 함),true,guide:guide-lg-drum-errors,pii
+d06,1,washer-samsung-wd90h25,이불도 빨 수 있어요? 어떤 코스로 해요?,,true,manual:38,base
+d06,2,washer-samsung-wd90h25,최대 몇 kg까지 돼요?,이불 코스는 최대 몇 kg까지 되나,true,manual:38,ellipsis
+d06,3,washer-samsung-wd90h25,덜 마르면요?,이불 코스로 건조했는데 덜 마르면 어떻게 하나,true,manual:38,ellipsis
+d07,1,washer-samsung-wd90h25,건조 끝나고 필터 청소하라는데 어떻게 해요?,,true,manual:56|manual:57,base
+d07,2,washer-samsung-wd90h25,그 필터 새로 사면 얼마예요?,먼지 필터를 새로 사면 얼마인가 (가격은 설명서에 없음),false,,trap
+d08,1,washer-samsung-wd90h25,세탁 끝났는데 문이 안 열려요,,true,manual:75,base
+d08,2,washer-samsung-wd90h25,물이 남아 있어서 그런 거면 어떻게 해요?,드럼 안에 물이 남아 있어서 문이 안 열리는 거면 어떻게 하나,true,manual:75,pronoun
+d09,1,washer-samsung-wd90h25,건조까지 돌렸는데 5C가 뜨면서 물이 안 빠져요,,true,manual:55|manual:54|guide:guide-samsung-drum-5c,base
+d09,2,washer-samsung-wd90h25,LG 세탁기에서도 같은 코드가 떠요?,LG 세탁기에서도 5C 코드가 뜨나 (다른 브랜드라 찾지 못함),false,,trap
+d10,1,aircon-lg-sq06fa1wds,에어컨 필터는 어떻게 빼서 청소해요?,,true,manual:44|manual:43,base
+d10,2,aircon-lg-sq06fa1wds,그건 얼마나 자주 해야 해요?,에어컨 필터 청소는 얼마나 자주 해야 하나,true,manual:43,pronoun
+d10,3,aircon-lg-sq06fa1wds,새 걸로 바꾸려면 어디서 사요?,에어컨 필터를 새 것으로 바꾸려면 어디서 사나,true,manual:44,ellipsis
+d11,1,aircon-lg-sq06fa1wds,리모컨 건전지는 뭘 넣어요?,,true,manual:18,base
+d11,2,aircon-lg-sq06fa1wds,에어컨에서 쾨쾨한 냄새가 나요,주제가 바뀐 질문이라 그대로 (리모컨·건전지를 붙이면 틀림),true,manual:47,topic_switch
+d12,1,aircon-lg-sq06fa1wds,에어컨 끈 다음에 안쪽 습기를 말리는 기능이 있어요?,,true,manual:42,base
+d12,2,aircon-lg-sq06fa1wds,그거 켜 두면 전기세는 한 달에 얼마 나와요?,안쪽 습기를 말리는 기능(AI 건조)을 켜 두면 전기세가 한 달에 얼마인가 (설명서에 없음),false,,trap
+d12,3,aircon-lg-sq06fa1wds,그건 몇 분 동안 돌아가요?,안쪽 습기를 말리는 기능(AI 건조)은 몇 분 동안 돌아가나 (앞 답의 '송풍 운전'으로 바꾸면 틀림),true,manual:42,pronoun
+d13,1,aircon-lg-sq06fa1wds,에어컨 켰는데 찬바람이 안 나와요,,true,manual:50,base
+d13,2,aircon-lg-sq06fa1wds,서울 강남구 테헤란로 123에 사는데 기사님이 와서 봐 줄 수 있어요?,기사 방문 점검을 받을 수 있나 (바꾼 질문에 주소가 없어야 함. 설명서에 방문 예약 안내 없음),false,,pii
