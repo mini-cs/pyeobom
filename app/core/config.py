@@ -17,6 +17,9 @@ class Settings:
     search_mode: str = "vector"
     force_fail: bool = False
     reasoning_effort: str = "low"
+    rewrite_model: str = ""  # 비면 답변 모델(get_settings가 채움)
+    rewrite_timeout_s: float = 5
+    rewrite_max_output_tokens: int = 120
 
 
 @lru_cache
@@ -36,4 +39,7 @@ def get_settings() -> Settings:
         search_mode=env("SEARCH_MODE") or "vector",
         force_fail=env("FORCE_FAIL", "").strip().lower() in ("1", "true", "yes"),
         reasoning_effort=env("OPENAI_REASONING_EFFORT") or "low",
+        rewrite_model=env("REWRITE_MODEL") or env("OPENAI_CHAT_MODEL", ""),
+        rewrite_timeout_s=float(env("REWRITE_TIMEOUT_S") or 5),
+        rewrite_max_output_tokens=int(env("REWRITE_MAX_OUTPUT_TOKENS") or 120),
     )
