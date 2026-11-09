@@ -19,7 +19,7 @@ class Settings:
     reasoning_effort: str = "low"
     rewrite_model: str = ""  # 비면 답변 모델(get_settings가 채움)
     rewrite_timeout_s: float = 5
-    rewrite_max_output_tokens: int = 120
+    rewrite_max_output_tokens: int = 300  # 추론 토큰 포함. 실제 사용분만 과금되므로 여유 있게
 
 
 @lru_cache
@@ -41,5 +41,5 @@ def get_settings() -> Settings:
         reasoning_effort=env("OPENAI_REASONING_EFFORT") or "low",
         rewrite_model=env("REWRITE_MODEL") or env("OPENAI_CHAT_MODEL", ""),
         rewrite_timeout_s=float(env("REWRITE_TIMEOUT_S") or 5),
-        rewrite_max_output_tokens=int(env("REWRITE_MAX_OUTPUT_TOKENS") or 120),
+        rewrite_max_output_tokens=int(env("REWRITE_MAX_OUTPUT_TOKENS") or 300),
     )

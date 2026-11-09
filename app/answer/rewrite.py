@@ -13,6 +13,7 @@ from app.core.config import Settings
 
 log = logging.getLogger(__name__)
 MAX_LEN = 500  # 1차 질문 길이 상한과 같다
+PROMPT_FILE = "rewrite_v2.txt"  # v1은 기록용(docs/프롬프트.md 변경 기록)
 
 REWRITE_FORMAT = {
     "type": "json_schema",
@@ -35,7 +36,7 @@ class RewriteResult:
 
 
 def build_rewrite_messages(question: str, history: list[dict]) -> list[dict]:
-    system = (PROMPTS / "rewrite_v1.txt").read_text(encoding="utf-8")
+    system = (PROMPTS / PROMPT_FILE).read_text(encoding="utf-8")
     turns = "\n".join(f"<turn><question>{_data(t['question'])}</question><answer>{_data(t['answer'])}</answer></turn>"
                       for t in history)
     user = f"<history>\n{turns}\n</history>\n<question>{_data(question)}</question>"
