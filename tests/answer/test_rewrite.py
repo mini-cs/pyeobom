@@ -85,6 +85,15 @@ def test_rewrite_settings_default_to_answer_model(monkeypatch):
     get_settings.cache_clear()
     try:
         s = get_settings()
-        assert (s.rewrite_model, s.rewrite_timeout_s, s.rewrite_max_output_tokens) == ("answer-model", 5, 120)
+        assert (s.rewrite_model, s.rewrite_timeout_s, s.rewrite_max_output_tokens) == ("answer-model", 5, 300)
     finally:
         get_settings.cache_clear()
+
+
+def test_rewrite_prompt_v2_keeps_user_wording_for_pointing_words():
+    # v1에서 "통세척은?" → "그건 얼마나 걸려요?"를 앞 답의 용어("통살균 코스")로 바꿨다(2026-11-09 실제 확인)
+    client = FakeClient('{"standalone_question": "x"}')
+    rewrite_question("그건 얼마나 걸려요?", HISTORY, "m", S, client=client)
+    system = client.calls[0]["input"][0]["content"]
+    assert "사용자가 앞 질문에서 쓴 말로 바꾼다" in system
+    assert "앞 답에만 나온 다른 용어로 바꾸지 않는다" in system
