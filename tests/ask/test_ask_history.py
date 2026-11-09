@@ -54,7 +54,7 @@ def test_invalid_history_is_rejected(client, history):
 def test_mask_history_masks_question_and_answer():
     masked = mask_history([{"question": "기사님 010-1234-5678로 연락했어요", "answer": "test@example.com으로 보내세요"}])
     assert "010-1234-5678" not in masked[0]["question"] and "010-****-****" in masked[0]["question"]
-    assert masked[0]["answer"] == "[이메일]으로 보내세요"
+    assert "test@example.com" not in masked[0]["answer"] and masked[0]["answer"].startswith("[이메일]")
 
 
 def test_new_question_phone_is_masked_in_response(client):

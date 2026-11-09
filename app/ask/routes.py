@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.answer.llm import complete_json
@@ -22,10 +22,16 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class HistoryTurn(BaseModel):
+    question: str = Field(max_length=500)
+    answer: str = Field(max_length=1000)
+
+
 class AskBody(BaseModel):
     # 빠진 값도 서버 검사(INVALID_MODEL·EMPTY_QUESTION)로 보내려고 선택 항목으로 둔다(422 대신 400)
     model_id: str | None = None
     question: str | None = None
+    history: list[HistoryTurn] = Field(default_factory=list, max_length=3)  # 넘치면 INVALID_REQUEST(400)
 
 
 def get_deps() -> Deps:
@@ -61,7 +67,8 @@ def _error(e: AppError) -> JSONResponse:
 @router.post("/api/ask")
 def ask(body: AskBody, debug: bool = False, deps: Deps = Depends(get_deps)):
     try:
-        return answer_question(body.model_id, body.question, deps, get_settings(), debug=debug)
+        return answer_question(body.model_id, body.question, deps, get_settings(), debug=debug,
+                               history=[t.model_dump() for t in body.history])
     except AppError as e:
         return _error(e)
     except Exception as e:
