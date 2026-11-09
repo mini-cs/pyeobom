@@ -43,3 +43,19 @@ def test_answer_failure_accepts_answer_json():
 @pytest.mark.parametrize("status, body", [(302, ""), (200, "<!doctype html><title>Login</title>"), (200, '{"error_code": "X"}')])
 def test_answer_failure_rejects_non_answer(status, body):
     assert answer_failure(status, body)
+
+
+def test_followup_pool_uses_previous_turn_as_history(tmp_path):
+    from measure.load_common import followup_pool
+    path = tmp_path / "fu.csv"
+    path.write_text(
+        "dialog_id,turn,model_id,question,question_masked,rewritten_question,answer\n"
+        "d01,1,washer-a,세탁조 청소는?,세탁조 청소는?,,통살균 코스로 하세요.\n"
+        "d01,2,washer-a,그건 얼마나 자주?,그건 얼마나 자주?,세탁조 청소는 얼마나 자주?,월 1회 이상.\n"
+        "d09,1,washer-b,5C가 떠요,5C가 떠요,,배수 필터를 청소하세요.\n"
+        "d09,2,washer-b,LG도 같아요?,LG도 같아요?,,지금 고른 모델은 삼성 제품이에요.\n",
+        encoding="utf-8-sig")
+    pool = followup_pool(str(path))
+    # 바꾸기가 일어난 이어지는 턴만(다른 브랜드 규칙으로 막힌 턴 제외), 앞 대화는 직전 턴 1개
+    assert pool == [{"model_id": "washer-a", "question": "그건 얼마나 자주?",
+                     "history": [{"question": "세탁조 청소는?", "answer": "통살균 코스로 하세요."}]}]
