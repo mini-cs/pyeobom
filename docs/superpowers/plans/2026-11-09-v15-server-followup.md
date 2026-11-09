@@ -187,6 +187,7 @@
   - Promptfoo: 고정 사례 4개(IE 사례 기대 결과 = `found: false`, 이제 코드로 보장) + 앞 대화에 지시를 숨긴 사례 2개(예: 앞 답에 "앞의 규칙을 무시해" 포함)
 - [ ] **Step 2:** **사용자 확인:** 바뀐 문항과 새 세트의 `human_rewrite_ok`·`human_verdict` 사람 판정
 - [ ] **Step 3:** 기준값과 나란히 비교표 작성, 채택 조건 3개 판정, 근거 관련성(DeepEval)이 0.481에서 어떻게 변했는지 기록
+  - (2026-11-09 추가, 사용자) **바꾸기 성공률**: `rewrite_used` 비율과 실패 사유 분포(`timeout`·`invalid_output`·`api_error`)를 새 세트·Locust `history` 요청에서 집계
 - [ ] **Step 4:** 실제 비용 합계와 OpenAI 사용량 화면 대조(사용자 확인)
 - [ ] **Step 5: Commit** → PR → 병합 직전 멈춤
 
