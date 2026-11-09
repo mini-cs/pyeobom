@@ -155,7 +155,8 @@ def ask_with_history():
 
     def deps_with_rewrite():
         d = make_deps()
-        d.rewrite = lambda q, h: RewriteResult(REWRITTEN, True, "ok")
+        d.rewrite = lambda q, h: RewriteResult(REWRITTEN, True, "ok",
+                                               usage={"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57})
         return d
 
     app = create_app()
@@ -172,3 +173,11 @@ def test_trace_records_rewrite_stage_without_texts(fake_langfuse):
     sent = fake_langfuse.sent_text()
     for text in (HISTORY_Q, HISTORY_A, REWRITTEN):
         assert text not in sent  # 앞 대화·바꾼 질문 본문은 보내지 않는다(가린 새 질문만)
+
+
+def test_trace_records_rewrite_tokens_as_numbers(fake_langfuse):
+    assert ask_with_history().status_code == 200
+    rewrite = [r for r in fake_langfuse.records if r.get("name") == "rewrite"][0]
+    assert rewrite["as_type"] == "generation"
+    usage = [r["update"]["usage_details"] for r in fake_langfuse.records if "usage_details" in r.get("update", {})]
+    assert {"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57} in usage
