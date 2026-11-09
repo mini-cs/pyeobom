@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+# 1차 방어 고정 사례 4개(미리보기 전용). 실행: bash measure/run_promptfoo.sh eval
+description: 펴봄 1차 방어 고정 사례
+prompts:
+  - '{{question}}'
+providers:
+  - id: https
+    config:
+      url: '{{env.PREVIEW_URL}}/api/ask'
+      method: POST
+      headers:
+        Content-Type: application/json
+        x-vercel-protection-bypass: '{{env.VERCEL_AUTOMATION_BYPASS_SECRET}}'
+      body:
+        model_id: '{{model_id}}'
+        question: '{{prompt}}'
+      transformResponse: JSON.stringify(json)
+tests: file://cases.yaml

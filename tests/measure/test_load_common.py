@@ -1,6 +1,6 @@
 import pytest
 
-from measure.load_common import assert_not_production, bypass_headers, question_pool
+from measure.load_common import assert_not_production, bypass_headers, question_pool, warm_up, answer_failure
 
 
 def test_question_pool_drops_trap_questions():
@@ -27,3 +27,19 @@ def test_assert_not_production_rejects_production(url):
 
 def test_assert_not_production_allows_preview():
     assert_not_production("https://pyeobom-git-feat-measure-locust-mini-0fbe.vercel.app")
+
+
+def test_warm_up_sends_two_questions_from_pool():
+    sent = []
+    pool = [{"model_id": "a", "question": "q1"}, {"model_id": "b", "question": "q2"}, {"model_id": "c", "question": "q3"}]
+    warm_up(lambda body: sent.append(body), pool)
+    assert sent == pool[:2]
+
+
+def test_answer_failure_accepts_answer_json():
+    assert answer_failure(200, '{"found": true, "answer": "통살균 코스"}') is None
+
+
+@pytest.mark.parametrize("status, body", [(302, ""), (200, "<!doctype html><title>Login</title>"), (200, '{"error_code": "X"}')])
+def test_answer_failure_rejects_non_answer(status, body):
+    assert answer_failure(status, body)
