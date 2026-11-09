@@ -143,3 +143,41 @@ def test_ask_response_unchanged_with_tracing(monkeypatch, fake_langfuse):
     plain = ask().json()
     traced.pop("latency_ms"), plain.pop("latency_ms")
     assert traced == plain
+
+
+HISTORY_Q = "세탁조 냄새는 어떻게 없애요?"
+HISTORY_A = "세탁조 클리너를 넣고 고온 세탁을 돌려 주세요."
+REWRITTEN = "세탁조 클리너 코스는 얼마나 걸려요?"
+
+
+def ask_with_history():
+    from app.answer.rewrite import RewriteResult
+
+    def deps_with_rewrite():
+        d = make_deps()
+        d.rewrite = lambda q, h: RewriteResult(REWRITTEN, True, "ok",
+                                               usage={"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57})
+        return d
+
+    app = create_app()
+    app.dependency_overrides[get_deps] = deps_with_rewrite
+    return TestClient(app).post("/api/ask", json={"model_id": "washer-a", "question": "그건 얼마나 걸려요?",
+                                                  "history": [{"question": HISTORY_Q, "answer": HISTORY_A}]})
+
+
+def test_trace_records_rewrite_stage_without_texts(fake_langfuse):
+    assert ask_with_history().status_code == 200
+    assert fake_langfuse.names() == ["ask", "rewrite", "embed", "search", "llm"]
+    meta = [r["update"]["metadata"] for r in fake_langfuse.records if "metadata" in r.get("update", {})]
+    assert {"rewrite_used": True, "rewrite_reason": "ok"} in meta
+    sent = fake_langfuse.sent_text()
+    for text in (HISTORY_Q, HISTORY_A, REWRITTEN):
+        assert text not in sent  # 앞 대화·바꾼 질문 본문은 보내지 않는다(가린 새 질문만)
+
+
+def test_trace_records_rewrite_tokens_as_numbers(fake_langfuse):
+    assert ask_with_history().status_code == 200
+    rewrite = [r for r in fake_langfuse.records if r.get("name") == "rewrite"][0]
+    assert rewrite["as_type"] == "generation"
+    usage = [r["update"]["usage_details"] for r in fake_langfuse.records if "usage_details" in r.get("update", {})]
+    assert {"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57} in usage

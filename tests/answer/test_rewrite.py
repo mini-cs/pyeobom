@@ -11,8 +11,9 @@ HISTORY = [{"question": "통세척은 어떻게 해요?", "answer": "통살균 �
 
 
 class Resp:
-    def __init__(self, text):
+    def __init__(self, text, usage=None):
         self.output_text = text
+        self.usage = usage
 
 
 class FakeClient:
@@ -97,3 +98,16 @@ def test_rewrite_prompt_v2_keeps_user_wording_for_pointing_words():
     system = client.calls[0]["input"][0]["content"]
     assert "사용자가 앞 질문에서 쓴 말로 바꾼다" in system
     assert "앞 답에만 나온 다른 용어로 바꾸지 않는다" in system
+
+
+def test_usage_tokens_are_returned():
+    class Details:
+        reasoning_tokens = 57
+
+    class Usage:
+        input_tokens, output_tokens, output_tokens_details = 462, 85, Details()
+
+    client = FakeClient('{"standalone_question": "이불 코스는 최대 몇 kg까지 돼요?"}')
+    client.create = lambda **kw: Resp('{"standalone_question": "이불 코스는 최대 몇 kg까지 돼요?"}', Usage())
+    result = rewrite_question("최대 몇 kg까지 돼요?", HISTORY, "m", S, client=client)
+    assert result.usage == {"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57}

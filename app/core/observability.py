@@ -8,8 +8,8 @@ import os
 from contextlib import contextmanager
 from functools import lru_cache
 
-ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens"}
-USAGE_KEYS = ("input_tokens", "output_tokens")
+ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens", "rewrite_used", "rewrite_reason", "reasoning_tokens"}
+USAGE_KEYS = ("input_tokens", "output_tokens", "reasoning_tokens")
 
 
 def _check(attrs: dict) -> dict:
@@ -47,7 +47,7 @@ class Tracer:
             yield _NoopSpan()
             return
         model = attrs.pop("model", None)
-        kwargs = {"as_type": "generation", "model": model} if name == "llm" else {"as_type": "span"}
+        kwargs = {"as_type": "generation", "model": model} if name in ("llm", "rewrite") else {"as_type": "span"}
         with self._client.start_as_current_observation(name=name, metadata=attrs, **kwargs) as obs:
             yield _Span(obs)
 

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.answer.llm import complete_json
+from app.answer.rewrite import rewrite_question
 from app.ask.service import Deps, answer_question
 from app.catalog.registry import load_models
 from app.core.config import get_settings
@@ -57,6 +58,7 @@ def get_deps() -> Deps:
 
     return Deps(embed_query=embed_query, search=search, complete=lambda msgs: complete_json(msgs, get_settings(), usage=timings),
                 supported_ids=set(models), official_url=lambda m: models[m]["official_url"], brand=lambda m: models[m]["brand"], timings=timings,
+                rewrite=lambda q, h: rewrite_question(q, h, get_settings().rewrite_model, get_settings()),
                 diagnostic=diagnostic)
 
 
