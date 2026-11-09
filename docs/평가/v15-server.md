@@ -346,3 +346,5 @@
 | Task 7 1차 30문항 `--label v15`(로컬, Langfuse 추적, 다른 브랜드 규칙·바꾸기 없음) **⚠ TOP_K=52로 실행됨** | 0.015 | 약 0.07(입력 토큰 평균 24,550 × 30, 1차의 약 8배) | 0.141 | `check_budget` 통과 |
 | Task 7 새 세트 `--followups --label v15-fu`(로컬, Langfuse 추적, 31턴 + 바꾸기 17회) **⚠ TOP_K=52로 실행됨** | 0.02 | 약 0.07(입력 토큰 평균 24,550 기준) | 0.161 | `check_budget` 통과 |
 | Task 7 재측정(TOP_K=5): 30문항 `--label v15-k5` + 새 세트 `--followups --label v15-fu-k5`(로컬, Langfuse) | 0.035 | 약 0.024(입력 토큰 기준, 바꾸기 포함) | 0.301(앞 두 줄은 실제 0.07씩으로 넣어 계산) | `check_budget` 통과 |
+| Task 7 DeepEval용 근거 본문 저장 실행(TOP_K=5): 30문항 `--save-contexts` + 새 세트 `--followups --save-contexts` | 0.03 | — | 0.331 | `check_budget` 통과 |
+| Task 7 DeepEval: 30문항·새 세트의 답 있는·찾은 문항 약 48개 × 지표 3개, 기준값과 같은 설정(DeepEval 4.3.3, `gpt-5-nano`, 추론 강도 기본값). 1문항 실측 $0.0205(baseline-v1) × 48 = 0.98, 여유 10% | 1.08 | — | 1.411 | `check_budget` 통과 |
