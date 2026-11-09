@@ -81,12 +81,14 @@ def test_angle_brackets_are_escaped_in_question_and_history():
 
 def test_rewrite_settings_default_to_answer_model(monkeypatch):
     monkeypatch.setenv("OPENAI_CHAT_MODEL", "answer-model")
-    for name in ("REWRITE_MODEL", "REWRITE_TIMEOUT_S", "REWRITE_MAX_OUTPUT_TOKENS"):
+    monkeypatch.setenv("OPENAI_REASONING_EFFORT", "low")
+    for name in ("REWRITE_MODEL", "REWRITE_TIMEOUT_S", "REWRITE_MAX_OUTPUT_TOKENS", "REWRITE_REASONING_EFFORT"):
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     try:
         s = get_settings()
         assert (s.rewrite_model, s.rewrite_timeout_s, s.rewrite_max_output_tokens) == ("answer-model", 5, 300)
+        assert s.rewrite_reasoning_effort == "none"  # Task 6 채택(B): 답변(low)과 따로 둔다
     finally:
         get_settings.cache_clear()
 
@@ -111,3 +113,9 @@ def test_usage_tokens_are_returned():
     client.create = lambda **kw: Resp('{"standalone_question": "이불 코스는 최대 몇 kg까지 돼요?"}', Usage())
     result = rewrite_question("최대 몇 kg까지 돼요?", HISTORY, "m", S, client=client)
     assert result.usage == {"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57}
+
+
+def test_rewrite_uses_its_own_reasoning_effort():
+    client = FakeClient('{"standalone_question": "x"}')
+    rewrite_question("그건요?", HISTORY, "m", S, client=client)  # S의 답변 추론 강도는 기본 low
+    assert client.calls[0]["reasoning"] == {"effort": "none"}
