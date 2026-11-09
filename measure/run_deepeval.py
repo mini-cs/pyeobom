@@ -38,6 +38,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None, help="N문항만(비용 확인용)")
     parser.add_argument("--followups", action="store_true", help="새 세트(이어지는 질문) 결과 CSV를 채점")
     parser.add_argument("--metrics", nargs="+", default=list(METRICS), choices=METRICS, help="채점할 지표(기본 3개)")
+    parser.add_argument("--max-cost", type=float, default=None, help="누적 채점 비용(USD)이 이 값을 넘으면 거기서 멈추고 채점한 것만 저장")
     args = parser.parse_args()
     load_env()
 
@@ -71,6 +72,9 @@ def main() -> None:
             total_cost += metric.evaluation_cost or 0.0
         results.append(result)
         print(case["id"], " ".join(f"{m}={result[m]:.2f}" for m in args.metrics), flush=True)
+        if args.max_cost is not None and total_cost > args.max_cost:  # 장부 상한을 지키려고 실행 중에 멈춘다
+            print(f"비용 {total_cost:.4f}달러가 --max-cost {args.max_cost}를 넘어 멈춤({len(results)}문항 채점)", flush=True)
+            break
 
     OUT.mkdir(exist_ok=True)
     only = "" if list(args.metrics) == list(METRICS) else "-" + "-".join(args.metrics)
