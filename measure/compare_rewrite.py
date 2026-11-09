@@ -77,8 +77,11 @@ def main() -> None:
     from app.answer.rewrite import rewrite_question
     from app.core.config import get_settings
 
+    from evaluation.run_config import warn_if_different, write_settings
+
     names = [args.combo] if args.combo else args.settings
     turns, base_settings, rows = load_turns(args.hist_csv), get_settings(), []
+    warn_if_different(base_settings)  # 설정별 차이는 SETTINGS로 의도한 것이고, 그 밖의 바탕 설정이 운영과 다르면 알린다
     for run in range(1, args.runs + 1):
         for t in turns:
             for name in names:  # 설정을 번갈아 불러 시간대 차이가 한 설정에 몰리지 않게 한다
@@ -117,6 +120,7 @@ def main() -> None:
                "mean_added_ms": round(sum(r["ms"] for r in rs) / len(rs)),
                "failures": sum(1 for r in rs if not r["skipped"] and not r["used"] and r["reason"] != "ok"),
                "cost_usd": round(sum(r["cost_usd"] for r in rs), 5)})
+    write_settings(out, base_settings, label)
     print("csv:", out.name)
 
 

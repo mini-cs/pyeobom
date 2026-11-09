@@ -39,3 +39,17 @@ def answer_failure(status: int, body: str) -> str | None:
     except (ValueError, TypeError):
         pass
     return "답 JSON이 아님: " + " ".join(body[:60].split())
+
+
+def followup_pool(results_csv: str) -> list[dict]:
+    """새 세트 실행 결과에서 바꾸기가 일어난 이어지는 턴만, 직전 턴(가린 질문·답) 1개를 history로 붙인다."""
+    with open(results_csv, encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    pool, prev = [], {}
+    for r in rows:
+        if r["turn"] != "1" and r["rewritten_question"] and r["dialog_id"] in prev:
+            p = prev[r["dialog_id"]]
+            pool.append({"model_id": r["model_id"], "question": r["question"],
+                         "history": [{"question": p["question_masked"], "answer": p["answer"]}]})
+        prev[r["dialog_id"]] = r
+    return pool

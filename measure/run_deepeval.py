@@ -16,7 +16,7 @@ import statistics  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from ingest.__main__ import load_env  # noqa: E402
-from measure.deepeval_cases import build_cases  # noqa: E402
+from measure.deepeval_cases import build_cases, build_followup_cases  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "out"
 METRICS = ("faithfulness", "answer_relevancy", "contextual_relevancy")
@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--reasoning-effort", default=None, help="채점 모델 추론 강도(예: minimal). 없으면 모델 기본값")
     parser.add_argument("--offset", type=int, default=0, help="앞에서 N문항을 건너뜀(이어서 채점할 때)")
     parser.add_argument("--limit", type=int, default=None, help="N문항만(비용 확인용)")
+    parser.add_argument("--followups", action="store_true", help="새 세트(이어지는 질문) 결과 CSV를 채점")
     args = parser.parse_args()
     load_env()
 
@@ -40,7 +41,7 @@ def main() -> None:
     with open(args.csv, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     contexts = json.loads(Path(args.contexts).read_text(encoding="utf-8"))
-    cases = build_cases(rows, contexts)[args.offset:]
+    cases = (build_followup_cases if args.followups else build_cases)(rows, contexts)[args.offset:]
     cases = cases[: args.limit] if args.limit else cases
     # generation_kwargs는 chat.completions.create로 그대로 전달된다(DeepEval 공식 문서)
     judge = args.model
