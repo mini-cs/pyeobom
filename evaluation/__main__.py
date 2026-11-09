@@ -46,7 +46,7 @@ def write_report(path: Path, label: str, args, summary: dict, rows: list[dict]) 
 
 
 def _run_followups(args, settings, get_deps, answer_question, AppError) -> None:
-    from evaluation.followups import RESULT_COLUMNS, load_followups, run_all
+    from evaluation.followups import RESULT_COLUMNS, load_followups, run_all, summarize_followups
 
     def client(model_id, question, history):
         try:
@@ -60,10 +60,8 @@ def _run_followups(args, settings, get_deps, answer_question, AppError) -> None:
         writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
         writer.writeheader()
         writer.writerows(rows)
-    follow = [r for r in rows if r["turn"] != "1"]
-    print({"turns": len(rows), "followup_turns": len(follow),
-           "found_ok": sum(1 for r in rows if r["found_ok"]), "rewrite_used": sum(1 for r in follow if r["rewrite_used"]),
-           "hallucinated": sum(1 for r in rows if r["hallucinated"]), "errors": sum(1 for r in rows if r["error"]), "csv": out_csv.name})
+    # 사람 판정 칸은 비어 있으므로 여기서는 자동 지표만 의미가 있다(함정은 사람 판정 후 다시 집계)
+    print(summarize_followups(rows) | {"turns": len(rows), "errors": sum(1 for r in rows if r["error"]), "csv": out_csv.name})
 
 
 def main() -> None:
