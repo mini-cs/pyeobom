@@ -25,3 +25,8 @@ def mask_pii(text: str) -> tuple[str, bool]:
         text, n = pattern.subn(repl, text)
         found = found or n > 0
     return text, found
+
+
+def mask_history(history: list[dict]) -> list[dict]:
+    # 앞 대화도 질문·답 모두 가린 뒤에만 AI(질문 바꾸기)에 보낸다
+    return [{"question": mask_pii(t["question"])[0], "answer": mask_pii(t["answer"])[0]} for t in history]

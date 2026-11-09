@@ -7,7 +7,7 @@ from app.answer.prompting import build_messages
 from app.core.brand_guard import mentions_other_brand, other_brand_message
 from app.core.config import Settings
 from app.core.observability import get_tracer
-from app.input_guard.pii import mask_pii
+from app.input_guard.pii import mask_history, mask_pii
 from app.input_guard.validation import validate_model_id, validate_question
 from app.retrieval.search import Chunk, contains_code, extract_code_tokens
 
@@ -28,11 +28,13 @@ def _ms(since: float) -> int:
     return int((time.perf_counter() - since) * 1000)
 
 
-def answer_question(model_id: str, question: str, deps: Deps, settings: Settings, debug: bool = False) -> dict:
+def answer_question(model_id: str, question: str, deps: Deps, settings: Settings, debug: bool = False,
+                    history: list[dict] | None = None) -> dict:
     start = time.perf_counter()
     model_id = validate_model_id(model_id, deps.supported_ids)
     question = validate_question(question, settings.max_question_len)
     question, pii_masked = mask_pii(question)  # 이후 임베딩·검색·AI에는 가린 질문만 간다
+    history = mask_history(history or [])  # 앞 대화도 가린다. 질문 바꾸기(계획 2 Task 4)에서만 쓴다
     tracer = get_tracer()  # 키가 없으면 무동작. 단계 시간·토큰·가린 질문만 기록한다
 
     with tracer.span("ask", question_masked=question, model_id=model_id):
@@ -80,10 +82,12 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
         "official_url": deps.official_url(model_id),
         "latency_ms": int((time.perf_counter() - start) * 1000),
         "pii_masked": pii_masked,
+        "question_masked": question,
+        "rewritten_question": None,
     }
     if debug:
         db_connect_ms = deps.timings.get("db_connect_ms", 0)
         body |= {"retrieved_refs": [c.ref for c in chunks], "cited_refs": [c.ref for c in result.citations],
                  "diagnostic_added": diagnostic_added, "embed_ms": embed_ms, "db_connect_ms": db_connect_ms,
-                 "search_ms": max(search_total_ms - db_connect_ms, 0), "llm_ms": llm_ms}
+                 "search_ms": max(search_total_ms - db_connect_ms, 0), "llm_ms": llm_ms, "rewrite_ms": 0}
     return body
