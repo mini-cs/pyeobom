@@ -22,6 +22,12 @@ OUT = Path(__file__).resolve().parent / "out"
 METRICS = ("faithfulness", "answer_relevancy", "contextual_relevancy")
 
 
+def cr_verdicts(metric) -> list[list[dict]]:
+    """근거 관련성 판정을 조각별 문장 판정 목록으로(설명서 문장이 들어 있어 measure/out/에만 저장)."""
+    return [[{"statement": v.statement, "verdict": str(getattr(v.verdict, "value", v.verdict))} for v in vs.verdicts]
+            for vs in metric.verdicts_list]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m measure.run_deepeval")
     parser.add_argument("csv")
@@ -31,6 +37,8 @@ def main() -> None:
     parser.add_argument("--offset", type=int, default=0, help="앞에서 N문항을 건너뜀(이어서 채점할 때)")
     parser.add_argument("--limit", type=int, default=None, help="N문항만(비용 확인용)")
     parser.add_argument("--followups", action="store_true", help="새 세트(이어지는 질문) 결과 CSV를 채점")
+    parser.add_argument("--metrics", nargs="+", default=list(METRICS), choices=METRICS, help="채점할 지표(기본 3개)")
+    parser.add_argument("--max-cost", type=float, default=None, help="누적 채점 비용(USD)이 이 값을 넘으면 거기서 멈추고 채점한 것만 저장")
     args = parser.parse_args()
     load_env()
 
@@ -53,18 +61,26 @@ def main() -> None:
         test_case = LLMTestCase(input=case["input"], actual_output=case["actual_output"],
                                 retrieval_context=case["retrieval_context"])
         result = {"id": case["id"]}
-        for name, metric in zip(METRICS, (FaithfulnessMetric(model=judge), AnswerRelevancyMetric(model=judge),
-                                          ContextualRelevancyMetric(model=judge))):
+        makers = {"faithfulness": FaithfulnessMetric, "answer_relevancy": AnswerRelevancyMetric,
+                  "contextual_relevancy": ContextualRelevancyMetric}
+        for name in args.metrics:
+            metric = makers[name](model=judge)
             metric.measure(test_case)
             result[name], result[f"{name}_reason"] = metric.score, metric.reason
+            if name == "contextual_relevancy":
+                result["contextual_relevancy_verdicts"] = cr_verdicts(metric)
             total_cost += metric.evaluation_cost or 0.0
         results.append(result)
-        print(case["id"], " ".join(f"{m}={result[m]:.2f}" for m in METRICS), flush=True)
+        print(case["id"], " ".join(f"{m}={result[m]:.2f}" for m in args.metrics), flush=True)
+        if args.max_cost is not None and total_cost > args.max_cost:  # 장부 상한을 지키려고 실행 중에 멈춘다
+            print(f"비용 {total_cost:.4f}달러가 --max-cost {args.max_cost}를 넘어 멈춤({len(results)}문항 채점)", flush=True)
+            break
 
     OUT.mkdir(exist_ok=True)
-    label = f"{Path(args.csv).stem}-{args.reasoning_effort or 'default'}-from{args.offset}"
+    only = "" if list(args.metrics) == list(METRICS) else "-" + "-".join(args.metrics)
+    label = f"{Path(args.csv).stem}{only}-{args.reasoning_effort or 'default'}-from{args.offset}"
     (OUT / f"deepeval-{label}.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
-    means = {m: round(statistics.mean(r[m] for r in results), 3) for m in METRICS}
+    means = {m: round(statistics.mean(r[m] for r in results), 3) for m in args.metrics}
     print(json.dumps({"cases": len(results), "model": args.model, "reasoning_effort": args.reasoning_effort, "mean": means, "cost_usd": round(total_cost, 5)}))
 
 
