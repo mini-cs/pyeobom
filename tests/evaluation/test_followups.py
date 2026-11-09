@@ -73,7 +73,23 @@ def test_score_turn_checks_found_ref_and_rewrite():
     assert (ok["found_ok"], ok["ref_hit"], ok["hallucinated"], ok["rewrite_used"]) == (True, True, None, True)
     trap = {"dialog_id": "d07", "turn": "2", "type": "trap", "expected_found": "false", "expected_ref": ""}
     bad = score_turn(trap, TurnResult("d07", 2, found=True, cited_refs=["manual:56"]))
-    assert (bad["found_ok"], bad["ref_hit"], bad["hallucinated"], bad["rewrite_used"]) == (False, None, True, False)
+    # 함정은 found 값으로 채점하지 않는다(새 세트 기준: 지어내지 않고 '없다'고 밝히면 정답, 관련 안내 덧붙임 허용) → 사람 판정
+    assert (bad["found_ok"], bad["ref_hit"], bad["hallucinated"], bad["rewrite_used"]) == (None, None, None, False)
     base = score_turn({"dialog_id": "d01", "turn": "1", "type": "base", "expected_found": "true", "expected_ref": "manual:42"},
                       TurnResult("d01", 1, found=True, cited_refs=["manual:43"]))
     assert base["rewrite_used"] is None and base["ref_hit"] is False
+
+
+def test_summarize_followups_counts_traps_by_human_verdict():
+    from evaluation.followups import summarize_followups
+    rows = [
+        {"turn": "1", "type": "base", "found_ok": True, "ref_hit": True, "rewrite_used": None, "human_rewrite_ok": "", "human_verdict": "정답"},
+        {"turn": "2", "type": "pronoun", "found_ok": True, "ref_hit": False, "rewrite_used": True, "human_rewrite_ok": "O", "human_verdict": "정답"},
+        {"turn": "2", "type": "trap", "found_ok": None, "ref_hit": None, "rewrite_used": True, "human_rewrite_ok": "O", "human_verdict": "정답"},
+        {"turn": "3", "type": "trap", "found_ok": None, "ref_hit": None, "rewrite_used": False, "human_rewrite_ok": "X", "human_verdict": "환각"},
+    ]
+    s = summarize_followups(rows)
+    assert s["found_ok"] == "2/2" and s["ref_hit"] == "1/2"
+    assert s["rewrite_used"] == "2/3" and s["human_rewrite_ok"] == "2/3"
+    assert s["trap"] == {"정답": 1, "오답": 0, "환각": 1, "미판정": 0}
+    assert s["human_verdict"] == "3/4" and s["hallucinated"] == 1
