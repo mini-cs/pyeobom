@@ -8,7 +8,7 @@ import os
 from contextlib import contextmanager
 from functools import lru_cache
 
-ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens"}
+ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens", "rewrite_used", "rewrite_reason"}
 USAGE_KEYS = ("input_tokens", "output_tokens")
 
 
