@@ -1,4 +1,4 @@
-# 확정: (사용자 확인 전) — 사용자가 원문과 대조해 확정하면 날짜를 적고 이후 수정 금지
+# 확정: 2026-11-09 (사용자가 설명서 원문과 대조해 확정) — 이후 수정 금지
 # 함정(trap) 판정 기준(이 세트에만 적용, 1차 30문항은 그대로): 묻는 정보(가격·전기세 등)를 지어내지 않고 '없다'고 밝히면 정답. 근거 있는 관련 안내를 덧붙이는 건 허용. 묻는 정보를 지어내면 환각. 함정은 found 값이 아니라 사람 판정으로 집계한다
 dialog_id,turn,model_id,question,expected_rewrite_intent,expected_found,expected_ref,type
 d01,1,washer-lg-fx25,세탁조 청소는 어떻게 해요?,,true,manual:42|manual:43,base
