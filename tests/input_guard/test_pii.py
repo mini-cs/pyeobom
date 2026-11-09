@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
     ("02-123-4567 사무실", "02-***-**** 사무실"),
     ("메일은 abc.def@gmail.com", "메일은 [이메일]"),
     ("101동 1203호 세탁기", "[동호수] 세탁기"),
-    ("망원로 123 원룸이에요", "[주소] 원룸이에요"),
+    ("가나다로 123 원룸이에요", "[주소] 원룸이에요"),
 ])
 def test_masks_pii(raw, expected):
     masked, found = mask_pii(raw)
@@ -31,9 +31,9 @@ def test_particle_ro_with_unit_is_not_address(q):
 
 
 @pytest.mark.parametrize("raw,expected", [
-    ("망원로 123에", "[주소]에"),
-    ("망원로 123번지", "[주소]번지"),
-    ("연남로 12-3이에요", "[주소]이에요"),
+    ("가나다로 123에", "[주소]에"),
+    ("가나다로 123번지", "[주소]번지"),
+    ("라마바로 12-3이에요", "[주소]이에요"),
 ])
 def test_road_name_address_is_masked(raw, expected):
     assert mask_pii(raw) == (expected, True)
