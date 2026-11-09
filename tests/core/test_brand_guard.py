@@ -27,6 +27,22 @@ def test_mentions_other_brand(question, model_brand, expected):
     assert mentions_other_brand(question, model_brand) == expected
 
 
+@pytest.mark.parametrize("question", ["강남구 삼성동에 사는데 기사님 와 줄 수 있어요?", "삼성역 근처인데 필터는 어디서 사요?",
+                                      "삼성로에 살아요", "삼성병원 앞인데 에어컨이 안 켜져요"])
+def test_korean_place_names_are_not_brands(question):
+    # 허용 목록: 지명(삼성동·삼성역·삼성로·삼성병원)을 브랜드로 잡으면 정상 질문이 막힌다
+    assert mentions_other_brand(question, "LG") is None
+
+
+@pytest.mark.parametrize("question, model_brand, expected", [
+    ("삼성 세탁기도 이래요?", "LG", "samsung"), ("삼성꺼는 어때요?", "LG", "samsung"), ("삼성은 다르죠?", "LG", "samsung"),
+    ("삼성전자 서비스 불러야 해요?", "LG", "samsung"), ("엘지 에어컨도 같아요?", "삼성", "lg"), ("이거 삼성?", "LG", "samsung"),
+    ("엘지랑 비교하면요?", "삼성", "lg"), ("삼성", "LG", "samsung"),
+])
+def test_korean_brand_followed_by_allowed_word(question, model_brand, expected):
+    assert mentions_other_brand(question, model_brand) == expected
+
+
 def test_evaluation_questions_are_not_blocked():
     with open(ROOT / "evaluation" / "questions.csv", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
