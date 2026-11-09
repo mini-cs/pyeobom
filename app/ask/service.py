@@ -47,9 +47,9 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
         if history and not blocked:
             # 앞 대화는 질문 바꾸기에만 쓰고 답변 AI에는 넘기지 않는다(바뀐 질문 + 조각만)
             t = time.perf_counter()
-            with tracer.span("rewrite") as span:
+            with tracer.span("rewrite", model=settings.rewrite_model) as span:
                 r = deps.rewrite(question, history)
-                span.update(rewrite_used=r.used, rewrite_reason=r.reason)
+                span.update(rewrite_used=r.used, rewrite_reason=r.reason, **r.usage)  # 토큰 수는 숫자만
             rewrite_ms = _ms(t)
             if r.used:
                 rewritten = r.text

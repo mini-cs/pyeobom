@@ -4,7 +4,7 @@
 """
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import openai
 
@@ -33,6 +33,7 @@ class RewriteResult:
     text: str
     used: bool
     reason: str  # ok · no_history · timeout · invalid_output · api_error
+    usage: dict = field(default_factory=dict, compare=False)  # 토큰 수(입력·출력·추론). Langfuse에 숫자로만 기록
 
 
 def build_rewrite_messages(question: str, history: list[dict]) -> list[dict]:
@@ -69,5 +70,10 @@ def rewrite_question(question: str, history: list[dict], model_name: str, settin
     except Exception as e:
         log.warning("질문 바꾸기 실패: %s", type(e).__name__)  # 메시지에 키가 섞일 수 있어 종류만 남긴다
         return RewriteResult(question, False, "api_error")
+    u = getattr(resp, "usage", None)
+    usage = {"input_tokens": u.input_tokens, "output_tokens": u.output_tokens,
+             "reasoning_tokens": getattr(getattr(u, "output_tokens_details", None), "reasoning_tokens", 0) or 0} if u else {}
     rewritten = _parse(resp.output_text or "")
-    return RewriteResult(rewritten, True, "ok") if rewritten else RewriteResult(question, False, "invalid_output")
+    if rewritten:
+        return RewriteResult(rewritten, True, "ok", usage)
+    return RewriteResult(question, False, "invalid_output", usage)
