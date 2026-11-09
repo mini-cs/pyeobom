@@ -31,3 +31,22 @@ def test_capture_contexts_records_search_and_diagnostic_chunks_once():
     assert wrapped.search("a", [0.1], "q", 5) == found
     assert wrapped.diagnostic("a") == diag
     assert store == ["검색 조각", "진단 조각"]
+
+
+def test_build_followup_cases_uses_rewritten_question_and_skips_traps():
+    from measure.deepeval_cases import build_followup_cases
+    rows = [
+        {"dialog_id": "d01", "turn": "1", "type": "base", "expected_found": "true", "got_found": "True",
+         "question_masked": "세탁조 청소는?", "rewritten_question": "", "answer": "통살균 코스로 하세요."},
+        {"dialog_id": "d01", "turn": "2", "type": "pronoun", "expected_found": "true", "got_found": "True",
+         "question_masked": "그건 얼마나 자주?", "rewritten_question": "세탁조 청소는 얼마나 자주?", "answer": "월 1회 이상."},
+        {"dialog_id": "d07", "turn": "2", "type": "trap", "expected_found": "false", "got_found": "False",
+         "question_masked": "그 필터 얼마예요?", "rewritten_question": "먼지 필터 얼마예요?", "answer": "찾지 못했어요"},
+        {"dialog_id": "d03", "turn": "2", "type": "pronoun", "expected_found": "true", "got_found": "False",
+         "question_masked": "그 거름망은?", "rewritten_question": "배수 필터는?", "answer": "찾지 못했어요"},
+    ]
+    contexts = {"d01-1": ["조각1"], "d01-2": ["조각2"], "d07-2": ["조각3"], "d03-2": ["조각4"]}
+    cases = build_followup_cases(rows, contexts)
+    assert [c["id"] for c in cases] == ["d01-1", "d01-2"]
+    assert cases[1] == {"id": "d01-2", "input": "세탁조 청소는 얼마나 자주?", "actual_output": "월 1회 이상.", "retrieval_context": ["조각2"]}
+    assert cases[0]["input"] == "세탁조 청소는?"
