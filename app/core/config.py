@@ -20,6 +20,7 @@ class Settings:
     rewrite_model: str = ""  # 비면 답변 모델(get_settings가 채움)
     rewrite_timeout_s: float = 5
     rewrite_max_output_tokens: int = 300  # 추론 토큰 포함. 실제 사용분만 과금되므로 여유 있게
+    rewrite_reasoning_effort: str = "none"  # 계획 2 Task 6 채택(B): 같은 정확도에서 추론 토큰을 쓰지 않음(결정기록 023)
 
 
 @lru_cache
@@ -42,4 +43,5 @@ def get_settings() -> Settings:
         rewrite_model=env("REWRITE_MODEL") or env("OPENAI_CHAT_MODEL", ""),
         rewrite_timeout_s=float(env("REWRITE_TIMEOUT_S") or 5),
         rewrite_max_output_tokens=int(env("REWRITE_MAX_OUTPUT_TOKENS") or 300),
+        rewrite_reasoning_effort=env("REWRITE_REASONING_EFFORT") or "none",
     )

@@ -62,7 +62,7 @@ def rewrite_question(question: str, history: list[dict], model_name: str, settin
             model=model_name,
             input=build_rewrite_messages(question, history),
             max_output_tokens=settings.rewrite_max_output_tokens,
-            reasoning={"effort": settings.reasoning_effort},
+            reasoning={"effort": settings.rewrite_reasoning_effort},
             text={"format": REWRITE_FORMAT},
         )
     except (TimeoutError, openai.APITimeoutError):
