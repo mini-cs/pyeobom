@@ -35,7 +35,7 @@ def test_without_history_keeps_first_fields_and_adds_masked_question(client):
 def test_history_within_limits_is_accepted(client):
     resp = client.post("/api/ask", json={"model_id": "washer-a", "question": "그건 얼마나 걸려요?", "history": _turns(3)})
     assert resp.status_code == 200
-    assert resp.json()["rewritten_question"] is None  # 이 Task에서는 아직 바꾸지 않는다
+    assert resp.json()["rewritten_question"] is None  # 이 fixture의 Deps.rewrite는 기본값(no_history 결과)이라 바꾸지 않는다
 
 
 @pytest.mark.parametrize("history", [
