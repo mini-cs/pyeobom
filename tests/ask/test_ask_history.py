@@ -96,10 +96,10 @@ def test_long_history_answer_is_truncated_to_keep_len_for_rewrite():
 
 def test_history_answer_is_masked_before_truncation():
     calls = []
-    answer = "가" * 985 + "test@example.com" + "나" * 100  # 이메일이 자르는 경계(1,000자) 근처에 걸친다
+    answer = "가" * 995 + "test@example.com" + "나" * 100  # 자르면 "test@"까지만 남는 자리(순서가 바뀌면 가려지지 않는다)
     answer_question("washer-a", "그건요?", _recording_deps(calls), S, history=_turns(1, answer=answer))
     sent = calls[0][0]["answer"]
-    assert "test@" not in sent and "[이메일]" in sent and len(sent) <= HISTORY_ANSWER_KEEP_LEN
+    assert "test@" not in sent and len(sent) <= HISTORY_ANSWER_KEEP_LEN
 
 
 def test_history_question_over_500_is_still_rejected(client):
