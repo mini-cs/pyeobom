@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# 평가 세트는 작업 공간에서도 줄 끝을 LF로(P 세트 봉인 해시가 체크아웃 때 바뀌지 않게)
+evaluation/*.csv text eol=lf
