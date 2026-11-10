@@ -81,7 +81,7 @@ def _recording_deps(rewrite_calls):
                 supported_ids={"washer-a"}, official_url=lambda m: "https://example.com/support", rewrite=rewrite)
 
 
-def test_history_answer_over_cap_is_rejected_and_at_cap_is_truncated(client):
+def test_history_answer_over_cap_is_rejected_and_at_cap_is_accepted(client):
     over = client.post("/api/ask", json={"model_id": "washer-a", "question": "통세척", "history": _turns(1, answer="가" * 4001)})
     assert over.status_code == 400 and over.json()["error_code"] == "INVALID_REQUEST"
     ok = client.post("/api/ask", json={"model_id": "washer-a", "question": "통세척", "history": _turns(1, answer="가" * 4000)})
