@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -83,15 +84,28 @@ def test_reduced_motion_disables_collapse_animation():
     assert "prefers-reduced-motion: reduce" in css and "transition: none" in css
 
 
+def screen_examples() -> dict:
+    # 채팅 추천 카드: public/js/examples.js의 {모델 id: [{question, hint}, ...]}
+    block = re.search(r"export const EXAMPLES = (\{.*?\});", read("js/examples.js"), re.S)[1]
+    return json.loads(re.sub(r",(\s*[}\]])", r"\1", block))   # 끝 쉼표를 지우고 JSON으로 읽는다
+
+
 def test_examples_per_model_and_not_eval_questions():
     import csv
-    import json
-    js = read("app.js")
-    block = re.search(r"const EXAMPLES = (\{.*?\});", js, re.S)[1]
-    examples = json.loads(re.sub(r",(\s*[}\]])", r"\1", block))   # 끝 쉼표를 지우고 JSON으로 읽는다
+    examples = screen_examples()
     model_ids = {m["id"] for m in json.loads((PUBLIC.parent / "data" / "models.json").read_text(encoding="utf-8"))}
     assert set(examples) == model_ids and all(len(v) == 2 for v in examples.values())
+    for item in (i for items in examples.values() for i in items):   # 카드 첫 줄(질문)과 둘째 줄(짧은 화면 문구)
+        assert set(item) == {"question", "hint"} and item["question"].strip() and item["hint"].strip(), item
     with (PUBLIC.parent / "evaluation" / "questions.csv").open(encoding="utf-8") as f:
         eval_questions = [r["question"] for r in csv.DictReader(f)]
-    for q in (q for qs in examples.values() for q in qs):   # 평가 질문과 같거나 겹치는 문장은 예시로 쓰지 않는다
+    for q in (i["question"] for items in examples.values() for i in items):   # 평가 질문과 같거나 겹치는 문장은 예시로 쓰지 않는다
         assert not any(q in e or e in q for e in eval_questions), q
+
+
+def test_chat_copy_is_exact():
+    # 설계 2절 ④: 위쪽 막대 "새 대화", 입력창 아래 안내, 저장 실패 안내(설계 5절)
+    html = read("index.html")
+    for text in ["새 대화", "앞 대화를 기억해요 · 모델을 바꾸면 새 대화", "이 대화는 저장되지 않아요", "500자 남음",
+                 'aria-label="보내기"']:
+        assert text in html, text

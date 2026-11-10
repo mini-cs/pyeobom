@@ -15,6 +15,7 @@ pytestmark = pytest.mark.ui
 PUBLIC = Path(__file__).resolve().parents[2] / "public"
 MODELS = list_models()  # 실제 /api/models와 같은 공개 필드만
 NAMES = {m["id"]: m["name"] for m in MODELS}  # 화면 이름(코드 없음). 코드는 모델 선택 카드에만
+TITLES = {m["id"]: m.get("short_name") or m["name"] for m in MODELS}  # 채팅 위쪽 막대 이름(short_name ?? name)
 CODES = [c for m in MODELS for c in m["model_codes"]]
 LANDING_H1 = "가전 설명서, 대신 펴 봐 드려요"
 CATEGORY_H1 = "어떤 가전이 궁금하세요?"
@@ -58,28 +59,43 @@ def _conversation(i, model_id):
                        "found": False, "citations": [], "kind": "not_found"}]}
 
 
-def _open(browser, base_url, path="/", conversations=None):
+def _ask_504(body, route):
+    return 504, {"error_code": "AI_TIMEOUT", "message": "가짜 오류입니다(테스트)"}
+
+
+def _open(browser, base_url, path="/", conversations=None, ask=None, init=None):
     context = browser.new_context(viewport={"width": 360, "height": 780}, base_url=base_url)
     context.set_default_timeout(5000)  # 실패할 때 30초씩 기다리지 않게
     context.route(re.compile(r"^(?!http://127\.0\.0\.1)"), lambda route: route.abort())  # 외부로 나가는 요청 없음
     context.route("**/api/models", lambda route: route.fulfill(json=MODELS))
-    context.route("**/api/ask", lambda route: route.fulfill(
-        status=504, json={"error_code": "AI_TIMEOUT", "message": "가짜 오류"}))  # 실제 /api/ask에 붙지 않는다
+    asks = []  # 화면이 보낸 /api/ask 요청 본문
+
+    def handle_ask(route):  # 실제 /api/ask에 붙지 않는다. ask가 None을 돌려주면 응답을 붙잡아 둔다(테스트가 나중에 보냄)
+        body = json.loads(route.request.post_data or "{}")
+        asks.append(body)
+        result = (ask or _ask_504)(body, route)
+        if result is not None:
+            route.fulfill(status=result[0], json=result[1])
+
+    context.route("**/api/ask", handle_ask)
     if conversations is not None:
         state = json.dumps({"version": 1, "conversations": conversations}, ensure_ascii=False)
         context.add_init_script(f"localStorage.setItem({json.dumps(STORE_KEY)}, {json.dumps(state)})")
+    if init:
+        context.add_init_script(init)
     page = context.new_page()
     page.goto(path)
-    return page
+    return page, asks
 
 
 @pytest.fixture
 def open_page(browser, base_url):
     pages = []
 
-    def opener(path="/", conversations=None):
-        pages.append(_open(browser, base_url, path, conversations))
-        return pages[-1]
+    def opener(path="/", conversations=None, ask=None, init=None, with_asks=False):
+        page, asks = _open(browser, base_url, path, conversations, ask, init)
+        pages.append(page)
+        return (page, asks) if with_asks else page
 
     yield opener
     for p in pages:
@@ -137,7 +153,7 @@ def test_model_card_opens_chat_for_that_model(open_page):
     go_category(page)
     page.get_by_role("button", name="에어컨").click()
     page.locator(".model-card").click()
-    assert_screen(page, NAMES["aircon-lg-sq06fa1wds"])
+    assert_screen(page, TITLES["aircon-lg-sq06fa1wds"])
     assert page.evaluate("location.hash") == "#chat/aircon-lg-sq06fa1wds"
 
 
@@ -164,8 +180,8 @@ def test_each_screen_has_one_h1_and_focus_moves_to_it(open_page):
     assert visible_h1(page) == [{"text": model_h1, "hidden": False}]
     assert_focus_on_h1(page, model_h1)
     page.locator(".model-card").first.click()
-    assert_screen(page, NAMES["washer-samsung-wd90h25"])
-    assert_focus_on_h1(page, NAMES["washer-samsung-wd90h25"])
+    assert_screen(page, TITLES["washer-samsung-wd90h25"])
+    assert_focus_on_h1(page, TITLES["washer-samsung-wd90h25"])
     page.go_back()
     page.go_back()
     assert_screen(page, CATEGORY_H1)
@@ -250,6 +266,7 @@ def test_model_codes_on_model_cards_never_split(open_page):
     expect(codes).to_have_text(washer_codes)
     for code in codes.all():   # 360px에서 코드 하나가 두 줄로 갈라지지 않는다
         assert code.evaluate("(c) => c.getClientRects().length") == 1, code.text_content()
+        assert code.evaluate("(c) => getComputedStyle(c).whiteSpace") == "nowrap"  # 코드에 공백이 생겨도 갈라지지 않게
 
 
 def test_model_codes_absent_outside_model_screen(open_page):
@@ -267,6 +284,279 @@ def test_model_codes_absent_outside_model_screen(open_page):
     no_codes(page.locator("#category-recent .conv-card"))
     page.get_by_role("button", name="세탁기").click()
     page.locator(".model-card").first.click()
-    assert_screen(page, NAMES["washer-samsung-wd90h25"])
-    no_codes(page.locator("#topbar"))
-    no_codes(page.get_by_role("heading", level=1))
+    assert_screen(page, TITLES["washer-samsung-wd90h25"])
+    for m in MODELS:   # 채팅 위쪽 막대·h1은 세 모델 모두 코드 없음(Task 4 검토)
+        open_chat(page, m["id"])
+        no_codes(page.locator("#topbar"))
+        no_codes(page.get_by_role("heading", level=1))
+
+
+# ── ④ 채팅(설계 2절 ④·5절, 계획 3 Task 5). /api/ask는 가짜 JSON으로만 답한다 ──
+FAKE_PHONE = "010-1234-5678"
+CITE = {"doc_type": "manual", "title": "가짜 제목", "page": 12, "url": "https://example.com/manual",
+        "quote": "가짜 인용입니다(테스트)."}
+SUPPORT_URL = "https://example.com/support"
+
+
+def fake(body, **changes):
+    """가짜 정상 응답: 가린 질문은 "가린:" + 질문, 답은 질문마다 다르게."""
+    data = {"found": True, "answer": f"가짜 답입니다(테스트): {body['question']}", "citations": [CITE],
+            "official_url": SUPPORT_URL, "latency_ms": 1, "pii_masked": False,
+            "question_masked": f"가린:{body['question']}", "rewritten_question": None, "reason": None}
+    data.update(changes)
+    return 200, data
+
+
+def echo(body, route):
+    return fake(body)
+
+
+def open_chat(page, model_id, conversation_id=None):
+    page.evaluate("(h) => { location.hash = h; }", f"#chat/{model_id}" + (f"/{conversation_id}" if conversation_id else ""))
+    expect(page.locator("#chat-title")).to_have_text(TITLES[model_id])
+
+
+def send(page, text):
+    page.locator("#question").fill(text)
+    page.locator("#question").press("Enter")
+
+
+def wait_turns(page, n):
+    expect(page.locator(".turn")).to_have_count(n)
+    expect(page.locator('.turn[data-state="loading"]')).to_have_count(0)
+
+
+def wait_until(page, check):
+    # 가로챈 요청 처리기는 Playwright 호출 사이에 돈다: 잠깐씩 기다리며 조건을 본다
+    for _ in range(100):
+        if check():
+            return
+        page.wait_for_timeout(20)
+    raise AssertionError("기다린 조건이 오지 않음")
+
+
+def stored(page):
+    return page.evaluate(f"localStorage.getItem({json.dumps(STORE_KEY)})") or ""
+
+
+def test_topbar_name_fits_one_line_at_360_for_every_model(open_page):
+    page = open_page()
+    page.evaluate("document.fonts.ready")
+    for m in MODELS:   # 모델이 늘어 넘치면 실패해야 한다(말줄임·줄바꿈으로 숨기지 않음)
+        open_chat(page, m["id"])
+        expect(page.locator("#chat-title")).to_have_text(m.get("short_name") or m["name"])
+        expect(page.get_by_role("button", name="새 대화")).to_be_visible()
+        box = page.locator("#chat-title").evaluate("""(h) => { const s = getComputedStyle(h);
+            return {sw: h.scrollWidth, cw: h.clientWidth, height: h.getBoundingClientRect().height,
+                    line: parseFloat(s.lineHeight), overflow: s.textOverflow, space: s.whiteSpace}; }""")
+        assert box["overflow"] == "clip" and box["space"] == "normal", box
+        assert box["sw"] <= box["cw"] and box["height"] <= box["line"] + 0.5, (m["id"], box)
+
+
+def test_empty_chat_shows_two_suggestion_cards_that_send(open_page):
+    page, asks = open_page(ask=echo, with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    cards = page.locator(".suggestion")
+    expect(cards).to_have_count(2)
+    for card in cards.all():   # 굵은 첫 줄(질문) + 회색 둘째 줄
+        expect(card.locator("strong")).not_to_be_empty()
+        expect(card.locator(".muted")).not_to_be_empty()
+    expect(page.locator("#counter")).to_have_text("500자 남음")
+    expect(page.get_by_text("앞 대화를 기억해요 · 모델을 바꾸면 새 대화")).to_be_visible()
+    first = cards.first.locator("strong").text_content()
+    cards.first.click()
+    wait_turns(page, 1)
+    assert asks == [{"model_id": "washer-lg-fx25", "question": first}]   # 앞 대화가 없으면 history를 보내지 않음
+    expect(page.locator(".suggestion")).to_have_count(0)
+
+
+def test_pii_bubble_shows_typed_then_masked_and_storage_never_has_number(open_page):
+    held = []
+    page = open_page(ask=lambda body, route: held.append(route))
+    open_chat(page, "washer-samsung-wd90h25")
+    typed = f"제 번호는 {FAKE_PHONE}이에요 IE 에러"
+    send(page, typed)
+    expect(page.locator(".turn .bubble")).to_have_text(typed)   # 기다리는 동안은 입력한 문장
+    expect(page.locator('.turn[data-state="loading"]')).to_contain_text("설명서를 펴 보는 중…")
+    expect(page.locator("#chat-status")).to_have_text("설명서를 펴 보는 중…")
+    wait_until(page, lambda: held)
+    held[0].fulfill(json=fake({"question": typed}, question_masked="제 번호는 [전화번호]이에요 IE 에러", pii_masked=True)[1])
+    wait_turns(page, 1)
+    expect(page.locator(".turn .bubble")).to_have_text("제 번호는 [전화번호]이에요 IE 에러")
+    expect(page.locator("#pii-note")).to_be_visible()
+    expect(page.locator("#pii-note")).to_contain_text("개인정보 안내")
+    assert "[전화번호]" in stored(page) and FAKE_PHONE not in stored(page)
+    assert FAKE_PHONE not in page.evaluate("JSON.stringify(Object.entries(localStorage))")
+
+
+def test_pii_question_with_error_is_not_saved_at_all(open_page):
+    page = open_page()   # 기본 가짜 /api/ask는 504
+    open_chat(page, "washer-samsung-wd90h25")
+    send(page, f"제 번호는 {FAKE_PHONE}이에요 IE 에러")
+    expect(page.locator('.turn[data-state="error"]')).to_contain_text("가짜 오류입니다(테스트)")
+    assert FAKE_PHONE not in page.evaluate("JSON.stringify(Object.entries(localStorage))")
+    assert stored(page) == ""   # 첫 질문에 오류가 오면 대화를 만들지 않는다
+
+
+def test_history_uses_masked_questions_and_keeps_last_three(open_page):
+    page, asks = open_page(ask=echo, with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    for i in range(1, 6):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+    assert "history" not in asks[0]
+    assert asks[1]["history"] == [{"question": "가린:가짜 질문 1", "answer": "가짜 답입니다(테스트): 가짜 질문 1"}]
+    assert [h["question"] for h in asks[4]["history"]] == ["가린:가짜 질문 2", "가린:가짜 질문 3", "가린:가짜 질문 4"]
+
+
+def test_error_turn_not_in_history_and_retry_resends_same(open_page):
+    replies = iter(["ok", "504", "504", "ok"])
+
+    def ask(body, route):
+        return fake(body) if next(replies) == "ok" else _ask_504(body, route)
+
+    page, asks = open_page(ask=ask, with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    send(page, "가짜 질문 1")
+    wait_turns(page, 1)
+    send(page, "가짜 질문 2")
+    error = page.locator('.turn[data-state="error"]')
+    expect(error.locator('[role="alert"]')).to_contain_text("가짜 오류입니다(테스트)")
+    error.get_by_role("button", name="다시 시도").click()
+    wait_until(page, lambda: len(asks) == 3)
+    expect(error.get_by_role("button", name="다시 시도")).to_be_visible()
+    assert asks[2] == asks[1]   # 같은 질문·같은 history
+    send(page, "가짜 질문 3")
+    wait_turns(page, 2)   # 오류 턴은 화면에서도 새 질문으로 바뀐다
+    assert asks[3]["history"] == [{"question": "가린:가짜 질문 1", "answer": "가짜 답입니다(테스트): 가짜 질문 1"}]
+
+
+def test_rewritten_line_only_when_different(open_page):
+    def ask(body, route):
+        q = body["question"]
+        rewritten = {"가짜 질문 2": "  가린:가짜 질문   2 ", "가짜 질문 3": "가짜 바꾼 질문입니다"}.get(q)
+        return fake(body, rewritten_question=rewritten)
+
+    page = open_page(ask=ask)
+    open_chat(page, "washer-lg-fx25")
+    for i in range(1, 4):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+        if i < 3:
+            expect(page.get_by_text("로 찾았어요")).to_have_count(0)
+    expect(page.locator(".turn").last.locator(".rewritten")).to_have_text("'가짜 바꾼 질문입니다'로 찾았어요")
+
+
+def test_not_found_and_other_brand_are_distinct_states(open_page):
+    def ask(body, route):
+        if body["question"] == "가짜 브랜드 질문":
+            return fake(body, found=False, citations=[], reason="other_brand", answer="가짜 브랜드 안내입니다(테스트)",
+                        official_url="https://example.com/brand")
+        return fake(body, found=False, citations=[], answer="가짜 찾지 못함입니다(테스트)")
+
+    page = open_page(ask=ask)
+    open_chat(page, "washer-samsung-wd90h25")
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 1)
+    not_found = page.locator('.turn[data-state="not-found"]')
+    expect(not_found).to_contain_text("가짜 찾지 못함입니다(테스트)")
+    expect(not_found.get_by_role("link", name="공식 고객센터에서 찾아보기")).to_have_attribute("href", SUPPORT_URL)
+    send(page, "가짜 브랜드 질문")
+    wait_turns(page, 2)
+    brand = page.locator('.turn[data-state="other-brand"]')
+    expect(brand).to_contain_text("가짜 브랜드 안내입니다(테스트)")
+    expect(brand.get_by_role("link")).to_have_attribute("href", "https://example.com/brand")
+    expect(brand.locator(".evidence")).to_have_count(0)
+
+
+def test_only_latest_answer_expanded_previous_folded(open_page):
+    def ask(body, route):
+        return fake(body, citations=[CITE, {**CITE, "page": 13}] if body["question"] == "가짜 질문 1" else [CITE])
+
+    page = open_page(ask=ask)
+    open_chat(page, "washer-lg-fx25")
+    send(page, "가짜 질문 1")
+    wait_turns(page, 1)
+    send(page, "가짜 질문 2")
+    wait_turns(page, 2)
+    first, last = page.locator(".turn").first, page.locator(".turn").last
+    expect(last.locator(".answer")).to_be_visible()
+    expect(last.locator(".evidence")).to_be_visible()
+    expect(last.locator(".evidence a")).to_have_attribute("target", "_blank")
+    assert "noopener" in last.locator(".evidence a").get_attribute("rel")
+    fold = first.get_by_role("button", name="이전 답 · 근거 2개")
+    expect(fold).to_have_attribute("aria-expanded", "false")
+    expect(first.locator(".answer")).to_be_hidden()
+    expect(first.locator(".evidence")).to_have_count(2)
+    expect(first.locator(".evidence").first).to_be_hidden()
+    fold.click()
+    expect(fold).to_have_attribute("aria-expanded", "true")
+    expect(first.locator(".answer")).to_be_visible()
+    expect(first.locator(".evidence").nth(1)).to_be_visible()
+
+
+def test_double_enter_while_waiting_sends_once(open_page):
+    held = []
+    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    send(page, "가짜 질문입니다")
+    expect(page.locator("#send")).to_be_disabled()
+    page.locator("#question").fill("가짜 질문입니다")
+    page.locator("#question").press("Enter")
+    page.locator("#question").press("Enter")
+    page.wait_for_timeout(200)
+    assert len(asks) == 1 and len(held) == 1
+    held[0].fulfill(json=fake(asks[0])[1])
+    wait_turns(page, 1)
+    expect(page.locator("#send")).to_be_enabled()
+
+
+def test_save_failure_notice_once_and_answers_still_shown(open_page):
+    init = "Storage.prototype.setItem = function () { throw new DOMException('가짜 공간 부족', 'QuotaExceededError'); };"
+    page = open_page(ask=echo, init=init)
+    open_chat(page, "washer-lg-fx25")
+    for i in range(1, 3):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+    expect(page.locator('.turn[data-state="answer"]')).to_have_count(2)
+    notice = page.get_by_text("이 대화는 저장되지 않아요")
+    expect(notice).to_have_count(1)
+    expect(notice).to_be_visible()
+
+
+def test_conversation_saved_then_reopened_continues_with_its_history(open_page):
+    page, asks = open_page(ask=echo, with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    send(page, "가짜 질문 1")
+    wait_turns(page, 1)
+    saved = json.loads(stored(page))["conversations"]
+    assert len(saved) == 1 and saved[0]["model_id"] == "washer-lg-fx25" and saved[0]["title"] == "가린:가짜 질문 1"
+    assert saved[0]["turns"][0] == {"question_masked": "가린:가짜 질문 1", "rewritten_question": None,
+                                    "answer": "가짜 답입니다(테스트): 가짜 질문 1", "found": True,
+                                    "citations": [CITE], "kind": "answer"}
+    assert page.evaluate("location.hash") == f"#chat/washer-lg-fx25/{saved[0]['id']}"
+    page.get_by_role("button", name="새 대화").click()
+    expect(page.locator(".turn")).to_have_count(0)
+    expect(page.locator(".suggestion")).to_have_count(2)
+    send(page, "가짜 질문 2")
+    wait_turns(page, 1)
+    assert "history" not in asks[1]   # 새 대화는 앞 대화를 비운다
+    open_chat(page, "washer-lg-fx25", saved[0]["id"])
+    expect(page.locator(".turn .bubble")).to_have_text(["가린:가짜 질문 1"])
+    send(page, "가짜 질문 3")
+    wait_turns(page, 2)
+    assert asks[2]["history"] == [{"question": "가린:가짜 질문 1", "answer": "가짜 답입니다(테스트): 가짜 질문 1"}]
+    assert len(json.loads(stored(page))["conversations"]) == 2
+
+
+def test_conversation_of_other_model_or_unknown_id_opens_new_chat(open_page):
+    page, asks = open_page(ask=echo, conversations=[_conversation(1, "washer-lg-fx25")], with_asks=True)
+    open_chat(page, "aircon-lg-sq06fa1wds", "c1")   # 주소의 모델과 대화의 모델이 다름
+    expect(page.locator(".suggestion")).to_have_count(2)
+    expect(page.locator(".turn")).to_have_count(0)
+    open_chat(page, "washer-lg-fx25", "없는-대화")
+    expect(page.locator(".suggestion")).to_have_count(2)
+    expect(page.locator(".turn")).to_have_count(0)
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 1)
+    assert "history" not in asks[0]
