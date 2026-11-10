@@ -14,9 +14,9 @@ DEPTH = 20
 
 
 def expected_rank(results: list, expected_refs: list[str], depth: int = DEPTH) -> int | None:
-    """정답 조각이 상위 몇 위인지(1부터). 기대 근거가 여러 개면 가장 높은 순위, depth 밖이면 None."""
+    """정답 조각이 상위 몇 위인지(1부터). 기대 근거(manual:쪽·guide:문서·chunk:조각 번호)가 여러 개면 가장 높은 순위, depth 밖이면 None."""
     for i, chunk in enumerate(results[:depth], 1):
-        if chunk.ref in expected_refs:
+        if chunk.ref in expected_refs or f"chunk:{getattr(chunk, 'id', None)}" in expected_refs:  # 가이드 조각은 chunk:<id>로 지정
             return i
     return None
 
