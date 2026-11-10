@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from app.retrieval.search import contains_code, extract_code_tokens
+from types import SimpleNamespace
+
+from app.retrieval.search import contains_code, extract_code_tokens, needs_diagnostic
 
 
 @pytest.mark.parametrize("q,tokens", [
@@ -40,3 +42,12 @@ def test_eval_questions_codes_are_exact():
 ])
 def test_contains_code_uses_word_boundary(token, text, found):
     assert contains_code(token, text) is found
+
+
+def test_needs_diagnostic_when_a_code_is_missing_from_chunks():
+    # 질문의 에러 코드가 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(운영·검색 실험 도구가 같은 함수를 쓴다)
+    chunks = [SimpleNamespace(content="OE 에러는 배수 문제"), SimpleNamespace(content="필터 청소")]
+    assert needs_diagnostic("OE가 떴어요", chunks) is False
+    assert needs_diagnostic("CH10이 떴어요", chunks) is True
+    assert needs_diagnostic("OE랑 CH10이 같이 떠요", chunks) is True
+    assert needs_diagnostic("필터 청소는 어떻게 해요?", chunks) is False
