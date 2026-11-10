@@ -10,7 +10,7 @@ from app.core.config import Settings
 from app.core.observability import get_tracer
 from app.input_guard.pii import mask_history, mask_pii
 from app.input_guard.validation import validate_model_id, validate_question
-from app.retrieval.search import Chunk, contains_code, extract_code_tokens
+from app.retrieval.search import Chunk, needs_diagnostic
 
 
 @dataclass
@@ -66,8 +66,8 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
             with tracer.span("search"):
                 chunks = deps.search(model_id, query_vec, query, settings.top_k)
                 # 질문의 에러 코드가 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(프롬프트 규칙 4가 진단 안내를 지시)
-                tokens, diagnostic_added = extract_code_tokens(query), False
-                if tokens and not all(any(contains_code(code, c.content) for c in chunks) for code in tokens):
+                diagnostic_added = False
+                if needs_diagnostic(query, chunks):
                     seen = {c.id for c in chunks}
                     extra = [c for c in deps.diagnostic(model_id) if c.id not in seen]
                     chunks, diagnostic_added = chunks + extra, bool(extra)

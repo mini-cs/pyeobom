@@ -64,6 +64,12 @@ def contains_code(token: str, text: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])", text, re.IGNORECASE) is not None
 
 
+def needs_diagnostic(question: str, chunks: list) -> bool:
+    """질문의 에러 코드 중 하나라도 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(결정기록 019)."""
+    tokens = extract_code_tokens(question)
+    return bool(tokens) and not all(any(contains_code(code, c.content) for c in chunks) for code in tokens)
+
+
 def fetch_manual_pages(conn, model_id: str, pages: list[int]) -> list[Chunk]:
     """그 모델 설명서의 지정한 쪽 조각(진단 안내 쪽 덧붙이기용)."""
     if not pages:
