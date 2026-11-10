@@ -47,8 +47,7 @@ function link(text, href) {
 }
 
 function searchTerm(model) {
-  const m = model.display_name.match(/\(([^)]+)\)/);  // "LG 벽걸이 에어컨 (SQ06FA1WDS)" → "SQ06FA1WDS"
-  return m ? m[1] : model.display_name;
+  return model.model_codes.join("·");  // 설명서 내려받기 페이지에서 찾을 모델 코드(예: "FX25*N*·FX24*N*·FX23*N*")
 }
 
 function storage() {
@@ -109,7 +108,7 @@ function formatDate(iso) {
 }
 
 function renderRecent(section, limit, models) {
-  const names = new Map(models.map((m) => [m.id, m.display_name]));
+  const names = new Map(models.map((m) => [m.id, m.name]));  // 모델 코드는 모델 선택 화면에서만
   const list = loadConversations(storage()).filter((c) => names.has(c.model_id)).slice(0, limit);
   section.hidden = list.length === 0;
   section.querySelector("ul").replaceChildren(...list.map((c) => {
@@ -181,9 +180,12 @@ function renderModelCards(appliance, models) {
     img.src = `/images/models/${encodeURIComponent(m.id)}.svg`;
     img.alt = "";  // 이름이 바로 옆에 있어 그림은 꾸밈(AI 일러스트라 설명을 읽어 줄 필요가 없음)
     const text = el("span", "card-text");
+    // 코드 하나는 줄을 바꾸지 않고, 코드 사이(" · " 뒤)에서만 줄이 바뀐다
+    const codes = el("span", "card-meta model-codes");
+    m.model_codes.forEach((code, i) => codes.append(...(i ? [" · "] : []), el("span", "model-code", code)));
     const hint = el("span", "card-meta");
     hint.append(el("strong", null, "모델명 찾는 법 "), m.model_name_hint);
-    text.append(el("span", "card-title", m.display_name), hint);
+    text.append(el("span", "card-title", m.name), codes, hint);
     a.append(img, text, icon("chevron"));
     const li = el("li");
     li.append(a);
@@ -193,14 +195,14 @@ function renderModelCards(appliance, models) {
 
 // ── ④ 채팅(임시: 1차 질문·답 흐름. Task 5에서 대화형으로 바꾼다) ──
 function openChat(model) {
-  ui.chatTitle.textContent = model.display_name;
+  ui.chatTitle.textContent = model.name;
   if (current?.id === model.id) return;
   current = model;
   ui.question.value = "";
   updateCounter();
   showFormError("");
   ui.pii.hidden = true;
-  ui.result.replaceChildren(el("p", "empty", `${model.display_name} 기준으로 답해 드려요.`));
+  ui.result.replaceChildren(el("p", "empty", `${model.name} 기준으로 답해 드려요.`));
   renderExamples();
 }
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.catalog.registry import load_models
 
-PUBLIC_FIELDS = ("id", "display_name", "appliance", "official_url", "model_name_hint")
+PUBLIC_FIELDS = ("id", "display_name", "name", "model_codes", "appliance", "official_url", "model_name_hint")
 
 router = APIRouter()
 
