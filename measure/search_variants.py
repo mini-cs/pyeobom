@@ -9,6 +9,7 @@ M1(Task 4): 조각 앞에 "모델 · 문서 제목 · 장 이름 · 쪽 소제�
         python -m measure.search_variants m1 --apply    (임베딩해서 chunk_variants에 넣음. 이미 행이 있으면 멈춤 — 지우기는 사용자 확인)
         python -m measure.search_variants m2 --sample   (M2 시험 생성: 문서 5개에서 조각 1개씩, 결과는 measure/out/m2-sample.json, DB에 넣지 않음)
         python -m measure.search_variants m3 --draft    (M3 용어 사전 초안: 설명서마다 기능 이름 뽑기 → 평소 표현, 결과는 measure/out/m3-terms-draft.json)
+        python -m measure.search_variants m3 --reduce   (규칙 ① 이름 종류 분류로 줄이기 + ③ 겹친 표현 지우기, 검토표 measure/out/m3-terms-reduced.md)
 """
 import argparse
 import csv
@@ -108,8 +109,14 @@ def sample_chunks(rows: list[dict], doc_ids: list[str], seed: int) -> list[dict]
 
 # ── M3 용어 사전(Task 6): 설명서에서 기능 이름을 뽑고, 이름마다 평소 표현을 만든다(사용자 검토 전 초안) ──
 M3_PROMPTS = {k: (Path(__file__).resolve().parent / "prompts" / f"m3_{k}_v1.txt").read_text(encoding="utf-8")
-              for k in ("extract", "expand")}
+              for k in ("extract", "expand", "classify")}
+M3_KINDS = ["기능", "관리 작업", "부품", "화면 표시", "일반어", "기타"]
+M3_KEEP = {"기능", "관리 작업", "미분류"}  # 규칙 ①: 기능·코스·모드·관리 작업만(미분류는 사용자 검토로 남김)
 M3_FORMATS = {
+    "classify": {"type": "json_schema", "name": "kinds", "strict": True,
+                 "schema": {"type": "object", "required": ["items"], "additionalProperties": False, "properties": {"items": {
+                     "type": "array", "items": {"type": "object", "required": ["name", "kind"], "additionalProperties": False,
+                                                "properties": {"name": {"type": "string"}, "kind": {"type": "string", "enum": M3_KINDS}}}}}}},
     "extract": {"type": "json_schema", "name": "names", "strict": True,
                 "schema": {"type": "object", "properties": {"names": {"type": "array", "items": {"type": "string"}}},
                            "required": ["names"], "additionalProperties": False}},
@@ -151,6 +158,26 @@ def parse_terms(raw: str, names: list[str], max_n: int = 5) -> dict[str, list[st
                 exprs.append(e)
         out[name] = exprs[:max_n]
     return out
+
+
+def parse_kinds(raw: str, names: list[str]) -> dict[str, str]:
+    got = {it["name"].strip(): it["kind"] for it in json.loads(raw)["items"]}
+    return {n: got.get(n, "미분류") for n in names}
+
+
+def keep_by_kind(terms: dict[str, list[str]], kinds: dict[str, str]) -> tuple[dict, dict]:
+    kept = {n: e for n, e in terms.items() if kinds.get(n, "미분류") in M3_KEEP}
+    return kept, {n: kinds[n] for n in terms if n not in kept}
+
+
+def drop_wide_expressions(terms: dict[str, list[str]], max_names: int = 2) -> tuple[dict, dict]:
+    """규칙 ③: 같은 표현이 기능 이름 3개 이상에 붙으면 그 표현을 모두에서 지운다(2개 이하는 둔다)"""
+    owners = {}
+    for n, exprs in terms.items():
+        for e in exprs:
+            owners.setdefault(e, []).append(n)
+    wide = {e: ns for e, ns in owners.items() if len(ns) > max_names}
+    return {n: [e for e in exprs if e not in wide] for n, exprs in terms.items()}, wide
 
 
 def build_m3_messages(kind: str, model_name: str, material: str) -> list[dict]:
@@ -197,7 +224,43 @@ def m3_draft(names: dict[str, str]) -> None:
     print(f"{path} usage={usage}")
 
 
-M2_SAMPLE_DOCS =["manual-lg-fx25", "manual-samsung-wd90h25", "manual-lg-sq06fa1wds", "guide-lg-drum-errors", "guide-samsung-drum-5c"]
+def m3_reduce(names: dict[str, str]) -> None:
+    """초안(m3-terms-draft.json)의 이름을 AI로 종류 분류 → 규칙 ① 이름 줄이기 → 규칙 ③ 겹친 표현 지우기 → 검토용 표"""
+    import openai
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    client = openai.OpenAI(api_key=settings.openai_api_key, timeout=60, max_retries=1)
+    draft = json.loads((OUT / "m3-terms-draft.json").read_text(encoding="utf-8"))["terms"]
+    usage, result, lines = {"input_tokens": 0, "output_tokens": 0}, {}, []
+    for model_id, terms in draft.items():
+        all_names, kinds = list(terms), {}
+        for i in range(0, len(all_names), 60):  # 이름 60개씩 분류
+            part = all_names[i:i + 60]
+            resp = client.responses.create(model=settings.openai_chat_model, reasoning={"effort": settings.reasoning_effort},
+                                           max_output_tokens=4000, text={"format": M3_FORMATS["classify"]},
+                                           input=build_m3_messages("classify", names[model_id], "\n".join(part)))
+            for k in usage:
+                usage[k] += getattr(resp.usage, k)
+            kinds |= parse_kinds(resp.output_text, part)
+        kept, removed = keep_by_kind(terms, kinds)
+        kept, wide = drop_wide_expressions(kept)
+        result[model_id] = {"kept": kept, "kinds": {n: kinds[n] for n in kept}, "removed": removed, "wide_expressions": wide}
+        print(model_id, "남김", len(kept), "지움", len(removed), "겹쳐서 지운 표현", len(wide), flush=True)
+        lines += [f"\n## {names[model_id]} (`{model_id}`) — 남김 {len(kept)} / 지움 {len(removed)}\n",
+                  "| 기능 이름 | 종류 | 표현 |", "|---|---|---|"]
+        lines += [f"| {n} | {kinds[n]} | {' · '.join(e) or '-'} |" for n, e in kept.items()]
+        if wide:
+            lines += ["", "겹쳐서 지운 표현(이름 3개 이상): " + "; ".join(f"{e} ({', '.join(ns)})" for e, ns in wide.items())]
+        lines += ["", "AI가 지운 이름: " + ", ".join(f"{n}({k})" for n, k in removed.items())]
+    (OUT / "m3-terms-reduced.json").write_text(json.dumps({"usage": usage, "models": result}, ensure_ascii=False, indent=1),
+                                               encoding="utf-8")
+    (OUT / "m3-terms-reduced.md").write_text("# M3 용어 사전 줄인 목록 (사용자 검토용)\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    print(f"{OUT / 'm3-terms-reduced.md'} usage={usage}")
+
+
+M2_SAMPLE_DOCS = ["manual-lg-fx25", "manual-samsung-wd90h25", "manual-lg-sq06fa1wds", "guide-lg-drum-errors", "guide-samsung-drum-5c"]
 M2_SEED = 20261110
 
 
@@ -237,6 +300,7 @@ def main() -> None:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--sample", action="store_true")
     ap.add_argument("--draft", action="store_true")
+    ap.add_argument("--reduce", action="store_true")
     args = ap.parse_args()
 
     from ingest.__main__ import load_env
@@ -249,7 +313,9 @@ def main() -> None:
     if args.variant == "m2":
         return m2_sample(names) if args.sample else print("M2 전체 생성은 시험 생성 검토 후에 만든다")
     if args.variant == "m3":
-        return m3_draft(names) if args.draft else print("M3는 초안(--draft)만. 사용자 검토 후 질문 넓히기 함수를 만든다")
+        if args.reduce:
+            return m3_reduce(names)
+        return m3_draft(names) if args.draft else print("M3는 초안(--draft)·줄이기(--reduce)만. 사용자 검토 후 질문 넓히기 함수를 만든다")
     with get_conn() as conn:
         rows = build_m1(conn, names)
         OUT.mkdir(exist_ok=True)
