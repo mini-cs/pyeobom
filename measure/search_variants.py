@@ -8,6 +8,7 @@ M1(Task 4): 조각 앞에 "모델 · 문서 제목 · 장 이름 · 쪽 소제�
 사용법: python -m measure.search_variants m1            (미리보기: 쪽별 제목을 measure/out/에 쓰고 끝)
         python -m measure.search_variants m1 --apply    (임베딩해서 chunk_variants에 넣음. 이미 행이 있으면 멈춤 — 지우기는 사용자 확인)
         python -m measure.search_variants m2 --sample   (M2 시험 생성: 문서 5개에서 조각 1개씩, 결과는 measure/out/m2-sample.json, DB에 넣지 않음)
+        python -m measure.search_variants m2 --apply    (M2 전체 생성 → 남은 질문을 임베딩해 chunk_variants에 넣음. 이미 행이 있으면 멈춤)
         python -m measure.search_variants m3 --draft    (M3 용어 사전 초안: 설명서마다 기능 이름 뽑기 → 평소 표현, 결과는 measure/out/m3-terms-draft.json)
         python -m measure.search_variants m3 --reduce   (규칙 ① 이름 종류 분류로 줄이기 + ③ 겹친 표현 지우기, 검토표 measure/out/m3-terms-reduced.md)
         python -m measure.search_variants m3 --tidy     (띄어쓰기·끝 "기능"만 다른 이름 합치기 → 규칙 ③ 다시, 검토표 다시 만들기, AI 없음)
@@ -440,34 +441,68 @@ M2_SAMPLE_DOCS = ["manual-lg-fx25", "manual-samsung-wd90h25", "manual-lg-sq06fa1
 M2_SEED = 20261110
 
 
-def m2_sample(names: dict[str, str]) -> None:
+def _m2_run(names: dict[str, str], pick) -> tuple[list[dict], dict, object]:
+    """조각마다 M2 질문 생성(v3) → check_split. pick(rows)로 대상 조각을 고른다. 실패한 조각은 error로 남기고 계속"""
+    from concurrent.futures import ThreadPoolExecutor
+
     import openai
 
     from app.core.config import get_settings
     from app.core.db import get_conn
 
     settings = get_settings()
-    client = openai.OpenAI(api_key=settings.openai_api_key, timeout=30, max_retries=1)
+    client = openai.OpenAI(api_key=settings.openai_api_key, timeout=60, max_retries=2)
     with get_conn() as conn:
         rows = build_m1(conn, names)
         models = dict(conn.execute("SELECT doc_id, array_agg(model_id ORDER BY model_id) FROM document_models GROUP BY doc_id").fetchall())
         titles = dict(conn.execute("SELECT id, title FROM documents").fetchall())
-    out, usage = [], {"input_tokens": 0, "output_tokens": 0}
-    for r in sample_chunks(rows, M2_SAMPLE_DOCS, M2_SEED):
+
+    def one(r):
         content = r["text"].split("\n", 1)[1]
-        resp = client.responses.create(model=settings.openai_chat_model, reasoning={"effort": settings.reasoning_effort},
-                                       max_output_tokens=1000, text={"format": M2_FORMAT},
-                                       input=build_m2_messages([names[m] for m in models[r["doc_id"]]], titles[r["doc_id"]], r["page"], content))
-        for k in usage:
-            usage[k] += getattr(resp.usage, k)
-        kept, dropped = check_split(json.loads(resp.output_text), content, r["sub"])
-        out.append({"chunk_id": r["chunk_id"], "doc_id": r["doc_id"], "page": r["page"], "title": r["title"], "sub": r["sub"],
-                    "chunk": content, "questions": kept, "dropped": dropped})
+        base = {"chunk_id": r["chunk_id"], "doc_id": r["doc_id"], "page": r["page"], "title": r["title"], "sub": r["sub"], "chunk": content}
+        try:
+            resp = client.responses.create(model=settings.openai_chat_model, reasoning={"effort": settings.reasoning_effort},
+                                           max_output_tokens=1000, text={"format": M2_FORMAT},
+                                           input=build_m2_messages([names[m] for m in models[r["doc_id"]]], titles[r["doc_id"]], r["page"], content))
+            kept, dropped = check_split(json.loads(resp.output_text), content, r["sub"])
+            return base | {"questions": kept, "dropped": dropped,
+                           "usage": {k: getattr(resp.usage, k) for k in ("input_tokens", "output_tokens")}}
+        except Exception as e:  # 한 조각이 실패해도 나머지는 계속(종류만 남김)
+            return base | {"questions": {"plain": [], "named": []}, "dropped": [], "usage": {}, "error": type(e).__name__}
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        out = list(pool.map(one, pick(rows)))
+    usage = {k: sum(o["usage"].get(k, 0) for o in out) for k in ("input_tokens", "output_tokens")}
+    return out, usage, settings
+
+
+def m2_sample(names: dict[str, str]) -> None:
+    out, usage, settings = _m2_run(names, lambda rows: sample_chunks(rows, M2_SAMPLE_DOCS, M2_SEED))
     OUT.mkdir(exist_ok=True)
     path = OUT / "m2-sample.json"  # 조각 본문이 들어 있어 저장소 밖에만 둔다
     path.write_text(json.dumps({"model": settings.openai_chat_model, "reasoning": settings.reasoning_effort,
                                 "usage": usage, "items": out}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"{path} usage={usage}")
+
+
+def m2_apply(names: dict[str, str]) -> None:
+    """전체 조각 M2 생성 → 남은 질문(두 칸)만 임베딩해 chunk_variants(m2_question)에 넣는다. 근거 문장은 넣지 않는다"""
+    from app.core.db import get_conn
+    from app.retrieval.embeddings import embed_texts
+
+    with get_conn() as conn:
+        if conn.execute("SELECT count(*) FROM chunk_variants WHERE variant = 'm2_question'").fetchone()[0]:
+            raise SystemExit("m2_question 행이 이미 있어 멈춤(지우기는 사용자 확인 후)")
+    out, usage, settings = _m2_run(names, lambda rows: rows)
+    OUT.mkdir(exist_ok=True)
+    (OUT / "m2-questions.json").write_text(json.dumps({"model": settings.openai_chat_model, "usage": usage, "items": out},
+                                                      ensure_ascii=False, indent=1), encoding="utf-8")
+    pairs = [(o["chunk_id"], q["question"]) for o in out for kind in ("plain", "named") for q in o["questions"][kind]]
+    vectors = embed_texts([q for _, q in pairs])
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.executemany("INSERT INTO chunk_variants (chunk_id, variant, text, embedding) VALUES (%s, 'm2_question', %s, %s::vector)",
+                        [(cid, q, v) for (cid, q), v in zip(pairs, vectors)])
+    print(f"조각 {len(out)}개, 실패 {sum(1 for o in out if 'error' in o)}개, 질문 {len(pairs)}개 넣음, usage={usage}")
 
 
 def main() -> None:
@@ -489,7 +524,9 @@ def main() -> None:
 
     names = {m["id"]: m["display_name"] for m in load_models()}
     if args.variant == "m2":
-        return m2_sample(names) if args.sample else print("M2 전체 생성은 시험 생성 검토 후에 만든다")
+        if args.apply:
+            return m2_apply(names)
+        return m2_sample(names) if args.sample else print("m2 --sample(시험) 또는 --apply(전체 생성·넣기)")
     if args.variant == "m3":
         if args.reduce:
             return m3_reduce(names)
