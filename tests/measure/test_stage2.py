@@ -44,3 +44,22 @@ def test_judgment_rows_inherit_same_answers():
             {"id": "p01-1", "method": "m12", "answer": "B", "found": True, "cited_refs": "manual:44"}]
     j = judgment_rows(rows, ["m0", "m2", "m12"])
     assert j == [{"id": "p01-1", "m0": "A", "m2": "A", "m12": "B", "m2_same_as": "m0", "m12_same_as": ""}]
+
+
+import random  # noqa: E402
+
+from measure.stage2 import blind_sheet  # noqa: E402
+
+
+def test_blind_sheet_hides_methods_shuffles_and_groups_same_answers():
+    rows = [{"id": "p01-1", "method": m, "answer": a} for m, a in (("m0", "A"), ("m2", "B"), ("m12", "A"))] + \
+           [{"id": "p02-1", "method": m, "answer": "C"} for m in ("m0", "m2", "m12")]
+    sheet, key = blind_sheet(rows, random.Random(7))
+    assert [s["id"] for s in sheet] == ["p01-1", "p02-1"]
+    assert sorted(a["text"] for a in sheet[0]["answers"]) == ["A", "B"] and len(sheet[1]["answers"]) == 1  # 같은 답은 한 번만
+    assert all("method" not in a for s in sheet for a in s["answers"])  # 판정지에는 방법 이름이 없다
+    numbers = [a["no"] for s in sheet for a in s["answers"]]
+    assert len(set(numbers)) == len(numbers)
+    by_no = {a["no"]: a["text"] for s in sheet for a in s["answers"]}
+    assert {(k["id"], k["method"]) for k in key} == {(r["id"], r["method"]) for r in rows}  # 대응표는 모든 답을 담는다
+    assert all(by_no[k["no"]] == next(r["answer"] for r in rows if (r["id"], r["method"]) == (k["id"], k["method"])) for k in key)
