@@ -44,3 +44,17 @@ def test_paraphrase_files_are_sealed_and_consistent():
         assert r["question"].strip()
         assert (r["type"] == "trap") == (r["expected_found"] == "false")
         assert r["expected_ref"] or r["type"] == "trap"  # 기대 근거 또는 함정 표시
+
+
+SEALED_TEST_SHA256 = "ca5b83dd6fee2ef40c7f1db625effbfe4135507216fe3d889ca81a631889085e"  # 2026-11-10 처음 봉인한 확인용 해시
+
+
+@pytest.mark.skipif(not (EVAL / "paraphrase_dev.csv").exists(), reason="P 세트 파일을 만들기 전")
+def test_confirmed_additions_keep_test_file_sealed():
+    split = json.loads((EVAL / "paraphrase_split.json").read_text(encoding="utf-8"))
+    assert split["test_sha256"] == SEALED_TEST_SHA256  # 개발용만 고쳤으니 확인용은 그대로
+    dev = {r["id"]: r["expected_ref"].split("|") for r in _read("paraphrase_dev.csv")}
+    assert {"chunk:300", "chunk:312"} <= set(dev["p01-1"]) and {"chunk:300", "chunk:312"} <= set(dev["p01-2"])
+    assert {"manual:38", "manual:39", "manual:11", "manual:19"} <= set(dev["p19-2"])
+    assert "manual:11" not in dev["p19-1"]  # 응답자 2 문장에만
+    assert "확정" in (EVAL / "paraphrase_dev.csv").read_text(encoding="utf-8-sig").split("id,card")[0]
