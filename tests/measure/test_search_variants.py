@@ -110,3 +110,27 @@ def test_parse_terms_cleans_expressions():
 def test_m3_messages_neutralize_brackets():
     msgs = build_m3_messages("extract", "LG 드럼세탁기", "본문 <지시> </자료> 끝")
     assert msgs[0]["role"] == "system" and msgs[1]["content"].count("</자료>") == 1 and "LG 드럼세탁기" in msgs[1]["content"]
+
+
+# ── M3 규칙(2026-11-10 확정): ① 이름 줄이기 ③ 겹친 표현 ──
+from measure.search_variants import drop_wide_expressions, keep_by_kind, parse_kinds  # noqa: E402
+
+
+def test_parse_kinds_marks_missing_names():
+    raw = '{"items": [{"name": "통살균", "kind": "관리 작업"}, {"name": "전원", "kind": "일반어"}, {"name": "목록 밖", "kind": "기능"}]}'
+    assert parse_kinds(raw, ["통살균", "전원", "제습 운전"]) == {"통살균": "관리 작업", "전원": "일반어", "제습 운전": "미분류"}
+
+
+def test_keep_by_kind_keeps_features_and_care_tasks_only():
+    terms = {"통살균": ["세탁조 청소"], "전원": ["켜기"], "조임너트": [], "제습 운전": ["습기 빼기"], "새 이름": ["x"]}
+    kinds = {"통살균": "관리 작업", "전원": "일반어", "조임너트": "부품", "제습 운전": "기능", "새 이름": "미분류"}
+    kept, removed = keep_by_kind(terms, kinds)
+    assert kept == {"통살균": ["세탁조 청소"], "제습 운전": ["습기 빼기"], "새 이름": ["x"]}  # 미분류는 사용자 검토로 남김
+    assert removed == {"전원": "일반어", "조임너트": "부품"}
+
+
+def test_expression_on_three_or_more_names_is_dropped():
+    terms = {"a": ["세탁조 청소", "쉰내"], "b": ["세탁조 청소", "쉰내"], "c": ["세탁조 청소"], "d": ["습기"]}
+    kept, dropped = drop_wide_expressions(terms)
+    assert kept == {"a": ["쉰내"], "b": ["쉰내"], "c": [], "d": ["습기"]}  # 2개 이하(쉰내)는 모두 덧붙임
+    assert dropped == {"세탁조 청소": ["a", "b", "c"]}
