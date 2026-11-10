@@ -1,0 +1,55 @@
+﻿id,type,model_id,question,expected_found,got_found,correct,ref_hit,hallucinated,error,latency_ms,failure,expected_ref,cited_refs,retrieved_refs,answer,human_verdict
+q01,usage,washer-lg-fx25,세탁조 청소는 어떻게 해요?,true,True,True,True,,False,12350,,manual:42|manual:43,manual:42|guide:guide-lg-drum-errors,manual:42|guide:guide-lg-drum-errors|manual:6|guide:guide-lg-drum-errors|manual:40,"1. 세탁물을 모두 꺼내세요.
+2. 산소계 성분 세탁조 클리너를 제조사 권장량에 맞춰 수동 세제 투입구에 넣으세요. 세탁 세제와 섬유 유연제는 넣지 마세요.
+3. 통살균 코스를 선택하고 시작/일시정지 버튼을 누르세요. 청소 중에는 세탁물을 넣지 마세요.",
+q02,usage,washer-lg-fx25,빨래를 헹굼만 한 번 더 하고 싶어요,true,True,True,True,,False,5608,,manual:34,manual:34|manual:33,manual:17|manual:34|manual:17|manual:32|manual:33,"1. 전원 버튼을 누르세요.
+2. 세탁 버튼을 눌러 ‘안 함’을 선택하세요.
+3. 탈수 버튼을 눌러 ‘안 함’을 선택하세요.
+4. 헹굼 버튼으로 원하는 횟수를 선택한 뒤 시작/일시정지를 누르세요. 한 번만 헹구려면 1회를 선택하세요.",
+q03,usage,washer-lg-fx25,빨래가 드럼 절반쯤 찼어요. 일반 액체세제는 몇 ml 넣어요?,true,True,True,True,,False,6294,,manual:16|manual:15,manual:16,manual:15|manual:16|manual:17|manual:43|manual:17,일반 액체세제는 세탁량 부피 1/2 기준 40 ml입니다. 다만 세제 종류에 따라 권장량이 다를 수 있으니 세제 제조사의 권장량도 확인하세요.,
+q04,usage,washer-lg-fx25,아이가 버튼을 못 누르게 막고 싶어요,true,True,True,True,,False,4755,,manual:37|manual:36,manual:37|manual:37,manual:37|guide:guide-lg-drum-errors|manual:37|manual:36|manual:39,"버튼 잠금을 설정하세요.
+1. 전원 버튼을 누르세요.
+2. 부가기능 버튼을 누른 뒤 조작 다이얼로 ‘버튼 잠금’을 선택하고 확인을 누르세요.
+3. 조작 다이얼로 ‘켜짐’을 선택한 후 확인을 누르세요. 설정되면 표시창에 버튼 잠금 표시가 나타납니다.",
+q05,error_code,washer-lg-fx25,세탁 중에 OE가 뜨고 물이 안 빠지는 것 같아요. 어떻게 해요?,true,True,False,True,,False,5346,answer,manual:41|guide:guide-lg-drum-errors,guide:guide-lg-drum-errors|guide:guide-lg-drum-errors|guide:guide-lg-drum-errors,guide:guide-lg-drum-errors|manual:6|guide:guide-lg-drum-errors|guide:guide-lg-drum-errors|guide:guide-lg-drum-errors,OE는 배수가 되지 않을 때 발생합니다. 먼저 배수 호스가 눌리거나 꺾였는지 확인해 펴 주세요. 배수 필터가 막혔다면 서비스 커버를 열고 대야를 받친 뒤 잔수를 빼고 필터를 청소하세요. 필터를 다시 조립하고도 에러가 계속되면 LG전자 고객센터에 점검을 요청하세요.,
+q06,error_code,washer-lg-fx25,세탁기에 PE라고 떠요. 뭘 해 보면 돼요?,true,True,False,True,,False,4785,answer,guide:guide-lg-drum-errors,guide:guide-lg-drum-errors|guide:guide-lg-drum-errors,manual:6|manual:15|guide:guide-lg-drum-errors|manual:14|guide:guide-lg-drum-errors,PE는 물높이를 감지하는 센서가 물높이를 제대로 감지하지 못할 때 발생할 수 있어요. 세탁기가 습한 곳에 설치되어 있다면 전원 플러그를 뽑고 5분 후 다시 연결해 동작해 보세요. 계속 표시되면 LG전자 고객센터에 점검을 요청하세요.,
+q07,error_code,washer-lg-fx25,뜨거운 물 넣고 돌렸더니 tE가 떴어요,true,True,True,True,,False,4242,,guide:guide-lg-drum-errors,guide:guide-lg-drum-errors|guide:guide-lg-drum-errors,guide:guide-lg-drum-errors|manual:44|manual:56|guide:guide-lg-drum-errors|guide:guide-lg-drum-errors,tE는 온도 감지 센서 이상일 때 나타날 수 있어요. 뜨거운 물을 바로 넣었다면 전원 코드를 빼고 물을 식힌 뒤 다시 꽂아 주세요. 계속 표시되면 LG전자 고객센터에 점검을 요청하세요.,
+q08,colloquial,washer-lg-fx25,탈수할 때 세탁기가 엄청 흔들리고 시끄러워요,true,True,False,True,,False,4571,answer,manual:58,manual:58|manual:58,manual:15|manual:58|manual:6|guide:guide-lg-drum-errors|guide:guide-lg-drum-errors,"탈수 중 세탁물이 한쪽으로 쏠렸거나 양이 너무 적을 수 있어요. 세탁물을 고르게 펴고, 너무 적으면 몇 개를 모아 다시 탈수하세요. 세탁물을 종류별로 나누어 탈수하는 것도 도움이 됩니다.",
+q09,trap_none,washer-lg-fx25,이 세탁기 중고로 팔면 얼마 받을 수 있어요?,false,False,,,False,False,3798,,,,manual:6|guide:guide-lg-drum-errors|guide:guide-lg-drum-errors|manual:13|guide:guide-lg-drum-errors,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q10,usage,washer-samsung-wd90h25,건조 시간을 내가 정해서 돌리고 싶어요,true,True,True,True,,False,4126,,manual:45,manual:45,manual:45|manual:24|manual:51|manual:16|manual:48,‘시간건조’ 코스를 선택하면 건조 시간을 직접 설정할 수 있어요. 20분부터 최대 4시간까지 설정할 수 있습니다.,
+q11,usage,washer-samsung-wd90h25,건조 끝나고 필터 청소하라는데 어떻게 해요?,true,True,True,True,,False,5027,,manual:56|manual:57,manual:56|manual:56|manual:56,manual:56|manual:9|manual:54|manual:58|manual:57,"건조 행정이 포함된 코스를 사용한 뒤에는 먼지 필터를 청소하세요.
+1. 먼지 필터 덮개를 열고 필터를 꺼내세요.
+2. 외부 필터를 열어 내부 필터를 분리하고, 두 필터를 펼쳐 보풀을 제거하세요.
+3. 흐르는 물에 씻고 완전히 말린 뒤, 방향에 맞게 조립해 제자리에 넣으세요.",
+q12,usage,washer-samsung-wd90h25,세제를 매번 안 넣고 자동으로 들어가게 할 수 있어요?,true,False,False,False,,False,3398,retrieval,manual:26,,manual:73|manual:48|manual:10|manual:75|manual:31,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q13,usage,washer-samsung-wd90h25,이불도 빨 수 있어요? 어떤 코스로 해요?,true,True,False,True,,False,4141,answer,manual:38,manual:38,manual:38|manual:44|manual:42|manual:40|manual:37,"네, 이불은 ‘이불’ 코스로 세탁할 수 있어요. 이불은 크기와 관계없이 한 장씩 둥글게 말아 넣고, 두 장 이상은 넣지 마세요. 최대 용량은 4.0 kg입니다.",
+q14,error_code,washer-samsung-wd90h25,건조까지 돌렸는데 5C가 뜨면서 물이 안 빠져요,true,False,False,False,,False,7520,answer,manual:55|manual:54|guide:guide-samsung-drum-5c,,manual:50|manual:7|guide:guide-samsung-drum-oc|manual:55|manual:9,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q15,error_code,washer-samsung-wd90h25,물이 안 들어오고 4E가 떴어요,true,True,True,True,,False,5306,,guide:guide-samsung-drum-4c,guide:guide-samsung-drum-4c|manual:71|guide:guide-samsung-drum-4c,guide:guide-samsung-drum-4c|manual:72|guide:guide-samsung-drum-oc|guide:guide-samsung-drum-5c|manual:71,"4E는 정해진 시간 안에 필요한 만큼 물이 받아지지 않을 때 나타나는 급수 점검 표시예요. 1) 수도꼭지가 열려 있는지, 단수인지 확인하세요. 2) 급수 호스가 꺾이거나 눌리지 않았는지 확인하세요. 3) 전원코드를 뽑고 수도꼭지를 잠근 뒤 급수 호스를 분리해 밸브 거름망을 청소하세요.",
+q16,error_code,washer-samsung-wd90h25,삶음 코스로 돌렸는데 HC가 떠요,true,False,False,False,,False,6860,answer,guide:guide-samsung-drum-hc,,guide:guide-samsung-drum-hc|manual:33|manual:16|manual:31|manual:35,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q17,colloquial,washer-samsung-wd90h25,세탁 끝났는데 문이 안 열려요,true,True,False,True,,False,5884,answer,manual:75,manual:75|manual:75|manual:75,manual:75|manual:72|manual:73|manual:17|guide:guide-samsung-drum-hc,"문이 안 열리면 아래를 순서대로 확인해 보세요.
+1. 제품이 동작 중이면 작동을 멈추고 잠시 기다리세요.
+2. 드럼에 물이 남아 있으면 탈수단독 코스를 선택해 배수한 뒤 문을 여세요.
+3. 드럼 내부가 뜨거우면 식을 때까지 기다리세요. 필요하면 탈수단독 코스를 선택하세요.
+4. 잠금 기능이 켜져 있으면 설정 > 일반 > 잠금에서 꺼짐으로 해제하세요.
+문 잠금 해제까지 몇 초 걸릴 수 있습니다. 강제로 열지 마세요.",
+q18,trap_other_model,washer-samsung-wd90h25,삼성 세탁기에 IE 에러가 떴어요. 무슨 뜻이에요?,false,False,,,False,False,0,,,,,이 코드는 지금 고른 삼성 모델 설명서에 없는 코드예요. 다른 제조사 제품이라면 모델을 바꿔 물어봐 주세요.,
+q19,usage,aircon-lg-sq06fa1wds,에어컨 필터는 어떻게 빼서 청소해요?,true,True,True,True,,False,5094,,manual:44|manual:43,manual:44|manual:44,manual:13|manual:44|manual:44|manual:43|manual:8,"1. 에어컨 전원을 끄고 전원 플러그를 빼세요.
+2. 필터 손잡이를 위로 당겨 필터를 연 뒤, 다시 위로 당겨 완전히 꺼내세요.
+3. 오염이 적으면 흐르는 물에 씻고, 먼지가 많으면 중성 세제를 푼 물에 담갔다가 씻으세요. 깨끗한 물로 충분히 헹군 뒤 바람이 잘 통하고 그늘진 곳에서 완전히 말리세요. 청소 후에는 필터를 제대로 장착하세요.",
+q20,usage,aircon-lg-sq06fa1wds,장마철에 습기만 빼고 싶어요,true,False,False,False,,False,3394,retrieval,manual:26,,manual:52|manual:50|manual:6|manual:57|manual:10,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q21,usage,aircon-lg-sq06fa1wds,리모컨 건전지는 뭘 넣어요?,true,True,True,True,,False,4779,,manual:18,manual:18,manual:18|manual:51|manual:50|manual:7|manual:33,"알카라인 건전지 1.5 V, AAA형 2개를 넣으세요. 두 개 모두 새것으로 바꾸고, 리모컨 안쪽의 표시 방향에 맞춰 넣으면 됩니다.",
+q22,usage,aircon-lg-sq06fa1wds,에어컨 끈 다음에 안쪽 습기를 말리는 기능이 있어요?,true,True,True,False,,False,4100,,manual:42,manual:51,manual:13|manual:25|manual:51|manual:51|manual:25,네. AI 건조 기능을 설정하면 전원을 끈 뒤에도 제품 내부 습기를 없애기 위해 잠시 송풍 운전을 합니다.,
+q23,error_code,aircon-lg-sq06fa1wds,에어컨에 CH05라고 떠요. 어떻게 해야 해요?,true,True,True,True,,False,4633,,guide:guide-lg-aircon-ch-errors,guide:guide-lg-aircon-ch-errors|guide:guide-lg-aircon-ch-errors|guide:guide-lg-aircon-ch-errors,guide:guide-lg-aircon-ch-errors|manual:1|guide:guide-lg-aircon-ch-errors|manual:13|manual:29,CH05는 실내기와 실외기 사이의 통신 이상일 때 나타날 수 있습니다. 1) 설치 직후라면 설치처에 문의하세요. 2) 전원 플러그를 뽑거나 플러그가 보이지 않으면 누전 차단기를 내리고 약 5분 기다린 뒤 전원을 다시 연결하세요. 3) 코드가 계속 나타나거나 반복되면 사용을 중지하고 전문 서비스 점검을 받으세요.,
+q24,error_code,aircon-lg-sq06fa1wds,에어컨에 CH10이 떴어요. 무슨 뜻이에요?,true,True,True,True,,False,6807,,manual:49|manual:34,manual:34|manual:49,guide:guide-lg-aircon-ch-errors|manual:1|manual:13|guide:guide-lg-aircon-ch-errors|manual:52|manual:34|manual:49|manual:49,CH10 코드는 이 모델의 설명서·가이드에 나오지 않아 뜻을 확인할 수 없습니다. 스마트 진단으로 고장 원인을 확인해 보세요. 앱 진단이 어렵다면 신호음으로 진단할 수 있습니다.,
+q25,colloquial,aircon-lg-sq06fa1wds,에어컨 켰는데 찬바람이 안 나와요,true,True,False,False,,False,5684,retrieval,manual:50,manual:51|manual:51|manual:51,manual:51|guide:guide-lg-aircon-ch-errors|manual:13|manual:31|manual:25,"다음 항목을 확인해 보세요.
+1. 희망 온도가 실내 온도보다 높다면 리모컨 온도 버튼으로 실내 온도보다 낮게 설정하세요.
+2. 제품을 껐다가 곧바로 켰다면 압축기 보호를 위해 잠시 찬바람이 나오지 않을 수 있으니 기다리세요.
+3. 실외기 주위가 너무 덥다면 바람이 잘 통하도록 해 주위 온도를 낮추세요.",
+q26,colloquial,aircon-lg-sq06fa1wds,리모컨을 눌러도 에어컨이 반응이 없어요,true,True,True,True,,False,4390,,manual:51,manual:51|manual:51,manual:51|manual:1|manual:24|manual:13|guide:guide-lg-aircon-ch-errors,"1. 리모컨 수신부를 가리는 물건이 있으면 치우세요.
+2. 삼파장 형광등이나 네온사인처럼 강한 빛이 있는 곳에서는 전파 방해로 작동하지 않을 수 있습니다.",
+q27,colloquial,aircon-lg-sq06fa1wds,에어컨에서 쾨쾨한 냄새가 나요,true,True,True,True,,False,4570,,manual:47,manual:47,manual:47|manual:47|manual:25|manual:51|guide:guide-lg-aircon-ch-errors,"제품 내부에 수분이 많아 쾨쾨한 냄새가 날 수 있습니다.
+1. 창문을 열어 환기하면서 송풍 기능으로 1시간 이상 운전하세요.
+2. 평소에는 AI 건조 기능을 설정해 운전하면 냄새를 줄일 수 있습니다.",
+q28,trap_none,aircon-lg-sq06fa1wds,이 에어컨 렌탈하면 한 달에 얼마예요?,false,False,,,False,False,3584,,,,manual:1|manual:53|manual:53|manual:38|manual:42,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q29,trap_none,aircon-lg-sq06fa1wds,이 모델은 언제 출시됐어요?,false,False,,,False,False,3598,,,,manual:1|manual:56|manual:56|manual:58|manual:13,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
+q30,trap_other_model,aircon-lg-sq06fa1wds,무풍 모드는 어떻게 켜요?,false,False,,,False,False,3359,,,,manual:48|manual:28|manual:40|manual:45|manual:26,설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요.,
