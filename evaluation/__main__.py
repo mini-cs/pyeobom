@@ -120,7 +120,7 @@ def main() -> None:
                              "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
                              "answer": resp.get("answer", resp.get("error_code", ""))})
         print(f"{case['id']} {score['type']:16s} 정답={_mark(score['correct'])} 근거={_mark(score['ref_hit'])} "
-              f"환각={_mark(score['hallucinated'])} 실패={score['failure'] or ''} {score['latency_ms'] or '오류'}ms", flush=True)
+              f"환각={_mark(score['hallucinated'])} 실패={score['failure'] or ''} {'오류' if score['error'] else score['latency_ms']}ms", flush=True)
 
     today = datetime.date.today().isoformat()
     out_csv = ROOT / "evaluation" / "results" / f"{args.label}-{today}.csv"

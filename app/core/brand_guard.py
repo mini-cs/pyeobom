@@ -35,6 +35,8 @@ def other_brand_message(model_brand: str) -> str:
 
 
 # 브랜드별 에러 코드 목록(우리 설명서·에러 가이드에서 뽑음, 결정기록 027)
+# 두 글자 코드(IE·PE)는 다른 뜻으로도 쓰여("PE 소재라고 표시돼") 에러 상황 말이 함께 있을 때만 막는다
+_ERROR_WORDS = re.compile(r"에러|오류|코드|뜨(?!거)|떴|떠")
 _CODES = json.loads((Path(__file__).resolve().parents[2] / "data" / "error_codes.json").read_text(encoding="utf-8"))["codes"]
 
 
@@ -44,7 +46,8 @@ def other_brand_code(question: str, model_brand: str) -> str | None:
     if own is None:
         return None
     others = {c for key, codes in _CODES.items() if key != own for c in codes}
-    return next((c for c in extract_code_tokens(question) if c in others and c not in _CODES.get(own, {})), None)
+    return next((c for c in extract_code_tokens(question) if c in others and c not in _CODES.get(own, {})
+                 and not (len(c) == 2 and c.isalpha() and not _ERROR_WORDS.search(question))), None)
 
 
 def other_brand_code_message(model_brand: str) -> str:
