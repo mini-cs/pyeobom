@@ -137,24 +137,36 @@ def test_expression_on_three_or_more_names_is_dropped():
 
 
 # ── M2 v3: "기능 이름 없이" 3개 + "기능 이름을 쓰는" 2개 ──
-from measure.search_variants import check_split, subheading_words  # noqa: E402
+from measure.search_variants import check_split, subheading_phrases  # noqa: E402
 
 
-def test_subheading_words_drop_actions_and_generic_words():
-    assert subheading_words("배수 필터 청소 및 잔수 제거하기") == ["배수", "필터", "잔수", "제거"]
-    assert subheading_words("열대야 취침 설정하기") == ["열대야", "취침"]
-    assert subheading_words(None) == []
+def test_subheading_phrases_are_runs_of_two_or_more_name_words():
+    # 구절 단위: 동작·일반어(청소·설정·및 등)에서 끊은 두 단어 이상 묶음만. 한 단어(리모컨)는 검사하지 않음
+    assert subheading_phrases("배수 필터 청소 및 잔수 제거하기") == ["배수 필터", "잔수 제거"]
+    assert subheading_phrases("열대야 취침 설정하기") == ["열대야 취침"]
+    assert subheading_phrases("리모컨 살펴보기") == []
+    assert subheading_phrases(None) == []
 
 
-def test_check_split_drops_plain_questions_using_subheading_words():
+def test_check_split_drops_plain_questions_using_subheading_phrase():
     raw = {"plain": [item("물이 안 빠져요", "배수 필터가 막히면 화면에 \"5C\" 점검 문자가 발생됩니다."),
-                     item("필터는 언제 닦아요?", "배수 필터는 일주일에 한 번 청소하세요.")],
+                     item("배수필터는 언제 닦아요?", "배수 필터는 일주일에 한 번 청소하세요."),  # 띄어쓰기 없이도 같은 구절
+                     item("필터는 언제 닦아요?", "배수 필터는 일주일에 한 번 청소하세요.")],  # 구절의 한 단어만은 통과
            "named": [item("배수 필터는 얼마나 자주 청소해요?", "배수 필터는 일주일에 한 번 청소하세요.")]}
     kept, dropped = check_split(raw, CHUNK, "배수 필터 청소 및 잔수 제거하기")
-    assert [k["question"] for k in kept["plain"]] == ["물이 안 빠져요"]
+    assert [k["question"] for k in kept["plain"]] == ["물이 안 빠져요", "필터는 언제 닦아요?"]
     assert [k["question"] for k in kept["named"]] == ["배수 필터는 얼마나 자주 청소해요?"]
-    assert dropped == [{"kind": "plain", "question": "필터는 언제 닦아요?", "evidence": "배수 필터는 일주일에 한 번 청소하세요.",
-                        "reason": "기능 이름 없이 칸에 소제목 단어(필터)"}]
+    assert dropped == [{"kind": "plain", "question": "배수필터는 언제 닦아요?", "evidence": "배수 필터는 일주일에 한 번 청소하세요.",
+                        "reason": "기능 이름 없이 칸에 소제목 구절(배수 필터)"}]
+
+
+def test_check_split_drops_pointing_words_in_both_kinds():
+    ok = "배수 필터는 일주일에 한 번 청소하세요."
+    raw = {"plain": [item("이건 얼마나 자주 청소해야 하나요?", ok), item("물이 안 빠져요", ok)],
+           "named": [item("배수 필터 그거 어떻게 닦아요?", ok)]}
+    kept, dropped = check_split(raw, CHUNK, None)
+    assert [k["question"] for k in kept["plain"]] == ["물이 안 빠져요"] and kept["named"] == []
+    assert [d["reason"] for d in dropped] == ["가리키는 말(이건)", "가리키는 말(그거)"]
 
 
 def test_check_split_caps_three_plain_and_two_named():
@@ -177,3 +189,43 @@ def test_merge_variants_joins_spacing_and_trailing_gineung():
                       "제습 운전": ["습기 빼기"]}
     assert record == {"AI 건조": ["AI건조", "AI 건조 기능"], "음성 안내": ["음성안내"]}
     assert set(merged_kinds) == set(merged)
+
+
+def test_merge_variants_also_strips_mode_and_action_endings():
+    terms = {"제습 운전": ["습기 빼기"], "제습": ["눅눅함"], "필터 청소하기": ["필터 씻기"], "필터 청소": ["먼지 제거"],
+             "예약 설정하기": ["시간 맞추기"], "예약": ["끝나는 시간"], "탈수 코스": ["물기 빼기"], "전원 버튼": ["켜기"], "헹굼 옵션": ["한번 더"]}
+    merged, _, record = merge_variants(terms, {n: "기능" for n in terms})
+    assert list(merged) == ["제습 운전", "필터 청소하기", "예약 설정하기", "탈수 코스", "전원 버튼", "헹굼 옵션"]
+    assert record == {"제습 운전": ["제습"], "필터 청소하기": ["필터 청소"], "예약 설정하기": ["예약"]}
+
+
+# ── M3 규칙 ②(측정 전 보완: 어간 비교)와 질문 넓히기 ──
+from measure.search_variants import expand_query, expression_matches, word_stems  # noqa: E402
+
+
+def test_word_stems_drop_endings_and_add_contracted_form():
+    assert word_stems("말리기") == ["말리", "말려"]  # 말리기·말리고·말려 → 말리
+    assert word_stems("청소하기") == ["청소"]
+    assert word_stems("세탁기와") == ["세탁기"]
+    assert "줄이" in word_stems("줄이기") and "꺼" in word_stems("끄기")
+
+
+@pytest.mark.parametrize("question, expected", [
+    ("빨래를 빨리 말리고 싶어요", True), ("빨래 빨리 말려야 돼요", True), ("빨래를 빨리 개고 싶어요", False),
+])
+def test_expression_needs_all_core_words_by_stem(question, expected):
+    assert expression_matches("빨래 빨리 말리기", question) is expected
+
+
+def test_one_letter_stem_matches_only_at_word_start_and_short_words_are_not_core():
+    assert expression_matches("방 습기 빼기", "방에 습기를 빼고 싶어요") is True  # '방'은 한 글자라 핵심 단어 아님
+    assert expression_matches("방 습기 빼기", "습기가 너무 많아요") is False
+    assert expression_matches("방 습기 빼기", "습기가 많아서 기분 나빼요") is False  # 한 글자 어간 '빼'는 단어 앞에서만
+
+
+def test_expand_query_appends_manual_terms_and_keeps_user_words():
+    terms = {"제습 기능": ["방 습기 빼기"], "AI 건조": ["내부 말리기"], "송풍 기능": ["바람만 나오게"]}
+    assert expand_query("방에 습기를 빼고 싶어요", terms) == "방에 습기를 빼고 싶어요 제습 기능"
+    assert expand_query("에어컨 내부를 말리고 습기도 빼고 싶어요 방", terms) == "에어컨 내부를 말리고 습기도 빼고 싶어요 방 제습 기능 AI 건조"
+    assert expand_query("제습 기능으로 방 습기 빼기", terms) == "제습 기능으로 방 습기 빼기"  # 이미 있는 용어는 덧붙이지 않음
+    assert expand_query("필터 청소는요?", terms) == "필터 청소는요?"
