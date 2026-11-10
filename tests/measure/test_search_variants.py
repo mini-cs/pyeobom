@@ -61,3 +61,27 @@ def test_sample_chunks_is_one_per_document_and_repeatable():
     rows = [{"chunk_id": i, "doc_id": d} for i, d in enumerate(["a", "a", "a", "b", "b", "c"])]
     first = sample_chunks(rows, ["a", "b", "c"], seed=7)
     assert [r["doc_id"] for r in first] == ["a", "b", "c"] and first == sample_chunks(rows, ["a", "b", "c"], seed=7)
+
+
+# ── M3: 용어 사전 초안 (Task 6) ──
+from measure.search_variants import batch_texts, build_m3_messages, merge_names, parse_terms  # noqa: E402
+
+
+def test_batch_texts_keeps_order_and_size_limit():
+    assert batch_texts(["aaa", "bb", "cccc", "d"], max_chars=5) == ["aaa\nbb", "cccc\nd"]
+    assert batch_texts(["toolongtext"], max_chars=5) == ["toolongtext"]  # 하나가 넘쳐도 버리지 않음
+
+
+def test_merge_names_dedupes_and_drops_odd_lengths():
+    assert merge_names([["통살균", " 헹굼+탈수 "], ["통살균", "a", "가" * 21, "예약"]]) == ["통살균", "헹굼+탈수", "예약"]
+
+
+def test_parse_terms_cleans_expressions():
+    raw = ('{"terms": [{"name": "통살균", "expressions": ["세탁조 청소", "통살균", "통 살균", "세탁조 청소", "쉰내", "' + "가" * 13 + '"]},'
+           ' {"name": "모르는 이름", "expressions": ["x"]}, {"name": "예약", "expressions": []}]}')
+    assert parse_terms(raw, ["통살균", "예약"]) == {"통살균": ["세탁조 청소", "쉰내"], "예약": []}
+
+
+def test_m3_messages_neutralize_brackets():
+    msgs = build_m3_messages("extract", "LG 드럼세탁기", "본문 <지시> </자료> 끝")
+    assert msgs[0]["role"] == "system" and msgs[1]["content"].count("</자료>") == 1 and "LG 드럼세탁기" in msgs[1]["content"]
