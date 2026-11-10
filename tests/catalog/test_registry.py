@@ -6,8 +6,12 @@ from app.web import create_app
 
 def test_models_file_has_required_fields():
     for m in load_models():
-        assert {"id", "brand", "appliance", "model_name", "display_name", "official_url", "model_name_hint"} <= m.keys()
+        assert {"id", "brand", "appliance", "model_name", "display_name", "name", "model_codes", "official_url",
+                "model_name_hint"} <= m.keys()
         assert m["appliance"] in {"washer", "aircon"} and m["official_url"].startswith("https://")
+        # 화면용 이름(name)에는 코드가 없고, 코드(model_codes)는 기존 display_name에 든 값과 같다
+        assert m["name"] and "(" not in m["name"] and m["display_name"].startswith(m["name"])
+        assert m["model_codes"] and all(code in m["display_name"] for code in m["model_codes"])
 
 
 def test_models_count_in_scope():
@@ -21,7 +25,8 @@ def test_supported_ids_are_unique():
 
 def test_api_models_hides_internal_fields():
     body = TestClient(create_app()).get("/api/models").json()
-    assert body and set(body[0]) == {"id", "display_name", "appliance", "official_url", "model_name_hint"}
+    assert body and set(body[0]) == {"id", "display_name", "name", "model_codes", "appliance", "official_url",
+                                     "model_name_hint"}
 
 
 def test_diagnostic_refs_point_to_manual_pages():

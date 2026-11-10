@@ -14,7 +14,8 @@ pytestmark = pytest.mark.ui
 
 PUBLIC = Path(__file__).resolve().parents[2] / "public"
 MODELS = list_models()  # 실제 /api/models와 같은 공개 필드만
-NAMES = {m["id"]: m["display_name"] for m in MODELS}
+NAMES = {m["id"]: m["name"] for m in MODELS}  # 화면 이름(코드 없음). 코드는 모델 선택 카드에만
+CODES = [c for m in MODELS for c in m["model_codes"]]
 LANDING_H1 = "가전 설명서, 대신 펴 봐 드려요"
 CATEGORY_H1 = "어떤 가전이 궁금하세요?"
 AI_NOTE = "제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요."
@@ -178,6 +179,9 @@ def test_category_tiles_arrow_keys_disabled_tile_and_dots(open_page):
     aircon = page.get_by_role("button", name="에어컨")
     soon = page.get_by_role("button", name="곧 추가")
     expect(page.locator("#tile-dots .dot").first).to_be_visible()
+    # 비활성 점은 누르는 버튼이라 흰 바탕과 3:1 이상인 #8C8C8C(가이드 --color-dot)
+    inactive = page.locator('#tile-dots .dot[aria-current="false"]').first
+    assert inactive.evaluate("(d) => getComputedStyle(d, '::before').backgroundColor") == "rgb(140, 140, 140)"
     # 처음에는 마지막 타일이 반쯤 보인다(폭 360px): 왼쪽 끝은 화면 안, 오른쪽 끝은 화면 밖
     box = soon.bounding_box()
     assert box["x"] < 360 < box["x"] + box["width"]
@@ -234,3 +238,35 @@ def test_pretendard_fonts_load_from_this_site(open_page):
         return [...document.fonts].filter((f) => f.family.replace(/"/g, '') === 'Pretendard' && f.status === 'loaded')
             .map((f) => f.weight); }""")
     assert set(loaded) == {"400", "600", "700"}  # 랜딩에 쓰는 굵기 세 개(본문·작은 제목과 버튼·큰 제목)
+
+
+def test_model_codes_on_model_cards_never_split(open_page):
+    page = open_page()
+    go_category(page)
+    page.get_by_role("button", name="세탁기").click()
+    expect(page.locator(".model-card")).to_have_count(2)
+    codes = page.locator(".model-card .model-code")
+    washer_codes = [c for m in MODELS if m["appliance"] == "washer" for c in m["model_codes"]]
+    expect(codes).to_have_text(washer_codes)
+    for code in codes.all():   # 360px에서 코드 하나가 두 줄로 갈라지지 않는다
+        assert code.evaluate("(c) => c.getClientRects().length") == 1, code.text_content()
+
+
+def test_model_codes_absent_outside_model_screen(open_page):
+    conversations = [_conversation(i, mid) for i, mid in
+                     enumerate(["washer-lg-fx25", "aircon-lg-sq06fa1wds", "washer-samsung-wd90h25"], 1)]
+    page = open_page(conversations=conversations)
+
+    def no_codes(locator):
+        expect(locator.first).to_be_visible()
+        for text in locator.all_text_contents():
+            assert not [c for c in CODES if c in text], text
+
+    no_codes(page.locator("#landing-recent .conv-card"))
+    go_category(page)
+    no_codes(page.locator("#category-recent .conv-card"))
+    page.get_by_role("button", name="세탁기").click()
+    page.locator(".model-card").first.click()
+    assert_screen(page, NAMES["washer-samsung-wd90h25"])
+    no_codes(page.locator("#topbar"))
+    no_codes(page.get_by_role("heading", level=1))

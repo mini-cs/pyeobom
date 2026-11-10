@@ -37,6 +37,8 @@ def test_styles_use_only_design_tokens_for_colors():
     css = read("styles.css")
     root, rest = css.split("}", 1) if css.lstrip().startswith(":root") else ("", css)
     assert "--color-text: #111111" in root   # 디자인 가이드 v1.5 토큰을 그대로 씀
+    assert "--color-dot: #8C8C8C" in root   # 비활성 점 표시(누르는 버튼, 흰 바탕 3.36:1)
+    assert re.search(r"\.dot::before \{[^}]*background: var\(--color-dot\)", rest)
     assert not re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", rest), "색은 :root의 CSS 변수만 쓴다(디자인 가이드)"
 
 
