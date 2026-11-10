@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>펴봄 v1.5 디자인 시안 모음 (2026-11-08)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root { color-scheme: light; --text-primary:#111; --text-secondary:#5f5f5f; --text-muted:#8a8a8a;
+  --surface-0:#f6f6f6; --surface-1:#f2f2f2; --surface-2:#fff; --border:rgba(0,0,0,.12); --border-strong:rgba(0,0,0,.22); --radius:8px; }
+* { box-sizing:border-box; }
+body { margin:0; background:#fff; color:var(--text-primary); font-family:"Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; line-height:1.6; }
+main { max-width:760px; margin:0 auto; padding:32px 20px 64px; }
+h1 { font-size:24px; margin:0 0 4px; }
+.lead { color:var(--text-secondary); margin:0 0 32px; font-size:15px; }
+.mock { margin:0 0 48px; }
+.mock h2 { font-size:18px; margin:0 0 4px; }
+.note { color:var(--text-secondary); font-size:14px; margin:0 0 12px; }
+.frame { border:1px solid var(--border); border-radius:12px; padding:16px; overflow-x:auto; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+</style></head><body><main>
+<h1>펴봄 v1.5 디자인 시안 모음</h1>
+<p class="lead">2026-11-08 설계 대화에서 만든 시안 다섯 개. 최종 결정은 설계 문서(docs/superpowers/specs/2026-11-08-chat-redesign-design.md)를 기준으로 해요. 4·5번이 채택한 흑백 스타일과 글자 체계예요.</p>
+
+<section class="mock">
+  <h2>1. 첫 화면 비교: 안 A vs 안 B</h2>
+  <p class="note">안 A(랜딩 → 카테고리)를 골랐어요. 스타일은 이후 흑백으로 바뀌었어요.</p>
+  <div class="frame"><h2 class="sr-only">펴봄 첫 화면 초안 비교: 안 A는 랜딩 화면 뒤에 카테고리 화면이 이어지고, 안 B는 짧은 소개와 카테고리 선택, 최근 대화를 한 화면에 둔다.</h2>
+<style>
+.ph{width:200px;height:400px;border:6px solid #1E2422;border-radius:28px;background:#F7F5F0;color:#1E2422;overflow:hidden;display:flex;flex-direction:column;font-size:11px;line-height:1.45}
+.ph .in{padding:14px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+.cap{font-size:12px;color:var(--text-secondary);margin:0 0 6px;text-align:center}
+.chip{font-size:11px;border:0.5px solid #D9D5CB;border-radius:999px;padding:2px 8px;background:#FFFDF8;color:#1E2422}
+.cat{border:0.5px solid #D9D5CB;border-radius:10px;background:#FFFDF8;padding:8px;display:flex;align-items:center;gap:6px;font-size:12px}
+.rc{border:0.5px solid #D9D5CB;border-radius:8px;background:#FFFDF8;padding:6px 8px;display:flex;justify-content:space-between;align-items:center;font-size:11px}
+</style>
+<div style="background:var(--surface-1);border-radius:12px;padding:1rem;display:flex;gap:16px;justify-content:center;flex-wrap:wrap;align-items:flex-start">
+<div><p class="cap">안 A · 1단계 랜딩</p><div class="ph"><div class="in">
+<p style="margin:0;font-weight:500;color:#1F5E5B">펴봄</p>
+<p style="margin:14px 0 0;font-size:17px;font-weight:500;line-height:1.3">가전 설명서,<br>대신 펴 봐 드려요</p>
+<p style="margin:0;color:#5B6461">공식 설명서에서 근거를 찾아 쪽 번호와 함께 답해요</p>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+<span class="chip"><i class="ti ti-file-text" aria-hidden="true"></i> 공식 설명서 근거</span>
+<span class="chip"><i class="ti ti-bookmark" aria-hidden="true"></i> 근거 쪽 표시</span>
+<span class="chip"><i class="ti ti-help-circle" aria-hidden="true"></i> 모르면 모른다고 해요</span>
+</div>
+<div style="flex:1"></div>
+<p style="margin:0;color:#5B6461;font-size:11px">최근 대화</p>
+<div class="rc"><span>LG 드럼 · 통세척은…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div style="background:#1F5E5B;color:#F3F1EA;border-radius:999px;text-align:center;padding:9px;font-weight:500;font-size:12px">시작하기</div>
+</div></div></div>
+<div style="align-self:center;color:var(--text-muted);font-size:20px"><i class="ti ti-arrow-right" aria-hidden="true"></i></div>
+<div><p class="cap">안 A · 2단계 카테고리</p><div class="ph"><div class="in">
+<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:500;color:#1F5E5B">펴봄</span><i class="ti ti-menu-2" style="font-size:16px" aria-hidden="true"></i></div>
+<p style="margin:8px 0 0;font-size:15px;font-weight:500">어떤 가전이 궁금하세요?</p>
+<div class="cat"><i class="ti ti-wash-machine" style="font-size:18px;color:#1F5E5B" aria-hidden="true"></i><div><div>세탁기</div><div style="color:#5B6461;font-size:11px">삼성 · LG 드럼</div></div></div>
+<div class="cat"><i class="ti ti-air-conditioning" style="font-size:18px;color:#1F5E5B" aria-hidden="true"></i><div><div>에어컨</div><div style="color:#5B6461;font-size:11px">LG 벽걸이</div></div></div>
+<div class="cat" style="opacity:1;color:#8A8F8C"><i class="ti ti-fridge" style="font-size:18px" aria-hidden="true"></i><div><div>냉장고</div><div style="font-size:11px">곧 추가돼요</div></div></div>
+<div style="flex:1"></div>
+<p style="margin:0;color:#5B6461">최근 대화</p>
+<div class="rc"><span>LG 드럼 · 통세척은…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="rc"><span>에어컨 · CH10이…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+</div></div></div>
+<div style="width:100%;height:0"></div>
+<div><p class="cap">안 B · 소개와 카테고리를 한 화면에</p><div class="ph"><div class="in">
+<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:500;color:#1F5E5B">펴봄</span><i class="ti ti-menu-2" style="font-size:16px" aria-hidden="true"></i></div>
+<p style="margin:4px 0 0;font-size:15px;font-weight:500;line-height:1.3">가전 설명서, 대신 펴 봐 드려요</p>
+<p style="margin:0;color:#5B6461">공식 설명서 근거 · 쪽 번호 · 모르면 모른다고</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">
+<div class="cat" style="flex-direction:column;align-items:flex-start"><i class="ti ti-wash-machine" style="font-size:18px;color:#1F5E5B" aria-hidden="true"></i>세탁기</div>
+<div class="cat" style="flex-direction:column;align-items:flex-start"><i class="ti ti-air-conditioning" style="font-size:18px;color:#1F5E5B" aria-hidden="true"></i>에어컨</div>
+<div class="cat" style="flex-direction:column;align-items:flex-start;color:#8A8F8C"><i class="ti ti-fridge" style="font-size:18px" aria-hidden="true"></i>곧 추가</div>
+</div>
+<p style="margin:6px 0 0;color:#5B6461">최근 대화</p>
+<div class="rc"><span>LG 드럼 · 통세척은…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="rc"><span>에어컨 · CH10이…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="rc"><span>삼성 · 이불 코스…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+</div></div></div>
+</div></div>
+</section>
+<section class="mock">
+  <h2>2. 카테고리 화면: 네모 타일, 옆으로 넘기기</h2>
+  <p class="note">네모 아이콘 타일을 가로 한 줄로 두고 옆으로 넘기는 방식으로 정했어요.</p>
+  <div class="frame"><h2 class="sr-only">안 A의 2단계 카테고리 화면 수정안: 세탁기, 에어컨, 냉장고, 전자레인지를 네모난 아이콘 타일로 가로 한 줄에 두고, 다음 타일이 반쯤 보이게 해서 옆으로 밀 수 있음을 알려 준다.</h2>
+<style>
+.ph{width:220px;height:420px;border:6px solid #1E2422;border-radius:28px;background:#F7F5F0;color:#1E2422;overflow:hidden;display:flex;flex-direction:column;font-size:11px;line-height:1.45}
+.in{padding:14px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+.row{display:flex;gap:10px;overflow:hidden;margin-right:-12px}
+.tile{flex:0 0 64px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.sq{width:64px;height:64px;border-radius:16px;background:#FFFDF8;border:0.5px solid #D9D5CB;display:flex;align-items:center;justify-content:center}
+.rc{border:0.5px solid #D9D5CB;border-radius:8px;background:#FFFDF8;padding:6px 8px;display:flex;justify-content:space-between;align-items:center;font-size:11px}
+.cap{font-size:12px;color:var(--text-secondary);margin:0 0 6px;text-align:center}
+</style>
+<div style="background:var(--surface-1);border-radius:12px;padding:1rem;display:flex;gap:20px;justify-content:center;flex-wrap:wrap;align-items:flex-start">
+<div><p class="cap">수정안 · 2단계 카테고리</p><div class="ph"><div class="in">
+<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:500;color:#1F5E5B">펴봄</span><i class="ti ti-menu-2" style="font-size:16px" aria-hidden="true"></i></div>
+<p style="margin:10px 0 2px;font-size:15px;font-weight:500">어떤 가전이 궁금하세요?</p>
+<div class="row">
+<div class="tile"><div class="sq" style="border:2px solid #1F5E5B;background:#E4EFEC"><i class="ti ti-wash-machine" style="font-size:28px;color:#1F5E5B" aria-hidden="true"></i></div><span>세탁기</span></div>
+<div class="tile"><div class="sq"><i class="ti ti-air-conditioning" style="font-size:28px;color:#1F5E5B" aria-hidden="true"></i></div><span>에어컨</span></div>
+<div class="tile" style="color:#8A8F8C"><div class="sq" style="background:#EFEDE7"><i class="ti ti-fridge" style="font-size:28px" aria-hidden="true"></i></div><span>곧 추가</span></div>
+<div class="tile" style="color:#8A8F8C"><div class="sq" style="background:#EFEDE7"><i class="ti ti-microwave" style="font-size:28px" aria-hidden="true"></i></div><span>곧 추가</span></div>
+</div>
+<div style="display:flex;gap:4px;justify-content:center;margin-top:2px"><span style="width:14px;height:4px;border-radius:2px;background:#1F5E5B"></span><span style="width:4px;height:4px;border-radius:2px;background:#C9C5BB"></span></div>
+<p style="margin:6px 0 0;color:#5B6461">세탁기 모델을 골라 주세요</p>
+<div class="rc"><span>삼성 BESPOKE AI 콤보</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="rc"><span>LG 드럼세탁기</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div style="flex:1"></div>
+<p style="margin:0;color:#5B6461">최근 대화</p>
+<div class="rc"><span>LG 드럼 · 통세척은…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="rc"><span>에어컨 · CH10이…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+</div></div></div>
+</div></div>
+</section>
+<section class="mock">
+  <h2>3. 채팅 화면 초안</h2>
+  <p class="note">구성(말풍선, 근거 카드, 아래 입력창)의 첫 초안이에요. 스타일은 4번으로 바뀌었어요.</p>
+  <div class="frame"><h2 class="sr-only">펴봄 채팅 화면 초안: 위쪽에 모델 이름과 메뉴, 가운데에 질문 말풍선과 근거 카드가 붙은 답, 아래쪽에 예시 질문과 고정된 입력창이 있다.</h2>
+<style>
+.ph{width:240px;height:470px;border:6px solid #1E2422;border-radius:28px;background:#F7F5F0;color:#1E2422;overflow:hidden;display:flex;flex-direction:column;font-size:11px;line-height:1.45}
+.top{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:0.5px solid #E4E0D6;background:#F7F5F0}
+.msgs{flex:1;padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.me{align-self:flex-end;background:#1F5E5B;color:#F3F1EA;border-radius:14px 14px 4px 14px;padding:6px 10px;max-width:75%}
+.ai{align-self:flex-start;background:#FFFDF8;border:0.5px solid #E4E0D6;border-radius:14px 14px 14px 4px;padding:8px 10px;max-width:88%;display:flex;flex-direction:column;gap:6px}
+.src{background:#E4EFEC;border-radius:8px;padding:5px 8px;font-size:11px;color:#1F5E5B;display:flex;justify-content:space-between;align-items:center}
+.bottom{padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;border-top:0.5px solid #E4E0D6;background:#F7F5F0}
+.chip{font-size:11px;border:0.5px solid #D9D5CB;border-radius:999px;padding:2px 8px;background:#FFFDF8;white-space:nowrap}
+.cap{font-size:12px;color:var(--text-secondary);margin:0 0 6px;text-align:center}
+</style>
+<div style="background:var(--surface-1);border-radius:12px;padding:1rem;display:flex;justify-content:center">
+<div><p class="cap">채팅 화면 초안 (LG 드럼세탁기)</p><div class="ph">
+<div class="top"><i class="ti ti-arrow-left" style="font-size:15px" aria-hidden="true"></i><span style="font-weight:500;font-size:12px">LG 드럼세탁기 <span style="color:#5B6461;font-weight:400">FX24</span></span><i class="ti ti-menu-2" style="font-size:15px" aria-hidden="true"></i></div>
+<div class="msgs">
+<div class="me">통세척은 어떻게 해요?</div>
+<div class="ai"><span>세탁물을 모두 꺼낸 뒤 산소계 세탁조 클리너를 넣고 [통세척] 버튼을 눌러 진행하세요.</span><div class="src"><span><i class="ti ti-bookmark" aria-hidden="true"></i> 근거 2개 · 해결 가이드</span><i class="ti ti-chevron-down" aria-hidden="true"></i></div></div>
+<div class="me">그건 얼마나 자주 해야 해요?</div>
+<div class="ai"><span>통세척은 한 달에 한 번 정도 하길 권장해요.</span><div class="src"><span><i class="ti ti-bookmark" aria-hidden="true"></i> 근거 1개 · 설명서 41쪽</span><i class="ti ti-chevron-down" aria-hidden="true"></i></div></div>
+</div>
+<div class="bottom">
+<div style="display:flex;gap:6px;overflow:hidden"><span class="chip">UE 에러가 떴어요</span><span class="chip">필터 청소는요?</span></div>
+<div style="display:flex;gap:6px;align-items:center;background:#FFFDF8;border:0.5px solid #D9D5CB;border-radius:999px;padding:6px 6px 6px 12px"><span style="flex:1;color:#8A8F8C">이어서 물어보세요</span><span style="width:26px;height:26px;border-radius:50%;background:#1F5E5B;color:#F3F1EA;display:flex;align-items:center;justify-content:center"><i class="ti ti-arrow-up" aria-hidden="true"></i></span></div>
+<span style="text-align:center;color:#8A8F8C;font-size:11px">앞 대화를 기억해요 · 모델을 바꾸면 새 대화</span>
+</div>
+</div></div>
+</div></div>
+</section>
+<section class="mock">
+  <h2>4. 흑백 스타일로 다시 그린 화면 네 개 (채택 스타일)</h2>
+  <p class="note">흰 바탕, 검은 글자, 검은 알약 버튼, 회색 입력창. 최종 스타일이에요.</p>
+  <div class="frame"><h2 class="sr-only">레퍼런스 스타일(흰 바탕, 검은 글자, 검은 알약 버튼, 회색 입력창)로 다시 그린 펴봄 화면 네 개: 랜딩, 카테고리 선택, 빈 채팅, 답이 나온 채팅.</h2>
+<style>
+.ph{width:200px;height:410px;border:6px solid #111;border-radius:28px;background:#FFFFFF;color:#111;overflow:hidden;display:flex;flex-direction:column;font-size:11px;line-height:1.45}
+.in{padding:16px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.g{color:#8A8A8A}
+.pill{background:#111;color:#fff;border-radius:999px;text-align:center;padding:10px;font-weight:500;font-size:12px}
+.hd{display:flex;align-items:center;gap:8px;padding:12px 14px 4px}
+.tile{flex:0 0 58px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px}
+.sq{width:58px;height:58px;border-radius:16px;background:#F4F4F4;display:flex;align-items:center;justify-content:center}
+.sug{flex:0 0 140px;background:#F4F4F4;border-radius:14px;padding:8px 10px}
+.inp{display:flex;align-items:center;gap:6px;padding:0 10px 12px}
+.cap{font-size:12px;color:var(--text-secondary);margin:0 0 6px;text-align:center}
+.rc{background:#F4F4F4;border-radius:10px;padding:7px 9px;display:flex;justify-content:space-between;align-items:center}
+</style>
+<div style="background:var(--surface-1);border-radius:12px;padding:1rem;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+<div><p class="cap">① 랜딩</p><div class="ph"><div class="in">
+<p style="margin:22px 0 0;font-size:22px;font-weight:600;line-height:1.2">가전 설명서,<br>대신 펴 봐<br>드려요</p>
+<p class="g" style="margin:4px 0 6px">고른 모델의 공식 설명서에서 근거를 찾아 답해요.</p>
+<div style="display:flex;gap:8px"><i class="ti ti-file-text" style="font-size:16px" aria-hidden="true"></i><div><div style="font-weight:600">근거 쪽을 보여 줘요</div><div class="g">설명서 몇 쪽인지와 원문을 함께</div></div></div>
+<div style="display:flex;gap:8px"><i class="ti ti-flag" style="font-size:16px" aria-hidden="true"></i><div><div style="font-weight:600">모르면 모른다고 해요</div><div class="g">설명서에 없으면 지어내지 않아요</div></div></div>
+<div style="display:flex;gap:8px"><i class="ti ti-lock" style="font-size:16px" aria-hidden="true"></i><div><div style="font-weight:600">개인정보는 적지 마세요</div><div class="g">입력해도 AI에 보내기 전에 가려요</div></div></div>
+<div style="flex:1"></div>
+<div class="pill">시작하기</div>
+<p class="g" style="margin:0;text-align:center;font-size:11px">비영리 학습용 · 설명서 저작권은 각 제조사</p>
+</div></div></div>
+<div><p class="cap">② 카테고리</p><div class="ph">
+<div class="hd"><i class="ti ti-menu-2" style="font-size:16px" aria-hidden="true"></i><span style="font-size:14px;font-weight:600">펴봄</span></div>
+<div class="in">
+<p style="margin:8px 0 2px;font-size:16px;font-weight:600">어떤 가전이<br>궁금하세요?</p>
+<div style="display:flex;gap:10px;overflow:hidden;margin-right:-14px">
+<div class="tile"><div class="sq" style="background:#111;color:#fff"><i class="ti ti-wash-machine" style="font-size:26px" aria-hidden="true"></i></div>세탁기</div>
+<div class="tile"><div class="sq"><i class="ti ti-air-conditioning" style="font-size:26px" aria-hidden="true"></i></div>에어컨</div>
+<div class="tile g"><div class="sq"><i class="ti ti-fridge" style="font-size:26px" aria-hidden="true"></i></div>곧 추가</div>
+<div class="tile g"><div class="sq"><i class="ti ti-microwave" style="font-size:26px" aria-hidden="true"></i></div>곧 추가</div>
+</div>
+<div style="flex:1"></div>
+<p class="g" style="margin:0">최근 대화</p>
+<div class="rc"><span>LG 드럼 · 통세척은…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+<div class="rc"><span>에어컨 · CH10이…</span><i class="ti ti-chevron-right" aria-hidden="true"></i></div>
+</div></div></div>
+<div><p class="cap">③ 채팅 시작</p><div class="ph">
+<div class="hd" style="justify-content:space-between"><span style="display:flex;gap:8px;align-items:center"><i class="ti ti-menu-2" style="font-size:16px" aria-hidden="true"></i><span style="font-size:13px;font-weight:600">LG 드럼세탁기</span></span><span style="background:#111;color:#fff;border-radius:999px;padding:3px 9px;font-size:11px">새 대화</span></div>
+<div style="flex:1"></div>
+<div style="display:flex;gap:8px;overflow:hidden;padding:0 0 8px 10px">
+<div class="sug"><div style="font-weight:600">통세척은 어떻게</div><div class="g">해요? 주기도 알려 줘요</div></div>
+<div class="sug"><div style="font-weight:600">UE 에러가</div><div class="g">떴어요</div></div>
+</div>
+<div class="inp"><span style="width:30px;height:30px;border-radius:50%;background:#F4F4F4;display:flex;align-items:center;justify-content:center"><i class="ti ti-arrow-left" aria-hidden="true"></i></span><span style="flex:1;background:#F4F4F4;border-radius:999px;padding:8px 10px;color:#8A8A8A;display:flex;justify-content:space-between;align-items:center">무엇이든 물어보세요<span style="width:22px;height:22px;border-radius:50%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center"><i class="ti ti-arrow-up" aria-hidden="true"></i></span></span></div>
+</div></div>
+<div><p class="cap">④ 답이 나온 뒤</p><div class="ph">
+<div class="hd" style="justify-content:space-between"><span style="display:flex;gap:8px;align-items:center"><i class="ti ti-menu-2" style="font-size:16px" aria-hidden="true"></i><span style="font-size:13px;font-weight:600">LG 드럼세탁기</span></span><span style="background:#111;color:#fff;border-radius:999px;padding:3px 9px;font-size:11px">새 대화</span></div>
+<div style="flex:1;padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+<div style="align-self:flex-end;background:#F4F4F4;border-radius:16px;padding:6px 10px;max-width:75%">통세척은 어떻게 해요?</div>
+<div style="color:#8A8A8A;font-size:11px;display:flex;justify-content:space-between"><span>근거 2개 · 접힘</span><i class="ti ti-chevron-down" aria-hidden="true"></i></div>
+<div style="align-self:flex-end;background:#F4F4F4;border-radius:16px;padding:6px 10px;max-width:75%">그건 얼마나 자주요?</div>
+<div>(예시 답) 설명서에 안내된 주기에 맞춰 통세척 코스를 돌리세요.</div>
+<div style="border:0.5px solid #DADADA;border-radius:10px;padding:7px 9px;display:flex;flex-direction:column;gap:3px"><span style="font-weight:600">설명서 ○쪽</span><span class="g">"원문 인용 1~2문장"</span><span style="text-decoration:underline">공식 설명서 받기</span></div>
+</div>
+<div class="inp"><span style="flex:1;background:#F4F4F4;border-radius:999px;padding:8px 10px;color:#8A8A8A;display:flex;justify-content:space-between;align-items:center">이어서 물어보세요<span style="width:22px;height:22px;border-radius:50%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center"><i class="ti ti-arrow-up" aria-hidden="true"></i></span></span></div>
+</div></div>
+</div></div>
+</section>
+<section class="mock">
+  <h2>5. 실제 크기 글자 체계 (최종)</h2>
+  <p class="note">Pretendard, 28/17/16/14/12px. 실제 휴대폰 크기에 가깝게 그린 최종 시안이에요.</p>
+  <div class="frame"><h2 class="sr-only">실제 휴대폰 크기에 가깝게 다시 그린 펴봄 랜딩 화면과 답이 나온 채팅 화면. 제목 28px, 본문 16px, 보조 글 14px, 작은 글 12px 체계를 쓴다.</h2>
+<style>
+.ph{width:320px;height:640px;border:8px solid #111;border-radius:40px;background:#FFFFFF;color:#111;overflow:hidden;display:flex;flex-direction:column;font-family:-apple-system,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;letter-spacing:-0.2px}
+.g{color:#7A7A7A}
+.cap{font-size:13px;color:var(--text-secondary);margin:0 0 8px;text-align:center}
+</style>
+<div style="background:var(--surface-1);border-radius:12px;padding:1rem;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+<div><p class="cap">① 랜딩 (실제 크기에 가깝게)</p><div class="ph">
+<div style="padding:72px 24px 24px;display:flex;flex-direction:column;flex:1">
+<p style="margin:0;font-size:28px;font-weight:700;line-height:1.3">가전 설명서,<br>대신 펴 봐 드려요</p>
+<p class="g" style="margin:12px 0 0;font-size:16px;line-height:1.5">고른 모델의 공식 설명서에서<br>근거를 찾아 답해요.</p>
+<div style="display:flex;flex-direction:column;gap:20px;margin-top:36px">
+<div style="display:flex;gap:14px"><i class="ti ti-file-text" style="font-size:24px" aria-hidden="true"></i><div><div style="font-size:16px;font-weight:600;line-height:1.4">근거 쪽을 보여 줘요</div><div class="g" style="font-size:14px;line-height:1.5">설명서 몇 쪽인지와 원문을 함께</div></div></div>
+<div style="display:flex;gap:14px"><i class="ti ti-flag" style="font-size:24px" aria-hidden="true"></i><div><div style="font-size:16px;font-weight:600;line-height:1.4">모르면 모른다고 해요</div><div class="g" style="font-size:14px;line-height:1.5">설명서에 없으면 지어내지 않아요</div></div></div>
+<div style="display:flex;gap:14px"><i class="ti ti-lock" style="font-size:24px" aria-hidden="true"></i><div><div style="font-size:16px;font-weight:600;line-height:1.4">개인정보는 적지 마세요</div><div class="g" style="font-size:14px;line-height:1.5">적어도 AI에 보내기 전에 가려요</div></div></div>
+</div>
+<div style="flex:1"></div>
+<div style="background:#111;color:#fff;border-radius:999px;text-align:center;padding:16px;font-size:16px;font-weight:600">시작하기</div>
+<p class="g" style="margin:14px 0 0;text-align:center;font-size:12px;line-height:1.5">비영리 학습용 포트폴리오예요.<br>설명서 저작권은 각 제조사에 있어요.</p>
+</div></div></div>
+<div><p class="cap">④ 답이 나온 채팅 (실제 크기에 가깝게)</p><div class="ph">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:52px 18px 10px"><span style="display:flex;gap:12px;align-items:center"><i class="ti ti-menu-2" style="font-size:22px" aria-hidden="true"></i><span style="font-size:17px;font-weight:600">LG 드럼세탁기</span></span><span style="background:#111;color:#fff;border-radius:999px;padding:7px 14px;font-size:14px;font-weight:600">새 대화</span></div>
+<div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:14px;overflow:hidden">
+<div style="align-self:flex-end;background:#F2F2F2;border-radius:20px;padding:10px 14px;max-width:78%;font-size:16px;line-height:1.45">통세척은 어떻게 해요?</div>
+<div class="g" style="font-size:13px;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid #E5E5E5;padding-bottom:10px"><span>이전 답 · 근거 2개</span><i class="ti ti-chevron-down" aria-hidden="true"></i></div>
+<div style="align-self:flex-end;background:#F2F2F2;border-radius:20px;padding:10px 14px;max-width:78%;font-size:16px;line-height:1.45">그건 얼마나 자주 해야 해요?</div>
+<div style="font-size:16px;line-height:1.6">(예시 답) 설명서에 안내된 주기에 맞춰 통세척 코스를 돌리세요.</div>
+<div style="border:0.5px solid #DADADA;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:4px"><span style="font-size:14px;font-weight:600">사용설명서 ○쪽</span><span class="g" style="font-size:14px;line-height:1.5">"원문 인용 1~2문장"</span><span style="font-size:13px;text-decoration:underline;margin-top:2px">공식 설명서 받기</span></div>
+</div>
+<div style="padding:8px 14px 22px"><div style="background:#F2F2F2;border-radius:999px;padding:8px 8px 8px 18px;display:flex;justify-content:space-between;align-items:center"><span class="g" style="font-size:16px">이어서 물어보세요</span><span style="width:36px;height:36px;border-radius:50%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center"><i class="ti ti-arrow-up" style="font-size:18px" aria-hidden="true"></i></span></div></div>
+</div></div>
+</div></div>
+</section>
+</main></body></html>
