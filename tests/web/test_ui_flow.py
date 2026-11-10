@@ -367,7 +367,7 @@ def test_empty_chat_shows_two_suggestion_cards_that_send(open_page):
     cards.first.click()
     wait_turns(page, 1)
     assert asks == [{"model_id": "washer-lg-fx25", "question": first}]   # 앞 대화가 없으면 history를 보내지 않음
-    expect(page.locator(".suggestion")).to_have_count(0)
+    expect(page.locator("#suggestions")).to_be_hidden()
 
 
 def test_pii_bubble_shows_typed_then_masked_and_storage_never_has_number(open_page):
@@ -380,7 +380,8 @@ def test_pii_bubble_shows_typed_then_masked_and_storage_never_has_number(open_pa
     expect(page.locator('.turn[data-state="loading"]')).to_contain_text("설명서를 펴 보는 중…")
     expect(page.locator("#chat-status")).to_have_text("설명서를 펴 보는 중…")
     wait_until(page, lambda: held)
-    held[0].fulfill(json=fake({"question": typed}, question_masked="제 번호는 [전화번호]이에요 IE 에러", pii_masked=True)[1])
+    held[0].fulfill(json=fake({"question": typed}, question_masked="제 번호는 [전화번호]이에요 IE 에러", pii_masked=True,
+                              answer="가짜 답입니다(테스트)")[1])   # 실제 서버 답에는 원래 질문이 들어가지 않는다
     wait_turns(page, 1)
     expect(page.locator(".turn .bubble")).to_have_text("제 번호는 [전화번호]이에요 IE 에러")
     expect(page.locator("#pii-note")).to_be_visible()
@@ -537,7 +538,8 @@ def test_conversation_saved_then_reopened_continues_with_its_history(open_page):
     assert page.evaluate("location.hash") == f"#chat/washer-lg-fx25/{saved[0]['id']}"
     page.get_by_role("button", name="새 대화").click()
     expect(page.locator(".turn")).to_have_count(0)
-    expect(page.locator(".suggestion")).to_have_count(2)
+    expect(page.locator("#suggestions .suggestion")).to_have_count(2)
+    expect(page.locator("#suggestions")).to_be_visible()
     send(page, "가짜 질문 2")
     wait_turns(page, 1)
     assert "history" not in asks[1]   # 새 대화는 앞 대화를 비운다
@@ -552,10 +554,12 @@ def test_conversation_saved_then_reopened_continues_with_its_history(open_page):
 def test_conversation_of_other_model_or_unknown_id_opens_new_chat(open_page):
     page, asks = open_page(ask=echo, conversations=[_conversation(1, "washer-lg-fx25")], with_asks=True)
     open_chat(page, "aircon-lg-sq06fa1wds", "c1")   # 주소의 모델과 대화의 모델이 다름
-    expect(page.locator(".suggestion")).to_have_count(2)
+    expect(page.locator("#suggestions .suggestion")).to_have_count(2)
+    expect(page.locator("#suggestions")).to_be_visible()
     expect(page.locator(".turn")).to_have_count(0)
     open_chat(page, "washer-lg-fx25", "없는-대화")
-    expect(page.locator(".suggestion")).to_have_count(2)
+    expect(page.locator("#suggestions .suggestion")).to_have_count(2)
+    expect(page.locator("#suggestions")).to_be_visible()
     expect(page.locator(".turn")).to_have_count(0)
     send(page, "가짜 질문입니다")
     wait_turns(page, 1)

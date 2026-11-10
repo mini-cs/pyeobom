@@ -1,13 +1,9 @@
 // 펴봄 화면 전환: ① 랜딩 → ② 카테고리 → ③ 모델 → ④ 채팅(# 주소, 브라우저 뒤로 가기). API 글자는 textContent로만 넣는다(XSS 방지).
-import { loadConversations } from "./js/store.js";
+import { loadConversations, makeTitle, saveConversation, toStoredTurn } from "./js/store.js";
+import { buildHistory, shouldShowRewritten } from "./js/history.js";
+import { EXAMPLES } from "./js/examples.js";
 
 const MAX_LEN = 500;
-// 모델별 예시 질문: 실제 /api/ask로 근거가 나오는 것을 확인한 문장, 평가 질문 30개와 겹치지 않게(2026-10-29)
-const EXAMPLES = {
-  "washer-samsung-wd90h25": ["이불 코스는 어떻게 해요?", "물이 안 빠지고 5C가 떠요"],
-  "washer-lg-fx25": ["통세척은 어떻게 해요?", "UE 에러가 떴어요"],
-  "aircon-lg-sq06fa1wds": ["필터 청소는 어떻게 해요?", "꺼짐 예약은 어떻게 해요?"],
-};
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
 const MODELS_ERROR = "모델 목록을 불러오지 못했어요. 새로고침해 주세요";
 const APPLIANCES = { washer: "세탁기", aircon: "에어컨" };
@@ -15,13 +11,14 @@ const RECENT_LIMIT = { landing: 1, category: 3 };  // 설계 2절 ①·②, 계�
 
 const $ = (id) => document.getElementById(id);
 const ui = {
-  topbar: $("topbar"), tiles: $("tiles"), dots: $("tile-dots"),
+  topbar: $("topbar"), brand: $("brand"), newChat: $("new-chat"), tiles: $("tiles"), dots: $("tile-dots"),
   modelTitle: $("model-title"), modelCards: $("model-cards"), chatTitle: $("chat-title"),
   form: $("ask-form"), question: $("question"), counter: $("counter"), send: $("send"),
-  formError: $("form-error"), pii: $("pii-note"), examples: $("examples"), result: $("result"),
+  formError: $("form-error"), pii: $("pii-note"), saveNote: $("save-note"), status: $("chat-status"),
+  thread: $("thread"), suggestions: $("suggestions"),
 };
+const PLACEHOLDER = ui.question.placeholder;
 
-let current = null;
 let busy = false;
 let renderId = 0;
 
@@ -46,10 +43,6 @@ function link(text, href) {
   return a;
 }
 
-function searchTerm(model) {
-  return model.model_codes.join("·");  // 설명서 내려받기 페이지에서 찾을 모델 코드(예: "FX25*N*·FX24*N*·FX23*N*")
-}
-
 function storage() {
   try { return window.localStorage; } catch { return null; }  // 쿠키 차단이면 접근만 해도 예외
 }
@@ -72,9 +65,13 @@ function parseRoute(hash) {
 function show(name, focus) {
   for (const s of document.querySelectorAll(".screen")) s.hidden = s.dataset.screen !== name;
   ui.topbar.hidden = name === "landing";
+  const chat = name === "chat";
+  ui.brand.hidden = chat;
+  ui.chatTitle.hidden = !chat;
+  ui.newChat.hidden = !chat;
   if (focus) {
     window.scrollTo(0, 0);
-    document.querySelector(`[data-screen="${name}"] h1`).focus();
+    (chat ? ui.chatTitle : document.querySelector(`[data-screen="${name}"] h1`)).focus();
   }
 }
 
@@ -96,7 +93,7 @@ async function render(focus) {
     renderModelCards(route.appliance, models);
   } else {
     const model = models.find((m) => m.id === route.modelId);
-    if (model) openChat(model);
+    if (model) openChat(model, route.conversationId);
     else location.replace("#category");  // 없는 모델 주소
   }
 }
@@ -150,16 +147,21 @@ function updateDots() {
   [...ui.dots.children].forEach((b, i) => b.setAttribute("aria-current", String(i === active)));
 }
 
-ui.tiles.addEventListener("keydown", (e) => {
-  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-  if (!step) return;
-  const tiles = [...ui.tiles.querySelectorAll(".tile")];
-  const next = tiles[tiles.indexOf(document.activeElement) + step];
-  if (next) {
-    e.preventDefault();
-    next.focus();
-  }
-});
+// 옆으로 넘기는 줄(카테고리 타일·추천 카드)은 화살표 키로 옆 항목에 포커스(가이드 6절 5)
+function arrowKeys(box, selector) {
+  box.addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!step) return;
+    const items = [...box.querySelectorAll(selector)];
+    const next = items[items.indexOf(document.activeElement) + step];
+    if (next) {
+      e.preventDefault();
+      next.focus();
+    }
+  });
+}
+arrowKeys(ui.tiles, ".tile");
+arrowKeys(ui.suggestions, ".suggestion");
 ui.tiles.addEventListener("click", (e) => {
   const tile = e.target.closest(".tile");
   if (tile && tile.dataset.appliance) location.hash = `#model/${tile.dataset.appliance}`;  // "곧 추가"는 이동하지 않음
@@ -193,28 +195,47 @@ function renderModelCards(appliance, models) {
   }));
 }
 
-// ── ④ 채팅(임시: 1차 질문·답 흐름. Task 5에서 대화형으로 바꾼다) ──
-function openChat(model) {
-  ui.chatTitle.textContent = model.name;
-  if (current?.id === model.id) return;
-  current = model;
+// ── ④ 채팅(설계 2절 ④·5절): 대화 하나 = 모델 하나. 저장은 가린 질문만(toStoredTurn) ──
+// entries: 화면의 턴. { question, history, pending } → 응답 뒤 { turn(저장 형식), officialUrl } 또는 { error }
+let chat = { model: null, conv: null, entries: [], saveWarned: false, token: 0 };
+
+function openChat(model, conversationId) {
+  ui.chatTitle.textContent = model.short_name ?? model.name;  // 위쪽 막대 한 줄(2026-11-10 사용자 결정)
+  if (chat.model?.id === model.id && (conversationId ?? null) === (chat.conv?.id ?? null)) return;  // 같은 대화면 그대로
+  const saved = conversationId
+    ? loadConversations(storage()).find((c) => c.id === conversationId && c.model_id === model.id)
+    : null;  // 없는 id이거나 다른 모델의 대화면 새 대화(다른 모델의 앞 대화가 섞이지 않게)
+  resetChat(model, saved ?? null);
+}
+
+function resetChat(model, conv) {
+  const turns = conv ? conv.turns.filter((t) => t && typeof t.question_masked === "string" && typeof t.answer === "string") : [];
+  chat = { model, conv, entries: turns.map((t) => ({ question: t.question_masked, turn: t })), saveWarned: false, token: chat.token + 1 };
+  setBusy(false);  // 기다리던 응답은 token이 달라 버려진다
   ui.question.value = "";
   updateCounter();
   showFormError("");
   ui.pii.hidden = true;
-  ui.result.replaceChildren(el("p", "empty", `${model.name} 기준으로 답해 드려요.`));
-  renderExamples();
+  ui.saveNote.hidden = true;
+  ui.status.textContent = "";
+  renderSuggestions();
+  renderChat();
 }
 
-function renderExamples() {
-  const items = EXAMPLES[current?.id] || [];
-  ui.examples.replaceChildren(...items.map((q) => {
-    const b = el("button", "example", q);
+ui.newChat.addEventListener("click", () => {
+  const target = `#chat/${encodeURIComponent(chat.model.id)}`;
+  resetChat(chat.model, null);
+  if (location.hash !== target) location.hash = target;
+});
+
+function renderSuggestions() {
+  ui.suggestions.replaceChildren(...(EXAMPLES[chat.model.id] || []).map(({ question, hint }) => {
+    const b = el("button", "suggestion");
     b.type = "button";
+    b.append(el("strong", null, question), el("span", "muted", hint));
     b.addEventListener("click", () => {
-      ui.question.value = q;
-      updateCounter();
-      ask();
+      ui.question.focus();  // 카드가 사라져도 키보드 포커스가 입력창에 남게
+      ask(question);
     });
     return b;
   }));
@@ -224,6 +245,8 @@ function updateCounter() {
   const left = MAX_LEN - ui.question.value.length;
   ui.counter.textContent = `${left}자 남음`;
   ui.counter.classList.toggle("is-low", left <= 50);
+  ui.question.style.height = "auto";  // 글이 길어지면 입력창이 늘어난다(최대 높이는 CSS)
+  ui.question.style.height = `${ui.question.scrollHeight}px`;
 }
 
 function showFormError(message) {
@@ -234,26 +257,6 @@ function showFormError(message) {
 function setBusy(on) {
   busy = on;
   ui.send.disabled = on;
-  ui.send.textContent = on ? "찾는 중…" : "물어보기";
-}
-
-function renderLoading() {
-  const box = el("div", "loading");
-  box.append(el("span", null, "설명서를 펴 보는 중…"), el("div", "progress"));
-  ui.result.replaceChildren(box);
-}
-
-function renderError(message, retry) {
-  const card = el("div", "card is-error");
-  card.setAttribute("role", "alert");
-  card.append(el("p", null, message));
-  if (retry) {
-    const b = el("button", "pill", "다시 시도");
-    b.type = "button";
-    b.addEventListener("click", ask);
-    card.append(b);
-  }
-  ui.result.replaceChildren(card);
 }
 
 function renderEvidence(c) {
@@ -264,66 +267,173 @@ function renderEvidence(c) {
     box.append(el("p", "evidence-label", `공식 해결 가이드: ${c.title}`));
   }
   box.append(el("blockquote", null, c.quote));
-  if (c.warning) box.append(el("p", "warning", c.warning));
-  // 설명서는 다운로드 페이지라 검색어를 함께 알려 준다(계획 Task 11 메모)
-  box.append(c.doc_type === "manual"
-    ? link(`공식 설명서 받기 (검색어: ${searchTerm(current)})`, c.url)
-    : link("공식 문서 열기", c.url));
+  // 1차 문구에서 검색어(모델 코드)만 뺐다: 모델 코드는 모델 선택 화면에서만 보인다(Task 4 사용자 결정)
+  box.append(link(c.doc_type === "manual" ? "공식 설명서 받기" : "공식 문서 열기", c.url));
+  if (c.warning) box.append(notice("info", "참고", c.warning));  // 가이드 6절 8: 근거 박스 맨 아래
   return box;
 }
 
-function renderAnswer(data, question) {
-  const card = el("article", "card");
-  card.append(el("h2", null, question), el("p", "answer", data.answer));
-  if (data.found) {
-    data.citations.forEach((c) => card.append(renderEvidence(c)));
-  } else {
-    card.append(link("공식 고객센터에서 찾아보기", data.official_url));
-  }
-  ui.result.replaceChildren(card);
+function notice(name, label, text) {
+  const p = el("p", "notice");
+  const body = el("span");
+  body.append(el("strong", null, label), " ", el("span", null, text));
+  p.append(icon(name), body);
+  return p;
 }
 
-async function ask() {
-  if (busy || !current) return;
-  const question = ui.question.value.trim();
+const STATES = { answer: "answer", not_found: "not-found", other_brand: "other-brand" };
+
+function answerBody(entry) {
+  const t = entry.turn;
+  const body = el("div", "answer-body");
+  if (shouldShowRewritten(t.question_masked, t.rewritten_question)) {
+    body.append(el("p", "rewritten", `'${t.rewritten_question}'로 찾았어요`));
+  }
+  const supportUrl = entry.officialUrl ?? chat.model.official_url;  // 저장한 턴에는 official_url이 없다
+  if (t.kind === "other_brand") {
+    body.append(notice("info", "모델 안내", t.answer), link("공식 고객센터에서 찾아보기", supportUrl));
+  } else {
+    body.append(el("p", "answer", t.answer));
+    if (t.kind === "answer") (Array.isArray(t.citations) ? t.citations : []).forEach((c) => body.append(renderEvidence(c)));
+    else body.append(link("공식 고객센터에서 찾아보기", supportUrl));
+  }
+  return body;
+}
+
+function renderEntry(entry, index, latest) {
+  const turn = el("article", "turn");
+  turn.append(el("p", "bubble", entry.turn ? entry.turn.question_masked : entry.question));
+  if (entry.pending) {
+    turn.dataset.state = "loading";
+    const box = el("div", "loading");
+    box.append(el("span", null, "설명서를 펴 보는 중…"), el("div", "progress"));
+    turn.append(box);
+  } else if (entry.error) {
+    turn.dataset.state = "error";
+    const card = el("div", "error-card");
+    card.setAttribute("role", "alert");
+    const line = el("p");
+    line.append(icon("alert"), el("span", null, entry.error.message));
+    card.append(line);
+    if (entry.error.retry) {
+      const b = el("button", "pill", "다시 시도");
+      b.type = "button";
+      b.addEventListener("click", () => {
+        ui.question.focus();
+        ask(entry.question, entry);
+      });
+      card.append(b);
+    }
+    turn.append(card);
+  } else {
+    turn.dataset.state = STATES[entry.turn.kind] ?? "answer";
+    const body = answerBody(entry);
+    if (!latest) {  // 이전 답은 본문과 근거를 함께 한 줄로 접는다(계획 기본값 11)
+      const n = Array.isArray(entry.turn.citations) ? entry.turn.citations.length : 0;
+      const fold = el("button", "fold");
+      fold.type = "button";
+      fold.append(el("span", null, `이전 답 · 근거 ${n}개`), icon("chevron-down"));
+      body.id = `turn-body-${index}`;
+      body.hidden = true;
+      fold.setAttribute("aria-controls", body.id);
+      fold.setAttribute("aria-expanded", "false");
+      fold.addEventListener("click", () => {
+        body.hidden = !body.hidden;
+        fold.setAttribute("aria-expanded", String(!body.hidden));
+      });
+      turn.append(fold);
+    }
+    turn.append(body);
+  }
+  return turn;
+}
+
+function renderChat() {
+  const { entries } = chat;
+  ui.thread.replaceChildren(...entries.map((e, i) => renderEntry(e, i, i === entries.length - 1)));
+  ui.suggestions.hidden = entries.length > 0;
+  ui.question.placeholder = entries.some((e) => e.turn) ? "이어서 물어보세요" : PLACEHOLDER;
+  updateCounter();  // 안내 문구가 바뀌어도 입력창 높이를 다시 맞춘다
+  ui.thread.lastElementChild?.scrollIntoView({ block: "start" });
+}
+
+const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+// 첫 정상 응답에서 대화를 만들고(계획 기본값 4), 응답마다 턴을 더해 저장한다. 실패해도 화면은 계속 간다(설계 5절)
+function saveTurn(turn) {
+  const now = new Date().toISOString();
+  if (!chat.conv) {
+    chat.conv = { id: newId(), model_id: chat.model.id, title: makeTitle(turn.question_masked), created_at: now, updated_at: now, turns: [] };
+    history.replaceState(null, "", `#chat/${encodeURIComponent(chat.model.id)}/${encodeURIComponent(chat.conv.id)}`);
+  }
+  chat.conv.turns.push(turn);
+  chat.conv.updated_at = now;
+  if (!saveConversation(storage(), chat.conv) && !chat.saveWarned) {
+    chat.saveWarned = true;  // 대화당 한 번만 알린다
+    ui.saveNote.hidden = false;
+  }
+}
+
+const isAnswer = (d) => d && !d.error_code && typeof d.answer === "string" && typeof d.question_masked === "string";
+
+async function ask(text, retryOf) {
+  if (busy || !chat.model) return;
+  const question = text.trim();
   if (!question) return showFormError("질문을 입력해 주세요");
   if (question.length > MAX_LEN) return showFormError(`질문은 ${MAX_LEN}자 이내로 입력해 주세요`);
   showFormError("");
   ui.pii.hidden = true;  // 이전 질문의 안내가 남지 않게
-  setBusy(true);
-  renderLoading();
-  try {
-    const res = await fetch("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model_id: current.id, question }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.error_code) {
-      // 입력 오류는 고쳐서 다시 보내면 되고, 그 밖의 오류는 같은 질문으로 다시 시도한다
-      const inputError = ["EMPTY_QUESTION", "QUESTION_TOO_LONG", "INVALID_MODEL"].includes(data.error_code);
-      renderError(data.message || NETWORK_ERROR, !inputError);
-      return;
-    }
-    ui.pii.hidden = !data.pii_masked;
-    renderAnswer(data, question);
-  } catch {
-    renderError(NETWORK_ERROR, true);
-  } finally {
-    setBusy(false);
+  // 오류 턴은 앞 대화에도 화면에도 남기지 않는다(계획 기본값 1). 다시 시도는 같은 질문·같은 history
+  const prev = retryOf ? retryOf.history : buildHistory(chat.entries.filter((e) => e.turn).map((e) => e.turn));
+  const entry = { question, history: prev, pending: true };
+  chat.entries = [...chat.entries.filter((e) => !e.error), entry];
+  if (!retryOf) {
+    ui.question.value = "";
+    updateCounter();
   }
+  setBusy(true);
+  ui.status.textContent = "설명서를 펴 보는 중…";
+  renderChat();
+  const { token, model } = chat;
+  let res = null;
+  let data = null;
+  try {
+    const body = { model_id: model.id, question, ...(prev.length ? { history: prev } : {}) };  // 앞 대화가 없으면 보내지 않음
+    res = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    data = await res.json().catch(() => null);
+  } catch { /* 네트워크 오류는 아래에서 오류 카드로 */ }
+  if (token !== chat.token) return;  // 그사이 새 대화·다른 모델로 옮겼으면 버린다
+  entry.pending = false;
+  if (res?.ok && isAnswer(data)) {
+    entry.turn = toStoredTurn(data);
+    entry.officialUrl = data.official_url;
+    ui.pii.hidden = !data.pii_masked;
+    saveTurn(entry.turn);
+    ui.status.textContent = "답이 도착했어요";
+  } else {
+    // 입력 오류는 고쳐서 다시 보내면 되고, 그 밖의 오류는 같은 질문으로 다시 시도한다
+    const inputError = ["EMPTY_QUESTION", "QUESTION_TOO_LONG", "INVALID_MODEL", "INVALID_REQUEST"].includes(data?.error_code);
+    entry.error = { message: data?.message || NETWORK_ERROR, retry: !inputError };
+    if (inputError && !ui.question.value) {
+      ui.question.value = question;
+      updateCounter();
+    }
+    ui.status.textContent = "";  // 오류 카드는 role="alert"로 알린다
+  }
+  setBusy(false);
+  renderChat();
 }
 
 ui.question.addEventListener("input", updateCounter);
 ui.question.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {  // 한글 조합 중 Enter는 무시
     e.preventDefault();
-    ask();
+    ask(ui.question.value);
   }
 });
 ui.form.addEventListener("submit", (e) => {
   e.preventDefault();
-  ask();
+  ask(ui.question.value);
 });
 
 // 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다

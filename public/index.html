@@ -17,7 +17,10 @@
     <button type="button" class="icon-button" id="drawer-open" aria-label="지난 대화" aria-disabled="true">
       <span class="icon icon-menu" aria-hidden="true"></span>
     </button>
-    <span class="brand">펴봄</span>
+    <span class="brand" id="brand">펴봄</span>
+    <!-- ④ 채팅에서는 "펴봄" 대신 모델 이름(h1, short_name ?? name, 코드 없음)과 새 대화 -->
+    <h1 class="brand chat-title" id="chat-title" tabindex="-1" hidden></h1>
+    <button type="button" class="pill new-chat" id="new-chat" hidden>새 대화</button>
   </header>
 
   <main>
@@ -72,23 +75,28 @@
       <p class="small-note">제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요.</p>
     </section>
 
-    <!-- ④ 채팅: Task 5에서 새로 만든다. 지금은 1차 질문·답 흐름을 임시로 붙임 -->
+    <!-- ④ 채팅(설계 2절 ④): 대화 목록, 대화가 없을 때 추천 카드, 아래 고정 입력창 -->
     <section class="screen chat" data-screen="chat" hidden>
-      <h1 tabindex="-1" id="chat-title">모델을 불러오는 중…</h1>
-      <form class="ask" id="ask-form" novalidate>
-        <label for="question" class="visually-hidden">질문</label>
-        <textarea id="question" name="question" rows="2" maxlength="500" autocomplete="off"
-                  placeholder="무엇이 궁금한가요? 예) 통세척 방법, 4E 에러"></textarea>
-        <div class="ask-row">
-          <span class="counter" id="counter">500자 남음</span>
-          <button type="submit" class="send" id="send">물어보기</button>
-        </div>
-        <p class="form-error" id="form-error" role="alert" hidden></p>
-        <p class="notice" id="pii-note" hidden>개인정보는 입력하지 마세요. 입력하신 전화번호·이메일 등은 가린 뒤 처리했어요</p>
-      </form>
-      <div class="examples" id="examples"></div>
-      <section class="result" id="result" aria-live="polite"></section>
       <p class="small-note">비영리 학습용 포트폴리오 · 설명서 저작권은 각 제조사</p>
+      <div class="thread" id="thread"></div>
+      <div class="suggestions" id="suggestions" role="group" aria-label="추천 질문"></div>
+      <p class="visually-hidden" id="chat-status" aria-live="polite"></p>
+      <form class="composer" id="ask-form" novalidate>
+        <p class="form-error" id="form-error" role="alert" hidden></p>
+        <p class="notice" id="pii-note" hidden><span class="icon icon-lock" aria-hidden="true"></span>
+          <span><strong>개인정보 안내</strong> 개인정보는 입력하지 마세요. 입력하신 전화번호·이메일 등은 가린 뒤 처리했어요</span></p>
+        <p class="notice" id="save-note" hidden><span class="icon icon-info" aria-hidden="true"></span>
+          <span><strong>저장 안내</strong> <span>이 대화는 저장되지 않아요</span></span></p>
+        <div class="composer-box">
+          <label for="question" class="visually-hidden">질문</label>
+          <textarea id="question" name="question" rows="1" maxlength="500" autocomplete="off"
+                    placeholder="무엇이 궁금한가요?"></textarea>
+          <button type="submit" class="send" id="send" aria-label="보내기">
+            <span class="icon icon-arrow-up" aria-hidden="true"></span></button>
+        </div>
+        <p class="composer-meta"><span>앞 대화를 기억해요 · 모델을 바꾸면 새 대화</span>
+          <span class="counter" id="counter">500자 남음</span></p>
+      </form>
     </section>
   </main>
 </body>
