@@ -229,3 +229,17 @@ def test_expand_query_appends_manual_terms_and_keeps_user_words():
     assert expand_query("에어컨 내부를 말리고 습기도 빼고 싶어요 방", terms) == "에어컨 내부를 말리고 습기도 빼고 싶어요 방 제습 기능 AI 건조"
     assert expand_query("제습 기능으로 방 습기 빼기", terms) == "제습 기능으로 방 습기 빼기"  # 이미 있는 용어는 덧붙이지 않음
     assert expand_query("필터 청소는요?", terms) == "필터 청소는요?"
+
+
+from measure.search_variants import apply_review  # noqa: E402
+
+
+def test_apply_review_deletes_and_fixes_and_rejects_unknown_names():
+    terms = {"제품 등록": ["세탁기 연결하기"], "적은때": ["살짝 더러워진 옷", "약하게 빨기"], "세탁": ["빨래만"]}
+    review = {"delete": ["세탁"], "remove_expressions": {"적은때": ["약하게 빨기"]},
+              "replace_expressions": {"제품 등록": {"세탁기 연결하기": "앱에 세탁기 등록"}}}
+    assert apply_review(terms, review) == {"제품 등록": ["앱에 세탁기 등록"], "적은때": ["살짝 더러워진 옷"]}
+    with pytest.raises(KeyError):
+        apply_review(terms, {"delete": ["없는 이름"]})
+    with pytest.raises(ValueError):
+        apply_review(terms, {"remove_expressions": {"적은때": ["없는 표현"]}})
