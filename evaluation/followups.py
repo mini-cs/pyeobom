@@ -43,8 +43,7 @@ def run_dialog(turns: list[dict], client) -> list[TurnResult]:
         resp = client(t["model_id"], t["question"], list(history))
         r = TurnResult(t["dialog_id"], int(t["turn"]))
         if "error_code" in resp:
-            r.error = resp["error_code"]
-            history.append({"question": t["question"], "answer": ""})
+            r.error = resp["error_code"]  # 오류 턴은 화면처럼 history에 넣지 않는다
         else:
             r.question_masked, r.rewritten_question = resp.get("question_masked", ""), resp.get("rewritten_question")
             r.found, r.answer = resp.get("found"), resp.get("answer", "")

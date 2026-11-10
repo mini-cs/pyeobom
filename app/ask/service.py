@@ -6,7 +6,7 @@ from app.answer.check import GUIDE_WARNING, NOT_FOUND_MESSAGE, Answer, parse_and
 from app.answer.prompting import build_messages
 from app.answer.rewrite import RewriteResult
 from app.core.brand_guard import guard_message
-from app.core.config import Settings
+from app.core.config import HISTORY_ANSWER_KEEP_LEN, Settings
 from app.core.observability import get_tracer
 from app.input_guard.pii import mask_history, mask_pii
 from app.input_guard.validation import validate_model_id, validate_question
@@ -37,6 +37,7 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
     question = validate_question(question, settings.max_question_len)
     question, pii_masked = mask_pii(question)  # 이후 임베딩·검색·AI에는 가린 질문만 간다
     history = mask_history(history or [])  # 앞 대화도 가린 뒤에만 질문 바꾸기 AI에 보낸다
+    history = [t | {"answer": t["answer"][:HISTORY_ANSWER_KEEP_LEN]} for t in history]  # 자르기는 가린 뒤(경계의 이메일이 잘려 남지 않게)
     tracer = get_tracer()  # 키가 없으면 무동작. 단계 시간·토큰·가린 질문만 기록한다
 
     with tracer.span("ask", question_masked=question, model_id=model_id):
@@ -44,7 +45,7 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
         chunks, diagnostic_added, result = [], False, None
         rewritten, rewrite_ms = None, None  # 바꾸기를 시도하지 않으면 rewrite_ms는 null(측정 평균 왜곡 방지)
         blocked = guard_message(question, deps.brand(model_id))  # 다른 제조사 이름·코드 질문은 AI 없이 안내(결정 A)
-        if history and not blocked:
+        if history and not blocked and not settings.force_fail:  # 실패 시연은 바꾸기 호출 없이 답변 단계에서 실패시킨다
             # 앞 대화는 질문 바꾸기에만 쓰고 답변 AI에는 넘기지 않는다(바뀐 질문 + 조각만)
             t = time.perf_counter()
             with tracer.span("rewrite", model=settings.rewrite_model) as span:
@@ -99,6 +100,7 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
         "pii_masked": pii_masked,
         "question_masked": question,
         "rewritten_question": rewritten,
+        "reason": "other_brand" if blocked else None,  # 화면이 다른 브랜드 안내를 구분하는 값
     }
     if debug:
         db_connect_ms = deps.timings.get("db_connect_ms", 0)

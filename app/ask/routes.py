@@ -12,7 +12,7 @@ from app.answer.llm import complete_json
 from app.answer.rewrite import rewrite_question
 from app.ask.service import Deps, answer_question
 from app.catalog.registry import load_models
-from app.core.config import get_settings
+from app.core.config import MAX_HISTORY_ANSWER_LEN, get_settings
 from app.core.db import get_conn
 from app.core.errors import AppError, make_error
 from app.core.observability import get_tracer
@@ -25,7 +25,7 @@ router = APIRouter()
 
 class HistoryTurn(BaseModel):
     question: str = Field(max_length=500)
-    answer: str = Field(max_length=1000)
+    answer: str = Field(max_length=MAX_HISTORY_ANSWER_LEN)
 
 
 class AskBody(BaseModel):
