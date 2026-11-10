@@ -24,6 +24,7 @@ class TurnResult:
     answer: str = ""
     cited_refs: list[str] = field(default_factory=list)
     retrieved_refs: list[str] = field(default_factory=list)
+    retrieved_chunk_ids: list[int] = field(default_factory=list)  # 받은 조각 번호(가이드는 문서 단위 표기라 조각 번호로)
     ms: int | None = None
     rewrite_ms: int | None = None
     error: str = ""
@@ -48,6 +49,7 @@ def run_dialog(turns: list[dict], client) -> list[TurnResult]:
             r.question_masked, r.rewritten_question = resp.get("question_masked", ""), resp.get("rewritten_question")
             r.found, r.answer = resp.get("found"), resp.get("answer", "")
             r.cited_refs, r.retrieved_refs = resp.get("cited_refs", []), resp.get("retrieved_refs", [])
+            r.retrieved_chunk_ids = resp.get("retrieved_chunk_ids", [])
             r.ms, r.rewrite_ms = resp.get("latency_ms"), resp.get("rewrite_ms")
             history.append({"question": r.question_masked, "answer": r.answer})
         history = history[-MAX_HISTORY:]
@@ -56,7 +58,7 @@ def run_dialog(turns: list[dict], client) -> list[TurnResult]:
 
 
 RESULT_COLUMNS = ["dialog_id", "turn", "type", "model_id", "question", "question_masked", "expected_rewrite_intent",
-                  "rewritten_question", "expected_found", "got_found", "found_ok", "expected_ref", "cited_refs", "ref_hit",
+                  "rewritten_question", "expected_found", "got_found", "found_ok", "expected_ref", "cited_refs", "retrieved_chunk_ids", "ref_hit",
                   "hallucinated", "rewrite_used", "rewrite_ms", "latency_ms", "error", "answer", "human_rewrite_ok", "human_verdict"]
 
 
@@ -87,7 +89,8 @@ def run_all(rows: list[dict], client) -> list[dict]:
         for row, r in zip(turns, run_dialog(turns, client)):
             out.append({k: row.get(k, "") for k in RESULT_COLUMNS} | score_turn(row, r) | {
                 "question_masked": r.question_masked, "rewritten_question": r.rewritten_question or "",
-                "got_found": r.found, "cited_refs": "|".join(r.cited_refs), "rewrite_ms": r.rewrite_ms,
+                "got_found": r.found, "cited_refs": "|".join(r.cited_refs),
+                "retrieved_chunk_ids": "|".join(map(str, r.retrieved_chunk_ids)), "rewrite_ms": r.rewrite_ms,
                 "latency_ms": r.ms, "error": r.error, "answer": r.answer, "human_rewrite_ok": "", "human_verdict": ""})
     return out
 

@@ -102,7 +102,8 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
     }
     if debug:
         db_connect_ms = deps.timings.get("db_connect_ms", 0)
-        body |= {"retrieved_refs": [c.ref for c in chunks], "cited_refs": [c.ref for c in result.citations],
+        body |= {"retrieved_refs": [c.ref for c in chunks], "retrieved_chunk_ids": [c.id for c in chunks],
+                 "cited_refs": [c.ref for c in result.citations],
                  "diagnostic_added": diagnostic_added, "embed_ms": embed_ms, "db_connect_ms": db_connect_ms,
                  "search_ms": max(search_total_ms - db_connect_ms, 0), "llm_ms": llm_ms, "rewrite_ms": rewrite_ms}
     return body

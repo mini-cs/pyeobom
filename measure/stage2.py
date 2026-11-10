@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRICE_IN, PRICE_OUT = 0.10, 0.50  # 답변 모델 gpt-6-luna 1M 토큰당 달러(장부와 같은 단가). 임베딩은 방법마다 1회로 같아 뺌
 COLUMNS = ["id", "card", "method", "type", "question", "expected_ref", "found", "answer", "cited_refs", "retrieved_refs",
+           "retrieved_chunk_ids",
            "diagnostic_added", "latency_ms", "llm_ms", "input_tokens", "output_tokens", "cost_usd", "rule_blocked", "error",
            "human_verdict"]
 
@@ -25,6 +26,18 @@ _C312 = ("가이드 조각 312(세탁통과 배수 호스 녹이기)에 \"세탁
          "1~2시간 정도 배수펌프 내부가 녹기를 기다려주세요\"가 있음(붓는 곳은 세탁통). 조각 300에는 50~60℃·1~2시간 내용이 없음"
          "(수건 5분, 급수 호스는 50ºC 이하 물)")
 BLIND_NOTES = {"p01-1": _C312, "p01-2": _C312}
+
+
+def result_row(case: dict, method: str, resp: dict, err: str, timings: dict) -> dict:
+    inp, outp = timings.get("input_tokens", 0), timings.get("output_tokens", 0)
+    return {"id": case["id"], "card": case["card"], "method": method, "type": case["type"], "question": case["question"],
+            "expected_ref": case["expected_ref"], "found": resp.get("found"), "answer": resp.get("answer", err),
+            "cited_refs": "|".join(resp.get("cited_refs", [])), "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
+            "retrieved_chunk_ids": "|".join(map(str, resp.get("retrieved_chunk_ids", []))),
+            "diagnostic_added": resp.get("diagnostic_added"), "latency_ms": resp.get("latency_ms"), "llm_ms": resp.get("llm_ms"),
+            "input_tokens": inp, "output_tokens": outp, "cost_usd": cost_usd(inp, outp),
+            "rule_blocked": bool(resp) and resp.get("embed_ms") == 0 and resp.get("llm_ms") == 0, "error": err,
+            "human_verdict": ""}
 
 
 def with_search(deps, search):
@@ -158,14 +171,7 @@ def main() -> None:
                 resp, err = answer_question(case["model_id"], case["question"], deps, settings, debug=True), ""
             except AppError as e:
                 resp, err = {}, e.code
-            inp, outp = deps.timings.get("input_tokens", 0), deps.timings.get("output_tokens", 0)
-            rows.append({"id": case["id"], "card": case["card"], "method": m, "type": case["type"], "question": case["question"],
-                         "expected_ref": case["expected_ref"], "found": resp.get("found"), "answer": resp.get("answer", err),
-                         "cited_refs": "|".join(resp.get("cited_refs", [])), "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
-                         "diagnostic_added": resp.get("diagnostic_added"), "latency_ms": resp.get("latency_ms"), "llm_ms": resp.get("llm_ms"),
-                         "input_tokens": inp, "output_tokens": outp, "cost_usd": cost_usd(inp, outp),
-                         "rule_blocked": bool(resp) and resp.get("embed_ms") == 0 and resp.get("llm_ms") == 0, "error": err,
-                         "human_verdict": ""})
+            rows.append(result_row(case, m, resp, err, deps.timings))
             print(case["id"], m, resp.get("found"), resp.get("latency_ms"), "|".join(resp.get("cited_refs", [])), err, flush=True)
 
     today = datetime.date.today().isoformat()

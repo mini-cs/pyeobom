@@ -16,7 +16,8 @@ from ingest.__main__ import load_env
 
 ROOT = Path(__file__).resolve().parents[1]
 COLUMNS = ["id", "type", "model_id", "question", "expected_found", "got_found", "correct", "ref_hit", "hallucinated",
-           "error", "latency_ms", "failure", "expected_ref", "cited_refs", "retrieved_refs", "answer", "human_verdict"]
+           "error", "latency_ms", "failure", "expected_ref", "cited_refs", "retrieved_refs", "retrieved_chunk_ids", "answer",
+           "human_verdict"]
 
 
 def _mark(v) -> str:
@@ -118,6 +119,7 @@ def main() -> None:
         rows.append(score | {"model_id": case["model_id"], "question": case["question"], "expected_ref": case["expected_ref"],
                              "cited_refs": "|".join(resp.get("cited_refs", [])),
                              "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
+                             "retrieved_chunk_ids": "|".join(map(str, resp.get("retrieved_chunk_ids", []))),
                              "answer": resp.get("answer", resp.get("error_code", ""))})
         print(f"{case['id']} {score['type']:16s} 정답={_mark(score['correct'])} 근거={_mark(score['ref_hit'])} "
               f"환각={_mark(score['hallucinated'])} 실패={score['failure'] or ''} {'오류' if score['error'] else score['latency_ms']}ms", flush=True)

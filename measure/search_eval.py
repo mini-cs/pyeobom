@@ -45,10 +45,12 @@ def run_eval(cases: list[dict], embed: Callable, search: Callable, diagnostic: C
             query = transform(query, c["model_id"])
         chunks = search(c["model_id"], embed(query), query, DEPTH)
         top = chunks[:top_k]
-        diag = [d.ref for d in diagnostic(c["model_id"]) if d.id not in {x.id for x in top}] if needs_diagnostic(query, top) else []
+        extra = [d for d in diagnostic(c["model_id"]) if d.id not in {x.id for x in top}] if needs_diagnostic(query, top) else []
+        diag, diag_ids = [d.ref for d in extra], [str(d.id) for d in extra]
         rank = expected_rank(chunks, refs)
         rows.append({"id": c["id"], "model_id": c["model_id"], "expected_ref": c["expected_ref"], "rank": rank,
                      "top5": "|".join(x.ref for x in top), "diag": "|".join(diag),
+                     "top5_ids": "|".join(str(x.id) for x in top), "diag_ids": "|".join(diag_ids),
                      "hit5_or_diag": bool(rank and rank <= top_k) or any(r in diag for r in refs)})
     return rows
 
