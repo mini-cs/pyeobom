@@ -4,7 +4,7 @@ from pathlib import Path
 PUBLIC = Path(__file__).resolve().parents[2] / "public"
 TITLE = "펴봄 — 가전 설명서, 대신 펴 봐 드려요"
 SUBTITLE = "공식 설명서에서 근거를 찾아 페이지와 함께 알려 드려요"
-FOOTER = "비영리 학습용 포트폴리오이며, 설명서 저작권은 각 제조사에 있습니다. 정확한 내용은 공식 설명서를 확인하세요."
+GUIDE = PUBLIC.parent / "docs" / "design" / "디자인-가이드.md"
 
 
 def read(name: str) -> str:
@@ -21,17 +21,51 @@ def test_head_has_exact_title_and_link_preview_text():
 
 
 def test_intro_and_footer_copy_are_exact():
+    # v1.5 랜딩(설계 2절 ①, 시안 5번)과 카테고리·모델 화면 문구
     html = read("index.html")
-    for text in ["펴봄", "세탁기·에어컨, 설명서 대신 물어보세요", SUBTITLE,
-                 "공식 설명서 근거", "근거 페이지 표시", "모르면 모른다고 해요", FOOTER]:
+    for text in ["펴봄", "가전 설명서, 대신 펴 봐 드려요", "고른 모델의 공식 설명서에서 근거를 찾아 답해요.",
+                 "근거 쪽을 보여 줘요", "설명서 몇 쪽인지와 원문을 함께",
+                 "모르면 모른다고 해요", "설명서에 없으면 지어내지 않아요",
+                 "개인정보는 적지 마세요", "적어도 AI에 보내기 전에 가려요", "시작하기",
+                 "비영리 학습용 포트폴리오예요. 설명서 저작권은 각 제조사에 있어요.",
+                 "어떤 가전이 궁금하세요?", "곧 추가",
+                 "제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요."]:
         assert text in html, text
 
 
 def test_styles_use_only_design_tokens_for_colors():
     css = read("styles.css")
     root, rest = css.split("}", 1) if css.lstrip().startswith(":root") else ("", css)
-    assert "--color-primary: #1F5E5B" in root   # 디자인 가이드 토큰을 그대로 씀
+    assert "--color-text: #111111" in root   # 디자인 가이드 v1.5 토큰을 그대로 씀
     assert not re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", rest), "색은 :root의 CSS 변수만 쓴다(디자인 가이드)"
+
+
+def declarations(block: str) -> dict:
+    return dict(re.findall(r"(--[\w-]+):\s*([^;]+);", block))
+
+
+def test_root_tokens_match_design_guide_block():
+    # 색·글꼴·크기·간격 토큰이 가이드 7절 CSS 블록과 같다(더 많지도 적지도 않게)
+    guide = re.search(r"```css\n(:root \{.*?\})\n```", GUIDE.read_text(encoding="utf-8"), re.S)[1]
+    root = read("styles.css").split("}", 1)[0]
+    assert declarations(root) == declarations(guide)
+
+
+def test_self_hosted_fonts_and_icons_with_licenses():
+    # Pretendard 1.3.9 woff2-subset 공식 파일(결정기록 024 크기)과 Tabler 아이콘, 각 라이선스 원문
+    sizes = {"Pretendard-Regular.subset.woff2": 267_096, "Pretendard-SemiBold.subset.woff2": 268_752,
+             "Pretendard-Bold.subset.woff2": 270_784}
+    for name, size in sizes.items():
+        assert (PUBLIC / "fonts" / name).stat().st_size == size, name
+    assert "Reserved Font Name Pretendard" in read("fonts/LICENSE.txt")
+    assert "MIT License" in read("icons/LICENSE") and "Paweł Kuna" in read("icons/LICENSE")
+    css = read("styles.css")
+    assert "font-display: swap" in css
+    urls = re.findall(r'url\("(/(?:fonts|icons)/[^"]+)"\)', css)
+    assert {u for u in urls if u.startswith("/fonts/")} == {f"/fonts/{n}" for n in sizes}
+    assert any(u.startswith("/icons/") for u in urls)
+    for u in urls:   # CSS가 부르는 글꼴·아이콘 파일이 모두 있다
+        assert (PUBLIC / u.lstrip("/")).is_file(), u
 
 
 def test_script_never_injects_api_text_as_html():
