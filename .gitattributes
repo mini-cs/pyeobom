@@ -2,3 +2,5 @@
 * text=auto
 # 평가 세트는 작업 공간에서도 줄 끝을 LF로(P 세트 봉인 해시가 체크아웃 때 바뀌지 않게)
 evaluation/*.csv text eol=lf
+# 판정 후 공개한 대응표도 해시를 적어 두므로 줄 끝을 LF로
+evaluation/results/*-blind-key-*.json text eol=lf
