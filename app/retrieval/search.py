@@ -29,10 +29,35 @@ LIMIT %(k)s
 """
 
 
-def search_vector(conn, model_id: str, query_vec: list[float], k: int) -> list[Chunk]:
-    # 모델 필터는 SQL에서 한다(프롬프트에 맡기지 않음). list는 double precision[]로 넘어가므로 ::vector로 형을 정한다
+# 검색 개선 실험 색인(measure/chunk_variants.sql). 값: 원래 조각 임베딩도 후보에 넣는지(M2는 max(조각, 만든 질문) 규칙)
+VARIANTS = {"m1_title": False, "m2_question": True}
 
-    rows = conn.execute(SQL, {"q": query_vec, "model_id": model_id, "k": k}).fetchall()
+VARIANT_SQL = """
+WITH cand AS (
+  SELECT v.chunk_id, v.embedding <=> %(q)s::vector AS score FROM chunk_variants v WHERE v.variant = %(variant)s
+  UNION ALL
+  SELECT c.id, c.embedding <=> %(q)s::vector FROM chunks c WHERE %(with_original)s
+), best AS (SELECT chunk_id, min(score) AS score FROM cand GROUP BY chunk_id)
+SELECT c.id, c.doc_id, d.doc_type, d.title, d.source_url, c.page, c.content, b.score
+FROM best b
+JOIN chunks c ON c.id = b.chunk_id
+JOIN document_models dm ON dm.doc_id = c.doc_id
+JOIN documents d ON d.id = c.doc_id
+WHERE dm.model_id = %(model_id)s
+ORDER BY b.score
+LIMIT %(k)s
+"""
+
+
+def search_vector(conn, model_id: str, query_vec: list[float], k: int, variant: str | None = None) -> list[Chunk]:
+    # 모델 필터는 SQL에서 한다(프롬프트에 맡기지 않음). list는 double precision[]로 넘어가므로 ::vector로 형을 정한다
+    params = {"q": query_vec, "model_id": model_id, "k": k}
+    if variant is None:  # 운영
+        return [Chunk(*row) for row in conn.execute(SQL, params).fetchall()]
+    if variant not in VARIANTS:
+        raise ValueError(f"모르는 실험 색인: {variant}")
+    # 조각마다 가장 가까운 거리를 점수로 쓰고, 답변에는 원래 조각 본문이 간다
+    rows = conn.execute(VARIANT_SQL, params | {"variant": variant, "with_original": VARIANTS[variant]}).fetchall()
     return [Chunk(*row) for row in rows]
 
 
