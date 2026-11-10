@@ -89,7 +89,7 @@ def test_method_fns_picks_search_and_transform():
     terms = {"aircon-lg-sq06fa1wds": {"제습 기능": ["방 습기 빼기"]}}
     search, transform = method_fns("m0", base, variant, terms)
     assert transform is None and search("x", [0], "q", 20) == [] and calls[-1] == ("base", "x", 20)
-    for method, name in (("m1", "m1_title"), ("m2", "m2_question")):
+    for method, name in (("m1", "m1_title"), ("m2", "m2_question"), ("m12", "m1_m2")):
         search, transform = method_fns(method, base, variant, terms)
         search("x", [0], "q", 20)
         assert transform is None and calls[-1] == (name, "x", 20)
