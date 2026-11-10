@@ -58,3 +58,14 @@ def test_error_counts_as_incorrect_and_error():
 
 def test_human_verdict_left_blank():
     assert score_case(case(), resp())["human_verdict"] == ""
+
+
+def test_rule_blocked_answer_is_left_out_of_latency_average():
+    # 브랜드 규칙으로 막혀 임베딩·AI를 부르지 않은 응답(0ms)은 응답 시간 평균에서 뺀다
+    blocked = score_case(case(found="false", ref="", keywords="", type_="trap_other_model"),
+                         resp(found=False, cited=[], retrieved=[], latency=0) | {"embed_ms": 0, "llm_ms": 0})
+    normal = score_case(case(), resp(latency=4000) | {"embed_ms": 300, "llm_ms": 3000})
+    assert blocked["rule_blocked"] is True and normal["rule_blocked"] is False
+    assert score_case(case(), resp())["rule_blocked"] is False  # 디버그 시간이 없는 응답은 막힌 것으로 보지 않음
+    s = summarize([blocked, normal])
+    assert s["latency_avg_ms"] == 4000 and s["latency_max_ms"] == 4000

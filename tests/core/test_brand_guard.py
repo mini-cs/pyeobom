@@ -105,6 +105,15 @@ def test_code_inside_english_word_is_not_blocked(question):
     assert other_brand_code(question, "삼성") is None
 
 
+
+@pytest.mark.parametrize("question, expected", [
+    ("삼성 세탁기에 IE 에러가 떴어요", "IE"), ("IE가 떴어요", "IE"), ("IE 코드가 나와요", "IE"),
+    ("PE 소재라고 표시돼 있어요", None),  # 두 글자 코드는 에러 상황 말(에러·오류·코드·뜨다)이 있을 때만 막는다
+    ("PE라고 써 있는 빨래망 써도 돼요?", None),
+])
+def test_two_letter_code_needs_error_words(question, expected):
+    assert other_brand_code(question, "삼성") == expected
+
 def test_unknown_brand_is_not_blocked():
     assert other_brand_code("IE 에러가 떴어요", "") is None
 
