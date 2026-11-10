@@ -37,7 +37,9 @@ def test_styles_use_only_design_tokens_for_colors():
 def test_script_never_injects_api_text_as_html():
     js = read("app.js")
     assert "/api/models" in js and "/api/ask" in js
-    assert "innerHTML" not in js and "insertAdjacentHTML" not in js   # API 글자는 textContent로만 넣는다(XSS 방지)
+    for path in PUBLIC.rglob("*.js"):   # public/ 아래 모든 .js(하위 폴더 포함)
+        text = path.read_text(encoding="utf-8")
+        assert "innerHTML" not in text and "insertAdjacentHTML" not in text, path.name   # API 글자는 textContent로만 넣는다(XSS 방지)
 
 
 def test_reduced_motion_disables_collapse_animation():
