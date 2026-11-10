@@ -57,4 +57,4 @@ def test_confirmed_additions_keep_test_file_sealed():
     assert {"chunk:300", "chunk:312"} <= set(dev["p01-1"]) and {"chunk:300", "chunk:312"} <= set(dev["p01-2"])
     assert {"manual:38", "manual:39", "manual:11", "manual:19"} <= set(dev["p19-2"])
     assert "manual:11" not in dev["p19-1"]  # 응답자 2 문장에만
-    assert "확정" in (EVAL / "paraphrase_dev.csv").read_text(encoding="utf-8-sig").split("id,card")[0]
+    assert "채팅 Claude가 원문 대조, 사용자가 확정" in (EVAL / "paraphrase_dev.csv").read_text(encoding="utf-8-sig").split("id,card")[0]
