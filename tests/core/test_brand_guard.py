@@ -75,6 +75,7 @@ def test_other_brand_question_skips_search_and_ai():
     assert body["citations"] == []
     assert body["official_url"] == "https://example.com/samsung"
     assert body["cited_refs"] == [] and body["retrieved_refs"] == []
+    assert body["reason"] == "other_brand"
 
 
 # ── 다른 브랜드 에러 코드(결정 A의 빈틈, 결정기록 027) ──
@@ -137,3 +138,12 @@ def test_other_brand_code_skips_search_and_ai():
     body = answer_question("washer-samsung-wd90h25", "IE 에러가 떴어요", deps, settings, debug=True)
     assert body["found"] is False and body["answer"] == CODE_MESSAGE
     assert body["citations"] == [] and body["retrieved_refs"] == []
+    assert body["reason"] == "other_brand"  # 에러 코드 규칙으로 막혀도 같은 값
+
+
+def test_ordinary_not_found_has_null_reason():
+    deps = Deps(embed_query=lambda q: [0.1], search=lambda m, v, q, k: [], complete=_fail, supported_ids={"washer-samsung-wd90h25"},
+                official_url=lambda m: "https://example.com/samsung", brand=lambda m: "삼성")
+    settings = Settings(openai_api_key="", database_url="", openai_embed_model="m", openai_chat_model="m", embed_dim=3)
+    body = answer_question("washer-samsung-wd90h25", "통세척은 어떻게 해요?", deps, settings)
+    assert body["found"] is False and body["reason"] is None

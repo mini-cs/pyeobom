@@ -45,3 +45,20 @@ def test_eval_questions_are_unchanged():
     assert len(questions) == 30
     changed = [q for q in questions if mask_pii(q) != (q, False)]
     assert changed == []
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("test@example.com으로 보내 주세요", "[이메일]으로 보내 주세요"),
+    ("메일은 a.b-c@mail.co.kr로 주세요", "메일은 [이메일]로 주세요"),
+    ("test@예시.한국으로", "[이메일]으로"),
+    ("test@예시.한국", "[이메일]"),
+    ("test@example.com", "[이메일]"),
+])
+def test_email_mask_keeps_korean_particle(raw, expected):
+    masked, found = mask_pii(raw)
+    assert masked == expected and found is True
+
+
+def test_uppercase_email_is_masked():
+    masked, found = mask_pii("TEST@EXAMPLE.COM")
+    assert "@" not in masked and found is True
