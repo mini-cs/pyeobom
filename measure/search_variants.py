@@ -18,10 +18,12 @@ import re
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent / "out"
-M2_PROMPT = (Path(__file__).resolve().parent / "prompts" / "m2_questions_v1.txt").read_text(encoding="utf-8")
+M2_PROMPT = (Path(__file__).resolve().parent / "prompts" / "m2_questions_v2.txt").read_text(encoding="utf-8")  # v1은 기록용
 M2_FORMAT = {"type": "json_schema", "name": "questions", "strict": True,
-             "schema": {"type": "object", "properties": {"questions": {"type": "array", "items": {"type": "string"}}},
-                        "required": ["questions"], "additionalProperties": False}}
+             "schema": {"type": "object", "required": ["items"], "additionalProperties": False, "properties": {"items": {
+                 "type": "array", "items": {"type": "object", "required": ["question", "evidence"], "additionalProperties": False,
+                                            "properties": {"question": {"type": "string"}, "evidence": {"type": "string"}}}}}}}
+_ASKS_NUMBER = re.compile(r"몇|며칠")
 _SKIP_START = re.compile(r"^([•\-–※*·→]|\d|[a-z]\s|[①-⑳]|\(|주의|경고|참고|알아두기)")
 _SENTENCE_END = re.compile(r"([.:?!]|요|다|[을를이가은는에의로와과고며서면])$")
 
@@ -83,13 +85,19 @@ def build_m2_messages(model_names: list[str], doc_title: str, page: int | None, 
             {"role": "user", "content": f"모델: {', '.join(model_names)}\n문서: {doc_title} ({where})\n<조각>\n{body}\n</조각>"}]
 
 
-def parse_questions(raw: str, max_n: int = 5, max_len: int = 60) -> list[str]:
-    out = []
-    for q in json.loads(raw)["questions"]:
-        q = q.strip()
-        if q and len(q) <= max_len and q not in out:
-            out.append(q)
-    return out[:max_n]
+def check_items(items: list[dict], chunk: str, max_n: int = 5, max_len: int = 60) -> tuple[list[dict], list[dict]]:
+    """근거 문장이 조각에 그대로 있는 질문만 남긴다(공백·줄바꿈 차이는 무시). 버린 질문은 이유와 함께 돌려준다"""
+    flat = lambda t: " ".join(t.split())
+    body, kept, dropped = flat(chunk), [], []
+    for it in items:
+        q, e = it["question"].strip(), flat(it["evidence"])
+        reason = ("근거 없음" if not e else "근거가 조각에 없음" if e not in body
+                  else "숫자를 묻는데 근거에 숫자 없음" if _ASKS_NUMBER.search(q) and not re.search(r"\d", e)
+                  else "60자 초과" if not q or len(q) > max_len
+                  else "중복" if q in {k["question"] for k in kept}
+                  else "5개 초과" if len(kept) >= max_n else None)
+        (dropped if reason else kept).append({"question": q, "evidence": e} | ({"reason": reason} if reason else {}))
+    return kept, dropped
 
 
 def sample_chunks(rows: list[dict], doc_ids: list[str], seed: int) -> list[dict]:
@@ -209,12 +217,13 @@ def m2_sample(names: dict[str, str]) -> None:
     for r in sample_chunks(rows, M2_SAMPLE_DOCS, M2_SEED):
         content = r["text"].split("\n", 1)[1]
         resp = client.responses.create(model=settings.openai_chat_model, reasoning={"effort": settings.reasoning_effort},
-                                       max_output_tokens=600, text={"format": M2_FORMAT},
+                                       max_output_tokens=1000, text={"format": M2_FORMAT},
                                        input=build_m2_messages([names[m] for m in models[r["doc_id"]]], titles[r["doc_id"]], r["page"], content))
         for k in usage:
             usage[k] += getattr(resp.usage, k)
+        kept, dropped = check_items(json.loads(resp.output_text)["items"], content)
         out.append({"chunk_id": r["chunk_id"], "doc_id": r["doc_id"], "page": r["page"], "title": r["title"],
-                    "chunk": content, "questions": parse_questions(resp.output_text)})
+                    "chunk": content, "questions": kept, "dropped": dropped})
     OUT.mkdir(exist_ok=True)
     path = OUT / "m2-sample.json"  # 조각 본문이 들어 있어 저장소 밖에만 둔다
     path.write_text(json.dumps({"model": settings.openai_chat_model, "reasoning": settings.reasoning_effort,
