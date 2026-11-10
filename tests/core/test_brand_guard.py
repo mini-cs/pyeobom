@@ -7,7 +7,7 @@ import pytest
 
 from app.ask.service import Deps, answer_question
 from app.catalog.registry import load_models
-from app.core.brand_guard import mentions_other_brand
+from app.core.brand_guard import guard_message, mentions_other_brand, other_brand_code
 from app.core.config import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -75,3 +75,65 @@ def test_other_brand_question_skips_search_and_ai():
     assert body["citations"] == []
     assert body["official_url"] == "https://example.com/samsung"
     assert body["cited_refs"] == [] and body["retrieved_refs"] == []
+
+
+# ── 다른 브랜드 에러 코드(결정 A의 빈틈, 결정기록 027) ──
+CODE_MESSAGE = "이 코드는 지금 고른 삼성 모델 설명서에 없는 코드예요. 다른 제조사 제품이라면 모델을 바꿔 물어봐 주세요."
+
+
+def test_q18_other_brand_code_is_blocked():
+    assert other_brand_code("삼성 세탁기에 IE 에러가 떴어요. 무슨 뜻이에요?", "삼성") == "IE"
+    assert guard_message("삼성 세탁기에 IE 에러가 떴어요. 무슨 뜻이에요?", "삼성") == CODE_MESSAGE
+
+
+@pytest.mark.parametrize("question, model_brand, expected", [
+    ("UE 에러가 떴어요", "삼성", "UE"), ("5C가 떠요", "LG", "5C"),
+    ("tE가 떴어요", "삼성", "TE"), ("ie 에러가 나요", "삼성", "IE"),  # 대소문자 무시
+    ("CH 05라고 떠요", "삼성", "CH05"),  # 글자와 숫자 사이 공백
+    ("LE 에러가 떴어요", "삼성", None), ("FE 에러가 떴어요", "LG", None),  # 두 브랜드 목록에 모두 있음
+    ("에어컨에 CH10이 떴어요", "LG", None),  # q24: 어느 목록에도 없음
+    ("CH05가 떠요", "LG", None),  # 같은 브랜드의 다른 제품 코드
+    ("4E가 떴어요", "삼성", None),  # 고른 브랜드 목록에 있음
+])
+def test_other_brand_code(question, model_brand, expected):
+    assert other_brand_code(question, model_brand) == expected
+
+
+@pytest.mark.parametrize("question", ["IEEE 표준 표시가 있어요", "Wi-Fi 표시가 안 떠요", "PIE 모양 표시가 떠요",
+                                      "OEM 부품이라고 써 있어요", "TEST 표시가 떠요", "CLEAN 표시가 떴어요"])
+def test_code_inside_english_word_is_not_blocked(question):
+    assert other_brand_code(question, "삼성") is None
+
+
+
+@pytest.mark.parametrize("question, expected", [
+    ("삼성 세탁기에 IE 에러가 떴어요", "IE"), ("IE가 떴어요", "IE"), ("IE 코드가 나와요", "IE"),
+    ("PE 소재라고 표시돼 있어요", None),  # 두 글자 코드는 에러 상황 말(에러·오류·코드·뜨다)이 있을 때만 막는다
+    ("PE라고 써 있는 빨래망 써도 돼요?", None),
+])
+def test_two_letter_code_needs_error_words(question, expected):
+    assert other_brand_code(question, "삼성") == expected
+
+def test_unknown_brand_is_not_blocked():
+    assert other_brand_code("IE 에러가 떴어요", "") is None
+
+
+def test_evaluation_questions_blocked_only_q18():
+    with open(ROOT / "evaluation" / "questions.csv", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert [r["id"] for r in rows if guard_message(r["question"], BRANDS[r["model_id"]])] == ["q18"]
+
+
+def test_screen_example_questions_pass_both_rules():
+    js = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
+    examples = json.loads(re.sub(r",\s*}", "}", re.search(r"const EXAMPLES = (\{.*?\});", js, re.S).group(1)))
+    assert [q for mid, qs in examples.items() for q in qs if guard_message(q, BRANDS[mid])] == []
+
+
+def test_other_brand_code_skips_search_and_ai():
+    deps = Deps(embed_query=_fail, search=_fail, complete=_fail, supported_ids={"washer-samsung-wd90h25"},
+                official_url=lambda m: "https://example.com/samsung", diagnostic=_fail, brand=lambda m: "삼성")
+    settings = Settings(openai_api_key="", database_url="", openai_embed_model="m", openai_chat_model="m", embed_dim=3)
+    body = answer_question("washer-samsung-wd90h25", "IE 에러가 떴어요", deps, settings, debug=True)
+    assert body["found"] is False and body["answer"] == CODE_MESSAGE
+    assert body["citations"] == [] and body["retrieved_refs"] == []

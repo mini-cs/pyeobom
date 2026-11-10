@@ -22,6 +22,8 @@ def score_case(case: dict, resp: dict) -> dict:
         "id": case["id"], "type": case["type"], "expected_found": case["expected_found"], "got_found": got_found,
         "correct": correct, "ref_hit": ref_hit, "hallucinated": hallucinated, "error": error,
         "latency_ms": None if error else resp.get("latency_ms"), "failure": failure, "human_verdict": "",
+        # 규칙(다른 브랜드 등)으로 막혀 임베딩·AI를 부르지 않은 응답. 디버그 시간이 있을 때만 판단한다
+        "rule_blocked": not error and resp.get("embed_ms") == 0 and resp.get("llm_ms") == 0,
     }
 
 
@@ -32,7 +34,7 @@ def _rate(values: list) -> float:
 def summarize(results: list[dict]) -> dict:
     answerable = [r for r in results if r["expected_found"] == "true"]
     traps = [r for r in results if r["expected_found"] != "true"]
-    latencies = [r["latency_ms"] for r in results if r["latency_ms"] is not None]
+    latencies = [r["latency_ms"] for r in results if r["latency_ms"] is not None and not r.get("rule_blocked")]
     return {
         "accuracy": _rate([r["correct"] for r in answerable]),
         "ref_hit_rate": _rate([r["ref_hit"] for r in answerable]),
