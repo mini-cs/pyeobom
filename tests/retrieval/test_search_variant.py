@@ -22,13 +22,16 @@ def test_default_is_exactly_the_production_query():
     assert conn.calls == [(S.SQL, {"q": [0.1], "model_id": "washer-lg-fx25", "k": 5})]
 
 
-@pytest.mark.parametrize("variant, with_original", [("m1_title", False), ("m2_question", True)])
-def test_variant_uses_experiment_index(variant, with_original):
+@pytest.mark.parametrize("variant, kinds, with_original", [
+    ("m1_title", ["m1_title"], False), ("m2_question", ["m2_question"], True),
+    ("m1_m2", ["m1_title", "m2_question"], False),  # 조합: max(M1 제목 붙인 조각, 그 조각의 M2 질문들), 원래 조각 임베딩은 M1이 대신
+])
+def test_variant_uses_experiment_index(variant, kinds, with_original):
     conn = FakeConn()
     search_vector(conn, "washer-lg-fx25", [0.1], 5, variant=variant)
     sql, params = conn.calls[0]
     assert "chunk_variants" in sql and sql != S.SQL
-    assert params == {"q": [0.1], "model_id": "washer-lg-fx25", "k": 5, "variant": variant, "with_original": with_original}
+    assert params == {"q": [0.1], "model_id": "washer-lg-fx25", "k": 5, "kinds": kinds, "with_original": with_original}
 
 
 def test_unknown_variant_is_rejected():
@@ -37,7 +40,7 @@ def test_unknown_variant_is_rejected():
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("variant", ["m1_title", "m2_question"])
+@pytest.mark.parametrize("variant", ["m1_title", "m2_question", "m1_m2"])
 def test_variant_query_runs_and_keeps_model_filter(conn, docs_of, variant):
     # 실험 행이 없어도 SQL이 돌아야 하고, 결과는 고른 모델 문서의 원래 조각(본문 그대로)이다
     from app.retrieval.embeddings import embed_query

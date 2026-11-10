@@ -107,7 +107,7 @@ done
 ```
 
 - `dev_server.py`는 로컬 확인 전용입니다. 배포에서는 `public/`을 Vercel CDN이 제공합니다(결정기록 013).
-- 디버그: `POST /api/ask?debug=true`이면 검색된 근거(`retrieved_refs`)와 단계별 시간(`embed_ms`·`db_connect_ms`·`search_ms`·`llm_ms`·`rewrite_ms`)이 응답에 붙습니다. `rewrite_ms`는 질문 바꾸기를 하지 않은 요청이면 `null`입니다.
+- 디버그: `POST /api/ask?debug=true`이면 검색된 근거(`retrieved_refs`, 조각 번호 `retrieved_chunk_ids`)와 단계별 시간(`embed_ms`·`db_connect_ms`·`search_ms`·`llm_ms`·`rewrite_ms`)이 응답에 붙습니다. `rewrite_ms`는 질문 바꾸기를 하지 않은 요청이면 `null`입니다.
 - **v1.5 API(이어지는 질문, 결정기록 023):**
   - 요청에 선택 항목 `history`: `[{"question", "answer"}]` 최대 3개(질문 500자·답 1,000자). 넘치거나 형식이 틀리면 `400 INVALID_REQUEST`. 없으면 1차와 똑같이 동작합니다.
   - 응답에 `question_masked`(개인정보를 가린 새 질문, 항상)와 `rewritten_question`(앞 대화로 바꾼 질문, 바꾸기에 성공했을 때만, 아니면 `null`)이 붙습니다.

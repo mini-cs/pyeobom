@@ -137,6 +137,9 @@ def test_code_missing_appends_diagnostic_chunks(fake):
     r = answer_question("washer-a", "CH10이 떴어요", fake.deps, S, debug=True)
     assert r["retrieved_refs"] == ["manual:32", "guide:guide-drum-5c", "manual:54"] and r["diagnostic_added"] is True
     assert 'chunk_id="9"' in fake.complete_calls[0][-1]["content"]   # 덧붙인 조각이 AI 맥락에 들어감
+    # 받은 조각은 문서 단위 표기(guide:…)와 별도로 조각 번호로도 남긴다(가이드는 문서 단위라 어느 조각인지 알 수 없었음)
+    assert r["retrieved_chunk_ids"] == [7, 8, 9]
+    assert "retrieved_chunk_ids" not in answer_question("washer-a", "통세척", Fake().deps, S)
 
 
 def test_model_without_diagnostic_refs_is_unchanged(fake):

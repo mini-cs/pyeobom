@@ -69,3 +69,10 @@ def test_rule_blocked_answer_is_left_out_of_latency_average():
     assert score_case(case(), resp())["rule_blocked"] is False  # 디버그 시간이 없는 응답은 막힌 것으로 보지 않음
     s = summarize([blocked, normal])
     assert s["latency_avg_ms"] == 4000 and s["latency_max_ms"] == 4000
+
+
+def test_result_csvs_keep_retrieved_chunk_ids():
+    # 3단계(30문항·이어지는 질문 세트) 결과에도 받은 조각 번호를 조각 단위로 남긴다
+    from evaluation.__main__ import COLUMNS
+    from evaluation.followups import RESULT_COLUMNS
+    assert "retrieved_chunk_ids" in COLUMNS and "retrieved_chunk_ids" in RESULT_COLUMNS

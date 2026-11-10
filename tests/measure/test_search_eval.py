@@ -44,6 +44,7 @@ def test_masks_pii_before_embedding_and_searches_top20_of_that_model():
     assert "010-1234-5678" not in fake.embedded[0]
     assert fake.searched == [("washer-lg-fx25", fake.embedded[0], 20)]
     assert rows[0]["rank"] == 2 and rows[0]["top5"] == "manual:9|manual:42"
+    assert rows[0]["top5_ids"] == "manual:9|manual:42" and rows[0]["diag_ids"] == ""  # 가짜 조각의 id가 ref와 같음
 
 
 def test_transform_runs_after_masking_and_feeds_search():
@@ -89,7 +90,7 @@ def test_method_fns_picks_search_and_transform():
     terms = {"aircon-lg-sq06fa1wds": {"제습 기능": ["방 습기 빼기"]}}
     search, transform = method_fns("m0", base, variant, terms)
     assert transform is None and search("x", [0], "q", 20) == [] and calls[-1] == ("base", "x", 20)
-    for method, name in (("m1", "m1_title"), ("m2", "m2_question")):
+    for method, name in (("m1", "m1_title"), ("m2", "m2_question"), ("m12", "m1_m2")):
         search, transform = method_fns(method, base, variant, terms)
         search("x", [0], "q", 20)
         assert transform is None and calls[-1] == (name, "x", 20)
