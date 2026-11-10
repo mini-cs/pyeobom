@@ -20,6 +20,13 @@ COLUMNS = ["id", "card", "method", "type", "question", "expected_ref", "found", 
            "human_verdict"]
 
 
+# 판정지에 적을 원문 확인(사실만, 사용자 요청 2026-11-10). 인용은 150자 이내
+_C312 = ("가이드 조각 312(세탁통과 배수 호스 녹이기)에 \"세탁통에 50~60ºC 정도의 따뜻한 물을 부은 다음, 세탁기 문(도어)을 닫고 "
+         "1~2시간 정도 배수펌프 내부가 녹기를 기다려주세요\"가 있음(붓는 곳은 세탁통). 조각 300에는 50~60℃·1~2시간 내용이 없음"
+         "(수건 5분, 급수 호스는 50ºC 이하 물)")
+BLIND_NOTES = {"p01-1": _C312, "p01-2": _C312}
+
+
 def with_search(deps, search):
     return dataclasses.replace(deps, search=search)
 
@@ -56,12 +63,68 @@ def judgment_rows(rows: list[dict], methods: list[str]) -> list[dict]:
     return out
 
 
+def blind_sheet(rows: list[dict], rng) -> tuple[list[dict], list[dict]]:
+    """방법 이름을 가린 판정지: 문장마다 서로 다른 답만 섞어 무작위 번호를 붙인다. key는 (문장, 방법) → 번호(판정 후 공개)"""
+    ids = list(dict.fromkeys(r["id"] for r in rows))
+    uniq = {i: list(dict.fromkeys(r["answer"] for r in rows if r["id"] == i)) for i in ids}
+    numbers = iter(rng.sample(range(100, 1000), sum(len(v) for v in uniq.values())))
+    sheet, no_of = [], {}
+    for i in ids:
+        texts = uniq[i][:]
+        rng.shuffle(texts)
+        answers = [{"no": next(numbers), "text": t} for t in texts]
+        no_of |= {(i, a["text"]): a["no"] for a in answers}
+        sheet.append({"id": i, "answers": answers})
+    return sheet, [{"id": r["id"], "method": r["method"], "no": no_of[(r["id"], r["answer"])]} for r in rows]
+
+
+BLIND_HEADER = """# 2단계 사람 판정지 (방법 이름 가림, 2026-11-10)
+
+판정 기준(측정 전 확정, 2026-11-10):
+- 근거에 없는 조치가 섞이면 **환각**
+- 근거는 있지만 질문 상황과 맞지 않으면 **오답**
+- 핵심 조치 일부만 있으면 **정답**
+- "설명서에 없다"고 했는데 실제로 있으면 **오답**
+- 함정에 찾지 못함이면 **정답**(B 기준)
+
+답 번호는 무작위이고 문장마다 순서를 섞었다. 글자까지 같은 답은 한 번만 적었다(같은 번호가 여러 방법의 답).
+"찾지 못함" = "설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요."
+"""
+
+
+def write_blind(result_csv: Path, notes: dict[str, str]) -> Path:
+    import json
+    import random
+
+    with open(result_csv, encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    sheet, key = blind_sheet(rows, random.SystemRandom())
+    first = {r["id"]: r for r in rows}
+    lines = [BLIND_HEADER]
+    for s in sheet:
+        r = first[s["id"]]
+        refs = r["expected_ref"].replace("manual:", "").replace("|", "·") or "-"
+        lines += [f"## {s['id']}{' (함정)' if r['type'] == 'trap' else ''}", f"- 질문: {r['question']}", f"- 정답 쪽: {refs}"]
+        if s["id"] in notes:
+            lines.append(f"- 원문 확인(사실): {notes[s['id']]}")
+        lines += [f"- **답 {a['no']}**: {a['text'].replace(chr(10), ' ')}  → 판정: " for a in s["answers"]] + [""]
+    out = ROOT / "measure" / "out"
+    (out / "stage2-blind-sheet.md").write_text("\n".join(lines), encoding="utf-8")
+    (out / "stage2-blind-key.json").write_text(json.dumps(key, ensure_ascii=False, indent=1), encoding="utf-8")  # 판정 후 공개
+    return out / "stage2-blind-sheet.md"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cases")
     ap.add_argument("--methods", nargs="+", default=["m0", "m2", "m12"])
-    ap.add_argument("--label", required=True)
+    ap.add_argument("--label")
+    ap.add_argument("--blind", action="store_true", help="cases 자리에 2단계 결과 CSV를 주면 방법 이름을 가린 판정지를 만든다")
     args = ap.parse_args()
+    if args.blind:
+        return print(write_blind(Path(args.cases), BLIND_NOTES))
+    if not args.label:
+        raise SystemExit("--label이 필요하다")
     if "test" in Path(args.cases).name:
         raise SystemExit("확인용 P 세트는 3단계 전까지 열지 않는다")
 
