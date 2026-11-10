@@ -341,10 +341,14 @@ def stored(page):
 
 def test_topbar_name_fits_one_line_at_360_for_every_model(open_page):
     page = open_page()
-    page.evaluate("document.fonts.ready")
     for m in MODELS:   # 모델이 늘어 넘치면 실패해야 한다(말줄임·줄바꿈으로 숨기지 않음)
         open_chat(page, m["id"])
         expect(page.locator("#chat-title")).to_have_text(m.get("short_name") or m["name"])
+        # 막대 글자(17px/600)의 Pretendard를 실제로 불러온 뒤 잰다(대체 글꼴로 재지 않게)
+        loaded = page.locator("#chat-title").evaluate("""async (h) => { const s = getComputedStyle(h);
+            const faces = await document.fonts.load(`${s.fontWeight} ${s.fontSize} Pretendard`);
+            return faces.map((f) => [f.family.replace(/"/g, ''), f.weight, f.status]); }""")
+        assert loaded == [["Pretendard", "600", "loaded"]], loaded
         expect(page.get_by_role("button", name="새 대화")).to_be_visible()
         box = page.locator("#chat-title").evaluate("""(h) => { const s = getComputedStyle(h);
             return {sw: h.scrollWidth, cw: h.clientWidth, height: h.getBoundingClientRect().height,
@@ -512,17 +516,69 @@ def test_double_enter_while_waiting_sends_once(open_page):
     expect(page.locator("#send")).to_be_enabled()
 
 
+def visible_save_notices(page):
+    return page.evaluate("""() => [...document.querySelectorAll('body *')].filter((e) =>
+        e.childElementCount === 0 && e.textContent.includes('이 대화는 저장되지 않아요') && e.checkVisibility()).length""")
+
+
 def test_save_failure_notice_once_and_answers_still_shown(open_page):
     init = "Storage.prototype.setItem = function () { throw new DOMException('가짜 공간 부족', 'QuotaExceededError'); };"
     page = open_page(ask=echo, init=init)
     open_chat(page, "washer-lg-fx25")
-    for i in range(1, 3):
-        send(page, f"가짜 질문 {i}")
-        wait_turns(page, i)
-    expect(page.locator('.turn[data-state="answer"]')).to_have_count(2)
-    notice = page.get_by_text("이 대화는 저장되지 않아요")
-    expect(notice).to_have_count(1)
-    expect(notice).to_be_visible()
+    assert visible_save_notices(page) == 0   # 저장에 실패하기 전에는 없다
+    send(page, "가짜 질문 1")
+    wait_turns(page, 1)
+    assert visible_save_notices(page) == 1
+    send(page, "가짜 질문 2")
+    wait_turns(page, 2)
+    expect(page.locator('.turn[data-state="answer"]')).to_have_count(2)   # 답은 그대로 보인다
+    assert visible_save_notices(page) == 1   # 같은 대화에서 두 번 실패해도 안내는 하나
+    page.get_by_role("button", name="새 대화").click()
+    expect(page.locator(".turn")).to_have_count(0)
+    assert visible_save_notices(page) == 0   # 새 대화에서는 꺼진다
+    send(page, "가짜 질문 3")
+    wait_turns(page, 1)
+    assert visible_save_notices(page) == 1   # 새 대화에서 실패하면 다시 한 번
+
+
+def test_first_answer_arriving_on_other_screen_keeps_url_and_answer(open_page):
+    held = []
+    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+    go_category(page)
+    page.get_by_role("button", name="세탁기").click()
+    page.locator(".model-card").nth(1).click()   # LG 드럼세탁기
+    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+    send(page, "가짜 질문 1")
+    wait_until(page, lambda: held)
+    page.go_back()   # 답을 기다리는 동안 모델 화면으로
+    expect(page.locator(".model-card")).to_have_count(2)
+    held[0].fulfill(json=fake(asks[0])[1])
+    page.wait_for_function(f"localStorage.getItem({json.dumps(STORE_KEY)}) !== null")
+    assert page.evaluate("location.hash") == "#model/washer"   # 지금 화면의 주소를 바꾸지 않는다
+    expect(page.locator(".model-card")).to_have_count(2)
+    page.go_forward()
+    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+    wait_turns(page, 1)   # 받은 답이 화면에 남아 있다
+    expect(page.locator(".turn .bubble")).to_have_text("가린:가짜 질문 1")
+    saved_id = json.loads(stored(page))["conversations"][0]["id"]
+    assert page.evaluate("location.hash") == f"#chat/washer-lg-fx25/{saved_id}"
+
+
+def test_malformed_stored_turn_still_renders_and_can_ask(open_page):
+    bad = _conversation(9, "washer-lg-fx25")
+    bad["turns"] = [{"question_masked": "가짜 질문 9", "rewritten_question": 5, "answer": "가짜 답", "found": True,
+                     "citations": [None, "가짜", CITE], "kind": "answer"}]
+    page, asks = open_page(ask=echo, conversations=[_conversation(1, "washer-lg-fx25"), bad], with_asks=True)
+    open_chat(page, "washer-lg-fx25", "c1")   # 먼저 다른 대화를 연 뒤
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1"])
+    open_chat(page, "washer-lg-fx25", "c9")   # 망가진 턴이 든 대화로
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 9"])
+    expect(page.locator(".turn .evidence")).to_have_count(1)   # 객체가 아닌 근거는 버린다
+    expect(page.locator(".turn .rewritten")).to_have_count(0)   # 문자열이 아닌 바꾼 질문은 없는 것으로
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 2)
+    expect(page.locator("#send")).to_be_enabled()
+    assert asks[0]["history"] == [{"question": "가짜 질문 9", "answer": "가짜 답"}]
 
 
 def test_conversation_saved_then_reopened_continues_with_its_history(open_page):
