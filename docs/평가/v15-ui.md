@@ -14,7 +14,7 @@
 | 항목 | 예상 비용 (USD) | 실제 비용 (USD) | 누적 예상 (USD) | 확인 |
 |---|---|---|---|---|
 | Task 1 Step 6 회귀: 1차 30문항 `python -m evaluation --label v15-ui-server`(로컬, 앞 대화 없음이라 바꾸기 없음, q18은 AI 안 부름). 단가: 질문당 약 0.0365센트(1차 기준값 Langfuse) × 30 ≈ 0.011, 재요청 여유 포함 | 0.015 | 약 0.011(AI 호출 29건 × 질문당 0.0365센트, 단가 추정. q18은 AI 안 부름) | 0.015 | `check_budget([], 0.015, cap_usd=1.7)` → True(실행 직전 다시 확인) |
-| Task 1 Step 7 미리보기 확인: 가짜 이메일이 든 질문 1개(UTF-8 파일로 `vercel curl`, 앞 대화 없음) | 0.0004 | (실행 전) | 0.0154 | `check_budget([0.015], 0.0004, cap_usd=1.7)` → True |
+| Task 1 Step 7 미리보기 확인: 가짜 이메일이 든 질문 1개(UTF-8 파일로 `vercel curl`, 앞 대화 없음) | 0.0004 | 약 0.0004(답변 AI 1회·임베딩 1회, 단가 추정. 미리보기 `pyeobom-oh18gy0d5` 200, `question_masked` = "[이메일]으로 매뉴얼 받을 수 있나요?", found false, reason null) | 0.0154 | `check_budget([0.015], 0.0004, cap_usd=1.7)` → True |
 
 ## Task 1 Step 6 회귀: 1차 30문항 (`v15-ui-server`, 2026-11-10)
 
