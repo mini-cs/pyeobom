@@ -10,6 +10,7 @@ M1(Task 4): 조각 앞에 "모델 · 문서 제목 · 장 이름 · 쪽 소제�
         python -m measure.search_variants m2 --sample   (M2 시험 생성: 문서 5개에서 조각 1개씩, 결과는 measure/out/m2-sample.json, DB에 넣지 않음)
         python -m measure.search_variants m3 --draft    (M3 용어 사전 초안: 설명서마다 기능 이름 뽑기 → 평소 표현, 결과는 measure/out/m3-terms-draft.json)
         python -m measure.search_variants m3 --reduce   (규칙 ① 이름 종류 분류로 줄이기 + ③ 겹친 표현 지우기, 검토표 measure/out/m3-terms-reduced.md)
+        python -m measure.search_variants m3 --tidy     (띄어쓰기·끝 "기능"만 다른 이름 합치기 → 규칙 ③ 다시, 검토표 다시 만들기, AI 없음)
 """
 import argparse
 import csv
@@ -19,12 +20,15 @@ import re
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent / "out"
-M2_PROMPT = (Path(__file__).resolve().parent / "prompts" / "m2_questions_v2.txt").read_text(encoding="utf-8")  # v1은 기록용
+M2_PROMPT = (Path(__file__).resolve().parent / "prompts" / "m2_questions_v3.txt").read_text(encoding="utf-8")  # v1·v2는 기록용
+_QA_LIST = {"type": "array", "items": {"type": "object", "required": ["question", "evidence"], "additionalProperties": False,
+                                       "properties": {"question": {"type": "string"}, "evidence": {"type": "string"}}}}
 M2_FORMAT = {"type": "json_schema", "name": "questions", "strict": True,
-             "schema": {"type": "object", "required": ["items"], "additionalProperties": False, "properties": {"items": {
-                 "type": "array", "items": {"type": "object", "required": ["question", "evidence"], "additionalProperties": False,
-                                            "properties": {"question": {"type": "string"}, "evidence": {"type": "string"}}}}}}}
+             "schema": {"type": "object", "required": ["plain", "named"], "additionalProperties": False,
+                        "properties": {"plain": _QA_LIST, "named": _QA_LIST}}}
+M2_LIMITS = {"plain": 3, "named": 2}  # 기능 이름 없이 3개 + 기능 이름을 쓰는 2개
 _ASKS_NUMBER = re.compile(r"몇|며칠")
+_GENERIC_WORDS = {"사용", "설정", "방법", "관리", "기능", "확인", "청소", "안내", "살펴보", "및", "하기"}
 _SKIP_START = re.compile(r"^([•\-–※*·→]|\d|[a-z]\s|[①-⑳]|\(|주의|경고|참고|알아두기)")
 _SENTENCE_END = re.compile(r"([.:?!]|요|다|[을를이가은는에의로와과고며서면])$")
 
@@ -74,8 +78,10 @@ def build_m1(conn, display_names: dict[str, str]) -> list[dict]:
             headings[(doc_id, page)] = h
     out = []
     for cid, doc_id, title, page, content, models in rows:
-        text = m1_text([display_names[m] for m in models], title, headings.get((doc_id, page), (None, None)), content)
-        out.append({"chunk_id": cid, "doc_id": doc_id, "page": page, "title": text.split("\n", 1)[0], "text": text})
+        heading = headings.get((doc_id, page), (None, None))
+        text = m1_text([display_names[m] for m in models], title, heading, content)
+        out.append({"chunk_id": cid, "doc_id": doc_id, "page": page, "title": text.split("\n", 1)[0], "text": text,
+                    "sub": heading[1]})
     return out
 
 
@@ -96,9 +102,47 @@ def check_items(items: list[dict], chunk: str, max_n: int = 5, max_len: int = 60
                   else "숫자를 묻는데 근거에 숫자 없음" if _ASKS_NUMBER.search(q) and not re.search(r"\d", e)
                   else "60자 초과" if not q or len(q) > max_len
                   else "중복" if q in {k["question"] for k in kept}
-                  else "5개 초과" if len(kept) >= max_n else None)
+                  else f"{max_n}개 초과" if len(kept) >= max_n else None)
         (dropped if reason else kept).append({"question": q, "evidence": e} | ({"reason": reason} if reason else {}))
     return kept, dropped
+
+
+def subheading_words(subheading: str | None) -> list[str]:
+    """M1 소제목의 이름 단어(끝의 '하기'를 떼고, 두 글자 이상, 청소·설정 같은 동작·일반어 제외)"""
+    words = [re.sub(r"하기$", "", w) for w in re.findall(r"[가-힣A-Za-z0-9+]+", subheading or "")]
+    return [w for w in words if len(w) >= 2 and w not in _GENERIC_WORDS]
+
+
+def check_split(raw: dict, chunk: str, subheading: str | None) -> tuple[dict, list[dict]]:
+    """v3: 칸마다 근거 확인(v2 규칙). '기능 이름 없이' 칸에 소제목 단어가 들어간 질문은 버린다"""
+    words, kept, dropped = subheading_words(subheading), {}, []
+    for kind, limit in M2_LIMITS.items():
+        items = []
+        for it in raw[kind]:
+            hit = next((w for w in words if w in it["question"]), None) if kind == "plain" else None
+            if hit:
+                dropped.append({"kind": kind, "question": it["question"].strip(), "evidence": " ".join(it["evidence"].split()),
+                                "reason": f"기능 이름 없이 칸에 소제목 단어({hit})"})
+            else:
+                items.append(it)
+        kept[kind], bad = check_items(items, chunk, max_n=limit)
+        dropped += [{"kind": kind} | d for d in bad]
+    return kept, dropped
+
+
+def merge_variants(terms: dict[str, list[str]], kinds: dict[str, str]) -> tuple[dict, dict, dict]:
+    """띄어쓰기만 다르거나 끝에 '기능'만 붙은 이름을 처음 나온 이름 하나로 합친다(표현은 합집합). 합친 기록을 돌려준다"""
+    def key(n: str) -> str:
+        k = n.replace(" ", "")
+        return k[:-2] if k.endswith("기능") and len(k) > 2 else k
+    first, merged, record = {}, {}, {}
+    for n, exprs in terms.items():
+        head = first.setdefault(key(n), n)
+        if head != n:
+            record.setdefault(head, []).append(n)
+        merged.setdefault(head, [])
+        merged[head] += [e for e in exprs if e not in merged[head]]
+    return merged, {n: kinds[n] for n in merged}, record
 
 
 def sample_chunks(rows: list[dict], doc_ids: list[str], seed: int) -> list[dict]:
@@ -248,16 +292,43 @@ def m3_reduce(names: dict[str, str]) -> None:
         kept, wide = drop_wide_expressions(kept)
         result[model_id] = {"kept": kept, "kinds": {n: kinds[n] for n in kept}, "removed": removed, "wide_expressions": wide}
         print(model_id, "남김", len(kept), "지움", len(removed), "겹쳐서 지운 표현", len(wide), flush=True)
-        lines += [f"\n## {names[model_id]} (`{model_id}`) — 남김 {len(kept)} / 지움 {len(removed)}\n",
-                  "| 기능 이름 | 종류 | 표현 |", "|---|---|---|"]
-        lines += [f"| {n} | {kinds[n]} | {' · '.join(e) or '-'} |" for n, e in kept.items()]
-        if wide:
-            lines += ["", "겹쳐서 지운 표현(이름 3개 이상): " + "; ".join(f"{e} ({', '.join(ns)})" for e, ns in wide.items())]
-        lines += ["", "AI가 지운 이름: " + ", ".join(f"{n}({k})" for n, k in removed.items())]
     (OUT / "m3-terms-reduced.json").write_text(json.dumps({"usage": usage, "models": result}, ensure_ascii=False, indent=1),
                                                encoding="utf-8")
+    write_m3_review(result, names)
+    print(f"usage={usage}")
+
+
+def m3_tidy(names: dict[str, str]) -> None:
+    """기계적 정리: 띄어쓰기·끝 '기능'만 다른 이름 합치기 → 규칙 ③ 다시 적용 → 검토표 다시 만들기(AI 호출 없음)"""
+    reduced = json.loads((OUT / "m3-terms-reduced.json").read_text(encoding="utf-8"))["models"]
+    result = {}
+    for model_id, r in reduced.items():
+        merged, kinds, record = merge_variants(r["kept"], r["kinds"])
+        kept, wide = drop_wide_expressions(merged)
+        result[model_id] = {"kept": kept, "kinds": kinds, "removed": r["removed"], "merged": record, "wide_expressions": wide}
+        print(model_id, "합치기 전", len(r["kept"]), "후", len(kept), "합친 묶음", len(record), "겹쳐서 지운 표현", len(wide), flush=True)
+    (OUT / "m3-terms-tidy.json").write_text(json.dumps({"models": result}, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_m3_review(result, names)
+
+
+def write_m3_review(result: dict, names: dict[str, str]) -> None:
+    """검토용 표: measure/out/m3-terms-reduced.md(모델별 표 + 합친·지운 기록)와 .csv(남길까·고칠 표현 칸)"""
+    lines = []
+    with (OUT / "m3-terms-reduced.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["model_id", "기능 이름", "종류", "표현", "합친 이름", "남길까(O/X)", "고칠 표현"])
+        for model_id, r in result.items():
+            merged = r.get("merged", {})
+            lines += [f"\n## {names[model_id]} (`{model_id}`) — 남김 {len(r['kept'])} / 지움 {len(r['removed'])}\n",
+                      "| 기능 이름 | 종류 | 표현 | 합친 이름 |", "|---|---|---|---|"]
+            for n, e in r["kept"].items():
+                lines.append(f"| {n} | {r['kinds'][n]} | {' · '.join(e) or '-'} | {', '.join(merged.get(n, [])) or '-'} |")
+                w.writerow([model_id, n, r["kinds"][n], " · ".join(e), ", ".join(merged.get(n, [])), "", ""])
+            if r["wide_expressions"]:
+                lines += ["", "겹쳐서 지운 표현(이름 3개 이상): " + "; ".join(f"{e} ({', '.join(ns)})" for e, ns in r["wide_expressions"].items())]
+            lines += ["", "AI가 지운 이름: " + ", ".join(f"{n}({k})" for n, k in r["removed"].items())]
     (OUT / "m3-terms-reduced.md").write_text("# M3 용어 사전 줄인 목록 (사용자 검토용)\n" + "\n".join(lines) + "\n", encoding="utf-8")
-    print(f"{OUT / 'm3-terms-reduced.md'} usage={usage}")
+    print(OUT / "m3-terms-reduced.csv")
 
 
 M2_SAMPLE_DOCS = ["manual-lg-fx25", "manual-samsung-wd90h25", "manual-lg-sq06fa1wds", "guide-lg-drum-errors", "guide-samsung-drum-5c"]
@@ -284,8 +355,8 @@ def m2_sample(names: dict[str, str]) -> None:
                                        input=build_m2_messages([names[m] for m in models[r["doc_id"]]], titles[r["doc_id"]], r["page"], content))
         for k in usage:
             usage[k] += getattr(resp.usage, k)
-        kept, dropped = check_items(json.loads(resp.output_text)["items"], content)
-        out.append({"chunk_id": r["chunk_id"], "doc_id": r["doc_id"], "page": r["page"], "title": r["title"],
+        kept, dropped = check_split(json.loads(resp.output_text), content, r["sub"])
+        out.append({"chunk_id": r["chunk_id"], "doc_id": r["doc_id"], "page": r["page"], "title": r["title"], "sub": r["sub"],
                     "chunk": content, "questions": kept, "dropped": dropped})
     OUT.mkdir(exist_ok=True)
     path = OUT / "m2-sample.json"  # 조각 본문이 들어 있어 저장소 밖에만 둔다
@@ -301,6 +372,7 @@ def main() -> None:
     ap.add_argument("--sample", action="store_true")
     ap.add_argument("--draft", action="store_true")
     ap.add_argument("--reduce", action="store_true")
+    ap.add_argument("--tidy", action="store_true")
     args = ap.parse_args()
 
     from ingest.__main__ import load_env
@@ -315,6 +387,8 @@ def main() -> None:
     if args.variant == "m3":
         if args.reduce:
             return m3_reduce(names)
+        if args.tidy:
+            return m3_tidy(names)
         return m3_draft(names) if args.draft else print("M3는 초안(--draft)·줄이기(--reduce)만. 사용자 검토 후 질문 넓히기 함수를 만든다")
     with get_conn() as conn:
         rows = build_m1(conn, names)
