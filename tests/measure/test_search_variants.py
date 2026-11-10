@@ -19,6 +19,7 @@ def test_page_heading_takes_running_header_and_first_heading_line(page, text, ex
     "사용하기 27\n버튼을 누르세요. 리모컨 표시부에 간접바람이\n표시됩니다.",  # 문장
     "고장 신고 전 확인하기 51\n제품 근처에 강한 빛이 나오는 물건이 있나요?",  # 질문 문장
     "사용하기 20\n주의\n• 세탁물을 드럼 안쪽으로",  # 주의·경고·알아두기 같은 표시 말
+    "사용하기 30\n→ 스마트케어 냉방 운전 → 아이스 쿨파워 냉방 운전\n• 버튼을",  # 화살표로 시작하는 본문 줄
 ])
 def test_sentence_lines_are_not_headings(text):
     page = int(text.split("\n")[0].split()[-1])
