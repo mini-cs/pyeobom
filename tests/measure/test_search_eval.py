@@ -44,6 +44,7 @@ def test_masks_pii_before_embedding_and_searches_top20_of_that_model():
     assert "010-1234-5678" not in fake.embedded[0]
     assert fake.searched == [("washer-lg-fx25", fake.embedded[0], 20)]
     assert rows[0]["rank"] == 2 and rows[0]["top5"] == "manual:9|manual:42"
+    assert rows[0]["top5_ids"] == "manual:9|manual:42" and rows[0]["diag_ids"] == ""  # 가짜 조각의 id가 ref와 같음
 
 
 def test_transform_runs_after_masking_and_feeds_search():

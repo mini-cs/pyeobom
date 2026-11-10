@@ -63,3 +63,15 @@ def test_blind_sheet_hides_methods_shuffles_and_groups_same_answers():
     by_no = {a["no"]: a["text"] for s in sheet for a in s["answers"]}
     assert {(k["id"], k["method"]) for k in key} == {(r["id"], r["method"]) for r in rows}  # 대응표는 모든 답을 담는다
     assert all(by_no[k["no"]] == next(r["answer"] for r in rows if (r["id"], r["method"]) == (k["id"], k["method"])) for k in key)
+
+
+from measure.stage2 import COLUMNS, result_row  # noqa: E402
+
+
+def test_result_row_keeps_chunk_ids():
+    case = {"id": "p08-2", "card": "8", "type": "paraphrase", "question": "q", "expected_ref": "manual:42"}
+    resp = {"found": True, "answer": "a", "cited_refs": ["manual:42"], "retrieved_refs": ["manual:42", "guide:g"],
+            "retrieved_chunk_ids": [180, 317], "latency_ms": 10, "llm_ms": 5, "embed_ms": 1, "diagnostic_added": False}
+    r = result_row(case, "m2", resp, "", {"input_tokens": 100, "output_tokens": 10})
+    assert r["retrieved_chunk_ids"] == "180|317" and r["retrieved_refs"] == "manual:42|guide:g"
+    assert set(r) == set(COLUMNS)
