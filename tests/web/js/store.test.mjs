@@ -97,3 +97,42 @@ test("makeTitle: 앞 30자(코드 포인트 단위)", () => {
   assert.equal(makeTitle("짧은 질문"), "짧은 질문");
   assert.equal(Array.from(makeTitle("😀".repeat(40))).length, 30);
 });
+
+// 감시용 저장소: setItem 호출 횟수를 센다
+function spyStorage(raw) {
+  const s = { raw, sets: 0, getItem: () => s.raw ?? null, setItem(k, v) { s.sets++; s.raw = v; } };
+  return s;
+}
+
+test("load: 깨진 항목([null], turns가 배열 아님)은 버리고 올바른 것만 남긴다", () => {
+  const good = conv("ok", 1);
+  const raw = JSON.stringify({ version: 1, conversations: [null, good, { id: "x", updated_at: "2026-01-01T00:00:00.000Z", turns: "no" }, { id: 3, updated_at: "t", turns: [] }] });
+  const s = spyStorage(raw);
+  assert.deepEqual(loadConversations(s).map((c) => c.id), ["ok"]);
+  assert.equal(saveConversation(s, conv("new", 2)), true);
+  assert.deepEqual(loadConversations(s).map((c) => c.id), ["new", "ok"]);
+});
+
+test("읽기 실패(getItem 예외): 저장·삭제는 쓰지 않고 false", () => {
+  const s = { sets: 0, getItem() { throw new Error("blocked"); }, setItem() { s.sets++; } };
+  assert.equal(saveConversation(s, conv("a")), false);
+  assert.equal(deleteConversation(s, "a"), false);
+  assert.equal(deleteAllConversations(s), false);
+  assert.equal(s.sets, 0);
+});
+
+test("다른 버전이 저장돼 있으면 덮어쓰지 않고 false", () => {
+  const raw = JSON.stringify({ version: 2, conversations: [conv("future", 1)] });
+  const s = spyStorage(raw);
+  assert.equal(saveConversation(s, conv("a")), false);
+  assert.equal(deleteConversation(s, "a"), false);
+  assert.equal(deleteAllConversations(s), false);
+  assert.equal(s.sets, 0);
+  assert.equal(s.raw, raw);
+});
+
+test("읽을 수 없는 JSON(\"{\")은 덮어써서 version 1로 쓴다", () => {
+  const s = spyStorage("{");
+  assert.equal(saveConversation(s, conv("a", 1)), true);
+  assert.equal(JSON.parse(s.raw).version, 1);
+});
