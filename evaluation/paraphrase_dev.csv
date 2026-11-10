@@ -1,0 +1,26 @@
+﻿# P 세트(표현이 다른 질문): 구글 폼 2명 41문장(둘 다 동의, 이름·연락처 없음). 사용자 본인 문장은 넣지 않음(M3 사전을 먼저 봄)
+# 순화: '존나'·'ㅈㄴ'→'엄청', '좆된거임'→'큰일 난 거임'(4곳), 나머지 말투는 그대로
+# 정답 근거: 채팅 Claude가 설명서 원본으로 대조, 사용자 확정(2026-11-10). 쪽의 조각 모두, 가이드 조각은 chunk:<id>
+# 함정(B 기준: 묻는 정보를 지어내지 않고 없다고 밝히면 정답)
+id,card,respondent,model_id,question,expected_ref,type,expected_found,note
+p01-1,1,1,washer-lg-fx25,세탁기가 얼어서 물 안나오는거 같은데 어케하면 될까,manual:43|manual:44|manual:45|manual:56,paraphrase,true,
+p04-1,4,1,washer-lg-fx25,옷 구김이나 냄새 뜨거운 김으로 없앨수 있음?,manual:35,paraphrase,true,정답은 '건조기 연결 시' 조건을 밝혀야 함
+p07-1,7,1,washer-lg-fx25,빨래 이미 돌리고 있다가 양말 안돌린거 봤는데 그냥 지금 넣어도 되지?,manual:34,paraphrase,true,
+p08-1,8,1,washer-lg-fx25,빨래 끝냈는데 똥내나는데 어케함?,manual:42|manual:58,paraphrase,true,
+p09-1,9,1,washer-samsung-wd90h25,건조 끝났는데 그냥 바로 꺼내도 옷 안구겨짐?,manual:35|manual:36|manual:37|manual:38|manual:39|manual:40|manual:41|manual:42|manual:43|manual:44|manual:45,paraphrase,true,35~45쪽 코스 표(구김 방지 옵션)
+p12-1,12,1,washer-samsung-wd90h25,개털 엄청 묻은 담요 어케함?,manual:37,paraphrase,true,
+p14-1,14,1,washer-samsung-wd90h25,빨래 엄청 빨리 하는법 있음?,manual:36,paraphrase,true,
+p15-1,15,1,washer-samsung-wd90h25,세탁기 안쪽에 더러운거 같은데 청소 어케함,manual:32|manual:51|manual:70,paraphrase,true,
+p16-1,16,1,aircon-lg-sq06fa1wds,에어컨 오래 틀어도 전기세 별로 안나오는팁 있음?,manual:15|manual:16|manual:23|manual:50,paraphrase,true,
+p19-1,19,1,aircon-lg-sq06fa1wds,집에 도착하기전에 미리 에어켠 켜놓는법 있음?,manual:38|manual:39,paraphrase,true,
+p20-1,20,1,aircon-lg-sq06fa1wds,에어컨 소리 너무 시끄러운데 조용하게 하는법좀,manual:21|manual:26|manual:35|manual:52,paraphrase,true,
+p22-1,22,1,aircon-lg-sq06fa1wds,밖에 있는 실외기는 관리 어케함?,manual:15|manual:16|manual:48|manual:50,paraphrase,true,
+p01-2,1,2,washer-lg-fx25,수도가 동파된거 같습니다.,manual:43|manual:44|manual:45|manual:56,paraphrase,true,
+p04-2,4,2,washer-lg-fx25,구김이나 냄새가 스팀으로도 해결 가능한 문제인가요?,manual:35,paraphrase,true,정답은 '건조기 연결 시' 조건을 밝혀야 함
+p07-2,7,2,washer-lg-fx25,양말 하나 빼먹은거 같은데 가져와도됩니까?,manual:34,paraphrase,true,
+p08-2,8,2,washer-lg-fx25,어찌 말려야 냄새가 안날까요?,manual:42|manual:58,paraphrase,true,
+p14-2,14,2,washer-samsung-wd90h25,쾌속기능이 있나요?,manual:36,paraphrase,true,
+p15-2,15,2,washer-samsung-wd90h25,통세척 기능이있나요?,manual:32|manual:51|manual:70,paraphrase,true,
+p16-2,16,2,aircon-lg-sq06fa1wds,정속형인가요?,,trap,false,함정(B 기준: 묻는 정보를 지어내지 않고 없다고 밝히면 정답)
+p19-2,19,2,aircon-lg-sq06fa1wds,휴대폰과 연동이 되나요?,manual:38|manual:39,paraphrase,true,
+p22-2,22,2,aircon-lg-sq06fa1wds,실외기 청소해도 됩니까?,manual:15|manual:16|manual:48|manual:50,paraphrase,true,
