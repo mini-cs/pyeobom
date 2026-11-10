@@ -76,3 +76,30 @@ def test_read_cases_skips_comment_lines(tmp_path):
     p = tmp_path / "cases.csv"
     p.write_text("# 메모\nid,model_id,question,expected_ref\nq1,m,질문,manual:1\n", encoding="utf-8-sig")
     assert read_cases(p) == [{"id": "q1", "model_id": "m", "question": "질문", "expected_ref": "manual:1"}]
+
+
+# ── Task 7: 방법별(M0~M3) 검색 고르기와 순위 변화 ──
+from measure.search_eval import method_fns, rank_changes  # noqa: E402
+
+
+def test_method_fns_picks_search_and_transform():
+    calls = []
+    base = lambda m, v, t, k: calls.append(("base", m, k)) or []
+    variant = lambda m, v, t, k, variant: calls.append((variant, m, k)) or []
+    terms = {"aircon-lg-sq06fa1wds": {"제습 기능": ["방 습기 빼기"]}}
+    search, transform = method_fns("m0", base, variant, terms)
+    assert transform is None and search("x", [0], "q", 20) == [] and calls[-1] == ("base", "x", 20)
+    for method, name in (("m1", "m1_title"), ("m2", "m2_question")):
+        search, transform = method_fns(method, base, variant, terms)
+        search("x", [0], "q", 20)
+        assert transform is None and calls[-1] == (name, "x", 20)
+    search, transform = method_fns("m3", base, variant, terms)
+    assert search is base
+    assert transform("방에 습기를 빼고 싶어요", "aircon-lg-sq06fa1wds") == "방에 습기를 빼고 싶어요 제습 기능"
+    assert transform("방에 습기를 빼고 싶어요", "washer-lg-fx25") == "방에 습기를 빼고 싶어요"  # 사전이 없는 모델은 그대로
+
+
+def test_rank_changes_compares_per_question():
+    m0 = [{"id": "a", "rank": 3}, {"id": "b", "rank": None}, {"id": "c", "rank": 2}]
+    m1 = [{"id": "a", "rank": 1}, {"id": "b", "rank": None}, {"id": "c", "rank": 7}]
+    assert rank_changes(m0, m1) == {"a": "better", "b": "same", "c": "worse"}
