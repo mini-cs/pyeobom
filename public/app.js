@@ -197,11 +197,18 @@ function renderModelCards(appliance, models) {
 
 // ── ④ 채팅(설계 2절 ④·5절): 대화 하나 = 모델 하나. 저장은 가린 질문만(toStoredTurn) ──
 // entries: 화면의 턴. { question, history, pending } → 응답 뒤 { turn(저장 형식), officialUrl } 또는 { error }
-let chat = { model: null, conv: null, entries: [], saveWarned: false, token: 0 };
+// createdHere: 이 화면에서 첫 답으로 만든 대화(답을 기다리다 다른 화면에 갔다 와도 이어서 보이게)
+let chat = { model: null, conv: null, entries: [], createdHere: false, token: 0 };
+
+const chatHash = (modelId, convId) => `#chat/${encodeURIComponent(modelId)}` + (convId ? `/${encodeURIComponent(convId)}` : "");
 
 function openChat(model, conversationId) {
   ui.chatTitle.textContent = model.short_name ?? model.name;  // 위쪽 막대 한 줄(2026-11-10 사용자 결정)
   if (chat.model?.id === model.id && (conversationId ?? null) === (chat.conv?.id ?? null)) return;  // 같은 대화면 그대로
+  if (chat.model?.id === model.id && !conversationId && chat.createdHere) {
+    history.replaceState(null, "", chatHash(model.id, chat.conv.id));  // 다른 화면에 있는 동안 만든 대화: 주소만 맞춘다
+    return;
+  }
   const saved = conversationId
     ? loadConversations(storage()).find((c) => c.id === conversationId && c.model_id === model.id)
     : null;  // 없는 id이거나 다른 모델의 대화면 새 대화(다른 모델의 앞 대화가 섞이지 않게)
@@ -209,8 +216,15 @@ function openChat(model, conversationId) {
 }
 
 function resetChat(model, conv) {
-  const turns = conv ? conv.turns.filter((t) => t && typeof t.question_masked === "string" && typeof t.answer === "string") : [];
-  chat = { model, conv, entries: turns.map((t) => ({ question: t.question_masked, turn: t })), saveWarned: false, token: chat.token + 1 };
+  // 저장소의 턴은 그리기 전에 모양을 맞춘다(망가진 항목 때문에 화면이 멈추지 않게)
+  const turns = (conv ? conv.turns : [])
+    .filter((t) => t && typeof t.question_masked === "string" && typeof t.answer === "string")
+    .map((t) => ({
+      ...t,
+      rewritten_question: typeof t.rewritten_question === "string" ? t.rewritten_question : null,
+      citations: Array.isArray(t.citations) ? t.citations.filter((c) => c !== null && typeof c === "object") : [],
+    }));
+  chat = { model, conv, entries: turns.map((t) => ({ question: t.question_masked, turn: t })), createdHere: false, token: chat.token + 1 };
   setBusy(false);  // 기다리던 응답은 token이 달라 버려진다
   ui.question.value = "";
   updateCounter();
@@ -223,7 +237,7 @@ function resetChat(model, conv) {
 }
 
 ui.newChat.addEventListener("click", () => {
-  const target = `#chat/${encodeURIComponent(chat.model.id)}`;
+  const target = chatHash(chat.model.id);
   resetChat(chat.model, null);
   if (location.hash !== target) location.hash = target;
 });
@@ -364,14 +378,14 @@ function saveTurn(turn) {
   const now = new Date().toISOString();
   if (!chat.conv) {
     chat.conv = { id: newId(), model_id: chat.model.id, title: makeTitle(turn.question_masked), created_at: now, updated_at: now, turns: [] };
-    history.replaceState(null, "", `#chat/${encodeURIComponent(chat.model.id)}/${encodeURIComponent(chat.conv.id)}`);
+    chat.createdHere = true;
+    // 지금 이 모델의 새 대화 화면일 때만 주소를 바꾼다. 다른 화면이면 돌아올 때 openChat이 맞춘다
+    if (location.hash === chatHash(chat.model.id)) history.replaceState(null, "", chatHash(chat.model.id, chat.conv.id));
   }
   chat.conv.turns.push(turn);
   chat.conv.updated_at = now;
-  if (!saveConversation(storage(), chat.conv) && !chat.saveWarned) {
-    chat.saveWarned = true;  // 대화당 한 번만 알린다
-    ui.saveNote.hidden = false;
-  }
+  // 안내는 요소 하나라 여러 번 실패해도 대화당 하나만 보인다. 새 대화(resetChat)에서 끈다
+  if (!saveConversation(storage(), chat.conv)) ui.saveNote.hidden = false;
 }
 
 const isAnswer = (d) => d && !d.error_code && typeof d.answer === "string" && typeof d.question_masked === "string";
