@@ -177,6 +177,10 @@ def test_category_tiles_arrow_keys_disabled_tile_and_dots(open_page):
     washer = page.get_by_role("button", name="세탁기")
     aircon = page.get_by_role("button", name="에어컨")
     soon = page.get_by_role("button", name="곧 추가")
+    expect(page.locator("#tile-dots .dot").first).to_be_visible()
+    # 처음에는 마지막 타일이 반쯤 보인다(폭 360px): 왼쪽 끝은 화면 안, 오른쪽 끝은 화면 밖
+    box = soon.bounding_box()
+    assert box["x"] < 360 < box["x"] + box["width"]
     washer.focus()
     page.keyboard.press("ArrowRight")
     expect(aircon).to_be_focused()
@@ -185,12 +189,8 @@ def test_category_tiles_arrow_keys_disabled_tile_and_dots(open_page):
     page.keyboard.press("ArrowLeft")
     expect(aircon).to_be_focused()
     expect(soon).to_have_attribute("aria-disabled", "true")
-    soon.click()
+    soon.click(force=True)  # aria-disabled라 Playwright가 누르기를 막으므로 강제로 누른다
     assert_screen(page, CATEGORY_H1)  # 곧 추가는 눌러도 이동하지 않는다
-    expect(page.locator("#tile-dots .dot").first).to_be_visible()
-    # 마지막 타일이 반쯤 보인다(폭 360px): 왼쪽 끝은 화면 안, 오른쪽 끝은 화면 밖
-    box = soon.bounding_box()
-    assert box["x"] < 360 < box["x"] + box["width"]
 
 
 def test_recent_conversation_cards_landing_one_category_three(open_page):

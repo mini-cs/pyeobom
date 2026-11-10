@@ -21,8 +21,8 @@ def test_head_has_exact_title_and_link_preview_text():
 
 
 def test_intro_and_footer_copy_are_exact():
-    # v1.5 랜딩(설계 2절 ①, 시안 5번)과 카테고리·모델 화면 문구
-    html = read("index.html")
+    # v1.5 랜딩(설계 2절 ①, 시안 5번)과 카테고리·모델 화면 문구. 줄바꿈 위치는 시안 5번처럼 <br>로 고정
+    html = re.sub(r"<br>\s*", " ", read("index.html"))
     for text in ["펴봄", "가전 설명서, 대신 펴 봐 드려요", "고른 모델의 공식 설명서에서 근거를 찾아 답해요.",
                  "근거 쪽을 보여 줘요", "설명서 몇 쪽인지와 원문을 함께",
                  "모르면 모른다고 해요", "설명서에 없으면 지어내지 않아요",
