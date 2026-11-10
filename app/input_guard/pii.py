@@ -5,9 +5,24 @@ def _stars(*groups: str) -> str:
     return "-".join("*" * len(g) for g in groups)
 
 
+_PARTICLES = ("으로", "에서", "에게", "까지", "부터", "이랑", "한테", "로", "에", "은", "는", "이", "가", "을", "를", "도", "와", "과", "의", "만", "랑", "께")
+
+
+def _email(m: re.Match) -> str:
+    # \w가 한글도 잡아 뒤따르는 조사까지 삼키므로, 마지막 덩어리에서 끝부분만 돌려준다(결정기록 015: 가리는 범위만 줄임)
+    label = m[0].rpartition(".")[2]
+    if g := re.fullmatch(r"([A-Za-z0-9_-]+)([가-힣].*)", label):  # 영문 도메인 뒤에 붙은 한글
+        return "[이메일]" + g[2]
+    if re.fullmatch(r"[가-힣]+", label):  # 한글 도메인 끝의 조사(긴 것부터)
+        for p in _PARTICLES:
+            if label.endswith(p) and len(label) > len(p):
+                return "[이메일]" + p
+    return "[이메일]"
+
+
 # 순서가 중요하다: 이메일 → 휴대폰 → 지역번호 전화 → 동호수 → 도로명
 RULES = [
-    (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), lambda m: "[이메일]"),
+    (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), _email),
     (re.compile(r"(?<!\d)(01[016789])-?(\d{3,4})-?(\d{4})(?!\d)"),
      lambda m: f"{m[1]}-{_stars(m[2], m[3])}"),
     (re.compile(r"(?<!\d)(0[2-6]\d?)-(\d{3,4})-(\d{4})(?!\d)"),

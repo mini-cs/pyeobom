@@ -2,6 +2,10 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+# 앞 대화 답: 상한까지 받고(넘으면 INVALID_REQUEST), 가린 뒤 질문 바꾸기에는 앞 N자만 보낸다. 상한은 답변 출력 토큰 제한(600) x 4자 이상
+MAX_HISTORY_ANSWER_LEN = 4000
+HISTORY_ANSWER_KEEP_LEN = 1000
+
 
 @dataclass(frozen=True)
 class Settings:

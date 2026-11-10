@@ -56,14 +56,18 @@ def test_run_dialog_sends_previous_turns_as_history():
 
 
 def test_run_dialog_keeps_going_after_error():
-    def client(model_id, question, history):
-        return {"error_code": "AI_TIMEOUT"} if not history else {"found": False, "answer": "", "question_masked": question,
-                                                                  "rewritten_question": None, "cited_refs": [], "latency_ms": 5}
+    seen = []
 
-    turns = [{"dialog_id": "d02", "turn": "1", "model_id": "washer-a", "question": "질문1"},
-             {"dialog_id": "d02", "turn": "2", "model_id": "washer-a", "question": "질문2"}]
+    def client(model_id, question, history):
+        seen.append(history)
+        return {"error_code": "AI_TIMEOUT"} if question == "질문2" else {
+            "found": False, "answer": "답", "question_masked": question, "rewritten_question": None, "cited_refs": [], "latency_ms": 5}
+
+    turns = [{"dialog_id": "d02", "turn": str(i), "model_id": "washer-a", "question": f"질문{i}"} for i in (1, 2, 3)]
     results = run_dialog(turns, client)
-    assert results[0].error == "AI_TIMEOUT" and results[1].error == ""
+    assert [r.error for r in results] == ["", "AI_TIMEOUT", ""]
+    # 오류 턴(빈 답)은 history에 넣지 않는다: 3번째 턴에는 1번째 턴만 있다
+    assert seen[2] == [{"question": "질문1", "answer": "답"}]
 
 
 def test_score_turn_checks_found_ref_and_rewrite():
