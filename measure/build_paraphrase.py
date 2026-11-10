@@ -99,7 +99,7 @@ def main() -> None:
     _write(EVAL / "paraphrase_dev.csv", [r for r in rows if r["card"] in dev], (CONFIRMED,))
     _write(EVAL / "paraphrase_test.csv", [r for r in rows if r["card"] in test])
     split = {"seed": SEED, "dev_cards": sorted(dev), "test_cards": sorted(test),
-             "test_sha256": hashlib.sha256((EVAL / "paraphrase_test.csv").read_bytes()).hexdigest(),
+             "test_sha256": hashlib.sha256((EVAL / "paraphrase_test.csv").read_bytes().replace(b"\r\n", b"\n")).hexdigest(),  # LF로 맞춘 내용
              "rows": {"dev": sum(r["card"] in dev for r in rows), "test": sum(r["card"] in test for r in rows)},
              "softened_sentences": softened, "confirmed": CONFIRMED[2:], "sealed": "확인용은 3단계 전까지 검색·채점하지 않는다(계획 1-1)"}
     (EVAL / "paraphrase_split.json").write_text(json.dumps(split, ensure_ascii=False, indent=1), encoding="utf-8")
