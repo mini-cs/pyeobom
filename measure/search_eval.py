@@ -54,14 +54,15 @@ def run_eval(cases: list[dict], embed: Callable, search: Callable, diagnostic: C
 
 
 METHODS = {"m0": "운영 검색", "m1": "실험 색인 m1_title(조각에 제목 붙이기)", "m2": "실험 색인 m2_question(조각마다 질문, max 규칙)",
-           "m3": "용어 사전으로 질문 넓히기(measure/m3_terms.json, expand_query)"}
+           "m3": "용어 사전으로 질문 넓히기(measure/m3_terms.json, expand_query)",
+           "m12": "실험 색인 m1_m2(M1 제목 붙인 조각 + M2 질문, max 규칙)"}
 
 
 def method_fns(method: str, base_search: Callable, variant_search: Callable, terms: dict) -> tuple[Callable, Callable | None]:
     """방법별 (검색, 질문 변형). M1·M2는 실험 색인으로 검색, M3는 운영 검색 + 질문 넓히기"""
     from measure.search_variants import expand_query
-    if method in ("m1", "m2"):
-        variant = {"m1": "m1_title", "m2": "m2_question"}[method]
+    if method in ("m1", "m2", "m12"):
+        variant = {"m1": "m1_title", "m2": "m2_question", "m12": "m1_m2"}[method]
         return (lambda m, v, t, k: variant_search(m, v, t, k, variant)), None
     if method == "m3":
         return base_search, lambda q, model_id: expand_query(q, terms.get(model_id, {}))
