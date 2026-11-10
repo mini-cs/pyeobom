@@ -53,10 +53,32 @@ def run_eval(cases: list[dict], embed: Callable, search: Callable, diagnostic: C
     return rows
 
 
+METHODS = {"m0": "운영 검색", "m1": "실험 색인 m1_title(조각에 제목 붙이기)", "m2": "실험 색인 m2_question(조각마다 질문, max 규칙)",
+           "m3": "용어 사전으로 질문 넓히기(measure/m3_terms.json, expand_query)"}
+
+
+def method_fns(method: str, base_search: Callable, variant_search: Callable, terms: dict) -> tuple[Callable, Callable | None]:
+    """방법별 (검색, 질문 변형). M1·M2는 실험 색인으로 검색, M3는 운영 검색 + 질문 넓히기"""
+    from measure.search_variants import expand_query
+    if method in ("m1", "m2"):
+        variant = {"m1": "m1_title", "m2": "m2_question"}[method]
+        return (lambda m, v, t, k: variant_search(m, v, t, k, variant)), None
+    if method == "m3":
+        return base_search, lambda q, model_id: expand_query(q, terms.get(model_id, {}))
+    return base_search, None
+
+
+def rank_changes(base_rows: list[dict], rows: list[dict]) -> dict[str, str]:
+    from measure.retrieval_probe import compare
+    base = {r["id"]: r["rank"] for r in base_rows}
+    return {r["id"]: compare(r["rank"], base[r["id"]]) for r in rows}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cases")
     ap.add_argument("--label", required=True)
+    ap.add_argument("--method", choices=list(METHODS), default="m0")
     args = ap.parse_args()
 
     from ingest.__main__ import load_env
@@ -68,8 +90,18 @@ def main() -> None:
     settings = get_settings()
     if warn_if_different(settings):
         raise SystemExit("운영 기본값과 다른 설정이라 멈춤")
+    from app.core.db import get_conn
+    from app.retrieval.search import search_vector
+    from measure.search_variants import load_terms
+
     deps = get_deps()
-    rows = run_eval(read_cases(args.cases), deps.embed_query, deps.search, deps.diagnostic, top_k=settings.top_k)
+
+    def variant_search(model_id, vec, text, k, variant):
+        with get_conn() as conn:
+            return search_vector(conn, model_id, vec, k, variant=variant)
+
+    search, transform = method_fns(args.method, deps.search, variant_search, load_terms() if args.method == "m3" else {})
+    rows = run_eval(read_cases(args.cases), deps.embed_query, search, deps.diagnostic, transform=transform, top_k=settings.top_k)
     summary = metrics([r["rank"] for r in rows]) | {
         "hit5_or_diag": round(sum(r["hit5_or_diag"] for r in rows) / len(rows), 4) if rows else 0.0}
     OUT.mkdir(exist_ok=True)
@@ -78,7 +110,8 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    write_settings(out, settings, f"search-eval-{args.label}")
+    write_settings(out, settings, f"search-eval-{args.label}",
+                   experiment=None if args.method == "m0" else {"method": args.method, "desc": METHODS[args.method]})
     for r in rows:
         print(r["id"], r["rank"], r["top5"], r["diag"] or "-", flush=True)
     print(summary, "csv:", out.name)

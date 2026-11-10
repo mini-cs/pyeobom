@@ -28,10 +28,12 @@ def differences(settings) -> list[str]:
     return [f"{k}={s[k]} (운영 {v})" for k, v in PRODUCTION.items() if s[k] != v]
 
 
-def write_settings(result_path: str | Path, settings, label: str) -> Path:
+def write_settings(result_path: str | Path, settings, label: str, experiment: dict | None = None) -> Path:
+    """experiment: 실험 색인·질문 넓히기처럼 운영 설정 밖의 실험 내용(검색 개선 계획 1-5)"""
     path = Path(result_path).with_suffix(".settings.json")
     path.write_text(json.dumps({"label": label, "time": datetime.datetime.now().isoformat(timespec="seconds"),
-                                "settings": run_settings(settings), "differences": differences(settings)},
+                                "settings": run_settings(settings), "differences": differences(settings)}
+                               | ({"experiment": experiment} if experiment else {}),
                                ensure_ascii=False, indent=1), encoding="utf-8")
     return path
 

@@ -34,3 +34,9 @@ def test_write_settings_saves_json(tmp_path):
     data = json.loads(path.read_text(encoding="utf-8"))
     assert path.name == "run.settings.json"
     assert data["label"] == "v15" and data["settings"]["top_k"] == 52 and data["differences"] == ["top_k=52 (운영 5)"]
+
+
+def test_write_settings_records_experiment(tmp_path):
+    # 실험 색인·질문 넓히기를 쓴 실행은 그 사실을 설정 기록에 남긴다(검색 개선 계획 1-5)
+    path = write_settings(tmp_path / "r.csv", PROD, "x", experiment={"method": "m1"})
+    assert json.loads(path.read_text(encoding="utf-8"))["experiment"] == {"method": "m1"}

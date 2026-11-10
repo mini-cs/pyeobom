@@ -35,7 +35,8 @@ def _read(name):
 @pytest.mark.skipif(not (EVAL / "paraphrase_dev.csv").exists(), reason="P 세트 파일을 만들기 전")
 def test_paraphrase_files_are_sealed_and_consistent():
     split = json.loads((EVAL / "paraphrase_split.json").read_text(encoding="utf-8"))
-    assert hashlib.sha256((EVAL / "paraphrase_test.csv").read_bytes()).hexdigest() == split["test_sha256"]  # 봉인 확인
+    # 봉인 확인. git 체크아웃이 줄 끝을 CRLF로 바꿀 수 있어 LF로 맞춘 내용의 해시를 비교한다
+    assert hashlib.sha256((EVAL / "paraphrase_test.csv").read_bytes().replace(b"\r\n", b"\n")).hexdigest() == split["test_sha256"]
     dev, test = _read("paraphrase_dev.csv"), _read("paraphrase_test.csv")
     assert {r["card"] for r in dev}.isdisjoint({r["card"] for r in test})  # 같은 카드가 양쪽에 없음
     rows = dev + test
