@@ -89,6 +89,14 @@ def test_rewritten_question_is_checked_for_other_brand_again():
     assert body["answer"].startswith("지금 고른 모델은 LG 제품이에요")
 
 
+
+def test_rewritten_question_is_checked_for_other_brand_code_again():
+    rec = Recorder(RewriteResult("세탁기에 5C 에러가 뜨면 어떻게 해요?", True, "ok"))
+    body = answer_question("washer-a", "그건 어떻게 해요?", rec.deps(brand="LG"), S, history=HISTORY)
+    assert rec.names() == ["rewrite"]  # 검색·답변 AI를 부르지 않는다
+    assert body["found"] is False
+    assert body["answer"].startswith("이 코드는 지금 고른 LG 모델 설명서에 없는 코드예요")
+
 def test_other_brand_question_skips_rewrite():
     rec = Recorder()
     body = answer_question("washer-a", "삼성 세탁기도 그래요?", rec.deps(brand="LG"), S, history=HISTORY, debug=True)
