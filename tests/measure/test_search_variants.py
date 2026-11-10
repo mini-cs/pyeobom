@@ -68,7 +68,7 @@ from measure.search_variants import batch_texts, build_m3_messages, merge_names,
 
 
 def test_batch_texts_keeps_order_and_size_limit():
-    assert batch_texts(["aaa", "bb", "cccc", "d"], max_chars=5) == ["aaa\nbb", "cccc\nd"]
+    assert batch_texts(["aaa", "bb", "cccc", "d"], max_chars=6) == ["aaa\nbb", "cccc\nd"]
     assert batch_texts(["toolongtext"], max_chars=5) == ["toolongtext"]  # 하나가 넘쳐도 버리지 않음
 
 

@@ -8,6 +8,7 @@ M1(Task 4): 조각 앞에 "모델 · 문서 제목 · 장 이름 · 쪽 소제�
 사용법: python -m measure.search_variants m1            (미리보기: 쪽별 제목을 measure/out/에 쓰고 끝)
         python -m measure.search_variants m1 --apply    (임베딩해서 chunk_variants에 넣음. 이미 행이 있으면 멈춤 — 지우기는 사용자 확인)
         python -m measure.search_variants m2 --sample   (M2 시험 생성: 문서 5개에서 조각 1개씩, 결과는 measure/out/m2-sample.json, DB에 넣지 않음)
+        python -m measure.search_variants m3 --draft    (M3 용어 사전 초안: 설명서마다 기능 이름 뽑기 → 평소 표현, 결과는 measure/out/m3-terms-draft.json)
 """
 import argparse
 import csv
@@ -97,7 +98,98 @@ def sample_chunks(rows: list[dict], doc_ids: list[str], seed: int) -> list[dict]
     return [rng.choice([r for r in rows if r["doc_id"] == d]) for d in doc_ids]
 
 
-M2_SAMPLE_DOCS = ["manual-lg-fx25", "manual-samsung-wd90h25", "manual-lg-sq06fa1wds", "guide-lg-drum-errors", "guide-samsung-drum-5c"]
+# ── M3 용어 사전(Task 6): 설명서에서 기능 이름을 뽑고, 이름마다 평소 표현을 만든다(사용자 검토 전 초안) ──
+M3_PROMPTS = {k: (Path(__file__).resolve().parent / "prompts" / f"m3_{k}_v1.txt").read_text(encoding="utf-8")
+              for k in ("extract", "expand")}
+M3_FORMATS = {
+    "extract": {"type": "json_schema", "name": "names", "strict": True,
+                "schema": {"type": "object", "properties": {"names": {"type": "array", "items": {"type": "string"}}},
+                           "required": ["names"], "additionalProperties": False}},
+    "expand": {"type": "json_schema", "name": "terms", "strict": True,
+               "schema": {"type": "object", "required": ["terms"], "additionalProperties": False, "properties": {"terms": {
+                   "type": "array", "items": {"type": "object", "required": ["name", "expressions"], "additionalProperties": False,
+                                              "properties": {"name": {"type": "string"},
+                                                             "expressions": {"type": "array", "items": {"type": "string"}}}}}}}},
+}
+
+
+def batch_texts(texts: list[str], max_chars: int) -> list[str]:
+    batches, cur = [], []
+    for t in texts:
+        if cur and len("\n".join(cur + [t])) > max_chars:
+            batches.append("\n".join(cur))
+            cur = []
+        cur.append(t)
+    return batches + (["\n".join(cur)] if cur else [])
+
+
+def merge_names(lists: list[list[str]]) -> list[str]:
+    out = []
+    for names in lists:
+        for n in (x.strip() for x in names):
+            if 2 <= len(n) <= 20 and n not in out:
+                out.append(n)
+    return out
+
+
+def parse_terms(raw: str, names: list[str], max_n: int = 5) -> dict[str, list[str]]:
+    """받은 이름마다 표현 목록(이름과 띄어쓰기만 다른 말·중복·2~12자 밖은 뺌). 목록 밖 이름은 버리고, 빠진 이름은 빈 목록"""
+    got = {t["name"].strip(): t["expressions"] for t in json.loads(raw)["terms"]}
+    out = {}
+    for name in names:
+        exprs = []
+        for e in (x.strip() for x in got.get(name, [])):
+            if 2 <= len(e) <= 12 and e.replace(" ", "") != name.replace(" ", "") and e not in exprs:
+                exprs.append(e)
+        out[name] = exprs[:max_n]
+    return out
+
+
+def build_m3_messages(kind: str, model_name: str, material: str) -> list[dict]:
+    body = material.replace("<", "〈").replace(">", "〉")
+    return [{"role": "system", "content": M3_PROMPTS[kind]},
+            {"role": "user", "content": f"모델: {model_name}\n<자료>\n{body}\n</자료>"}]
+
+
+def m3_draft(names: dict[str, str]) -> None:
+    import openai
+
+    from app.core.config import get_settings
+    from app.core.db import get_conn
+
+    settings = get_settings()
+    client = openai.OpenAI(api_key=settings.openai_api_key, timeout=60, max_retries=1)
+    usage = {"input_tokens": 0, "output_tokens": 0}
+
+    def call(kind: str, model_name: str, material: str) -> str:
+        resp = client.responses.create(model=settings.openai_chat_model, reasoning={"effort": settings.reasoning_effort},
+                                       max_output_tokens=4000, text={"format": M3_FORMATS[kind]},
+                                       input=build_m3_messages(kind, model_name, material))
+        for k in usage:
+            usage[k] += getattr(resp.usage, k)
+        return resp.output_text
+
+    with get_conn() as conn:
+        manuals = conn.execute("""SELECT d.id, dm.model_id FROM documents d JOIN document_models dm ON dm.doc_id = d.id
+                                  WHERE d.doc_type = 'manual' ORDER BY d.id""").fetchall()
+        texts = {doc: [t for (t,) in conn.execute("SELECT content FROM chunks WHERE doc_id = %s ORDER BY page, id", (doc,))]
+                 for doc, _ in manuals}
+    draft = {}
+    for doc, model_id in manuals:
+        found = merge_names([json.loads(call("extract", names[model_id], b))["names"] for b in batch_texts(texts[doc], 8000)])
+        terms = {}
+        for i in range(0, len(found), 40):  # 이름 40개씩 표현 만들기
+            terms |= parse_terms(call("expand", names[model_id], "\n".join(found[i:i + 40])), found[i:i + 40])
+        draft[model_id] = terms
+        print(model_id, "기능 이름", len(found), flush=True)
+    OUT.mkdir(exist_ok=True)
+    path = OUT / "m3-terms-draft.json"  # 사용자 검토 전 초안
+    path.write_text(json.dumps({"model": settings.openai_chat_model, "usage": usage, "terms": draft},
+                               ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{path} usage={usage}")
+
+
+M2_SAMPLE_DOCS =["manual-lg-fx25", "manual-samsung-wd90h25", "manual-lg-sq06fa1wds", "guide-lg-drum-errors", "guide-samsung-drum-5c"]
 M2_SEED = 20261110
 
 
@@ -132,9 +224,10 @@ def m2_sample(names: dict[str, str]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("variant", choices=["m1", "m2"])
+    ap.add_argument("variant", choices=["m1", "m2", "m3"])
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--sample", action="store_true")
+    ap.add_argument("--draft", action="store_true")
     args = ap.parse_args()
 
     from ingest.__main__ import load_env
@@ -146,6 +239,8 @@ def main() -> None:
     names = {m["id"]: m["display_name"] for m in load_models()}
     if args.variant == "m2":
         return m2_sample(names) if args.sample else print("M2 전체 생성은 시험 생성 검토 후에 만든다")
+    if args.variant == "m3":
+        return m3_draft(names) if args.draft else print("M3는 초안(--draft)만. 사용자 검토 후 질문 넓히기 함수를 만든다")
     with get_conn() as conn:
         rows = build_m1(conn, names)
         OUT.mkdir(exist_ok=True)
