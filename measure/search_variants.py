@@ -11,6 +11,7 @@ M1(Task 4): 조각 앞에 "모델 · 문서 제목 · 장 이름 · 쪽 소제�
         python -m measure.search_variants m3 --draft    (M3 용어 사전 초안: 설명서마다 기능 이름 뽑기 → 평소 표현, 결과는 measure/out/m3-terms-draft.json)
         python -m measure.search_variants m3 --reduce   (규칙 ① 이름 종류 분류로 줄이기 + ③ 겹친 표현 지우기, 검토표 measure/out/m3-terms-reduced.md)
         python -m measure.search_variants m3 --tidy     (띄어쓰기·끝 "기능"만 다른 이름 합치기 → 규칙 ③ 다시, 검토표 다시 만들기, AI 없음)
+        python -m measure.search_variants m3 --finalize (사용자 검토 m3_review.json 반영 → 이름 끝 합치기 → 규칙 ③ → 확정 사전 measure/m3_terms.json, AI 없음)
 """
 import argparse
 import csv
@@ -28,7 +29,8 @@ M2_FORMAT = {"type": "json_schema", "name": "questions", "strict": True,
                         "properties": {"plain": _QA_LIST, "named": _QA_LIST}}}
 M2_LIMITS = {"plain": 3, "named": 2}  # 기능 이름 없이 3개 + 기능 이름을 쓰는 2개
 _ASKS_NUMBER = re.compile(r"몇|며칠")
-_GENERIC_WORDS = {"사용", "설정", "방법", "관리", "기능", "확인", "청소", "안내", "살펴보", "및", "하기"}
+_GENERIC_WORDS = {"사용", "설정", "방법", "관리", "기능", "확인", "청소", "안내", "살펴보", "살펴보기", "및", "하기"}
+_NAME_ENDINGS = ("설정하기", "기능", "운전", "하기", "코스", "버튼", "옵션")  # M3 이름 합치기: 떼고 같으면 같은 이름
 _SKIP_START = re.compile(r"^([•\-–※*·→]|\d|[a-z]\s|[①-⑳]|\(|주의|경고|참고|알아두기)")
 _SENTENCE_END = re.compile(r"([.:?!]|요|다|[을를이가은는에의로와과고며서면])$")
 
@@ -107,22 +109,32 @@ def check_items(items: list[dict], chunk: str, max_n: int = 5, max_len: int = 60
     return kept, dropped
 
 
-def subheading_words(subheading: str | None) -> list[str]:
-    """M1 소제목의 이름 단어(끝의 '하기'를 떼고, 두 글자 이상, 청소·설정 같은 동작·일반어 제외)"""
-    words = [re.sub(r"하기$", "", w) for w in re.findall(r"[가-힣A-Za-z0-9+]+", subheading or "")]
-    return [w for w in words if len(w) >= 2 and w not in _GENERIC_WORDS]
+_POINTING = re.compile(r"(?:^|\s)(이건|그건|저건|이거|그거|저거|이것|그것|저것|이게|그게|저게)(?=\s|$|[?!.,])")
+
+
+def subheading_phrases(subheading: str | None) -> list[str]:
+    """M1 소제목에서 동작·일반어(청소·설정·및 등)로 끊은 두 단어 이상 묶음(구절). 한 단어(리모컨)는 검사하지 않는다"""
+    runs, cur = [], []
+    for w in [re.sub(r"하기$", "", w) for w in re.findall(r"[가-힣A-Za-z0-9+]+", subheading or "")]:
+        if len(w) < 2 or w in _GENERIC_WORDS:
+            runs, cur = runs + [cur], []
+        else:
+            cur.append(w)
+    return [" ".join(r) for r in runs + [cur] if len(r) >= 2]
 
 
 def check_split(raw: dict, chunk: str, subheading: str | None) -> tuple[dict, list[dict]]:
-    """v3: 칸마다 근거 확인(v2 규칙). '기능 이름 없이' 칸에 소제목 단어가 들어간 질문은 버린다"""
-    words, kept, dropped = subheading_words(subheading), {}, []
+    """v3: 칸마다 근거 확인(v2 규칙). 가리키는 말(이건·그거 등) 질문, '기능 이름 없이' 칸에 소제목 구절이 든 질문은 버린다"""
+    phrases, kept, dropped = subheading_phrases(subheading), {}, []
     for kind, limit in M2_LIMITS.items():
         items = []
         for it in raw[kind]:
-            hit = next((w for w in words if w in it["question"]), None) if kind == "plain" else None
-            if hit:
-                dropped.append({"kind": kind, "question": it["question"].strip(), "evidence": " ".join(it["evidence"].split()),
-                                "reason": f"기능 이름 없이 칸에 소제목 단어({hit})"})
+            q = it["question"].strip()
+            point = _POINTING.search(q)
+            hit = next((p for p in phrases if p.replace(" ", "") in q.replace(" ", "")), None) if kind == "plain" else None
+            reason = f"가리키는 말({point[1]})" if point else f"기능 이름 없이 칸에 소제목 구절({hit})" if hit else None
+            if reason:
+                dropped.append({"kind": kind, "question": q, "evidence": " ".join(it["evidence"].split()), "reason": reason})
             else:
                 items.append(it)
         kept[kind], bad = check_items(items, chunk, max_n=limit)
@@ -131,10 +143,14 @@ def check_split(raw: dict, chunk: str, subheading: str | None) -> tuple[dict, li
 
 
 def merge_variants(terms: dict[str, list[str]], kinds: dict[str, str]) -> tuple[dict, dict, dict]:
-    """띄어쓰기만 다르거나 끝에 '기능'만 붙은 이름을 처음 나온 이름 하나로 합친다(표현은 합집합). 합친 기록을 돌려준다"""
+    """띄어쓰기만 다르거나 끝에 '기능·운전·하기·설정하기·코스·버튼·옵션'만 붙은 이름을 처음 나온 이름 하나로 합친다(표현은 합집합)"""
     def key(n: str) -> str:
         k = n.replace(" ", "")
-        return k[:-2] if k.endswith("기능") and len(k) > 2 else k
+        while True:
+            end = next((e for e in _NAME_ENDINGS if k.endswith(e) and len(k) > len(e) + 1), None)
+            if not end:
+                return k
+            k = k[:-len(end)]
     first, merged, record = {}, {}, {}
     for n, exprs in terms.items():
         head = first.setdefault(key(n), n)
@@ -143,6 +159,65 @@ def merge_variants(terms: dict[str, list[str]], kinds: dict[str, str]) -> tuple[
         merged.setdefault(head, [])
         merged[head] += [e for e in exprs if e not in merged[head]]
     return merged, {n: kinds[n] for n in merged}, record
+
+
+def apply_review(terms: dict[str, list[str]], review: dict) -> dict[str, list[str]]:
+    """사용자 검토 반영: 이름 지우기, 표현 지우기, 표현 바꾸기. 없는 이름·표현이면 멈춘다(오타로 조용히 넘어가지 않게)"""
+    out = {n: list(e) for n, e in terms.items()}
+    for n in review.get("delete", []):
+        del out[n]
+    for n, exprs in review.get("remove_expressions", {}).items():
+        for e in exprs:
+            out[n].remove(e)
+    for n, pairs in review.get("replace_expressions", {}).items():
+        for old, new in pairs.items():
+            out[n][out[n].index(old)] = new
+    return out
+
+
+# ── M3 규칙 ②(측정 전 보완: 어간 비교)와 질문 넓히기 ──
+_PARTICLE_ENDS = ("에서", "으로", "하기", "하고", "하게", "하면", "하는", "해서", "은", "을", "를", "이", "가", "에", "로", "와", "과",
+                  "도", "만", "의", "요")
+_VERB_ENDS = ("기", "고", "게", "면", "는", "서", "지")  # 떼면 '말리'처럼 동사 어간이 남는 말끝(줄임꼴 '말려'도 함께 본다)
+_CONTRACT = {20: 6, 13: 14, 8: 9, 18: 4}  # ㅣ→ㅕ(말리→말려), ㅜ→ㅝ(추→춰), ㅗ→ㅘ(나오→나와), ㅡ→ㅓ(끄→꺼)
+
+
+def _contracted(stem: str) -> str | None:
+    code = ord(stem[-1]) - 0xAC00
+    if not 0 <= code < 11172 or code % 28:  # 한글이 아니거나 받침이 있으면 줄임꼴 없음
+        return None
+    v = (code % 588) // 28
+    return stem[:-1] + chr(0xAC00 + code - v * 28 + _CONTRACT[v] * 28) if v in _CONTRACT else None
+
+
+def word_stems(word: str) -> list[str]:
+    """말끝 하나를 떼고 남은 앞부분. 동사 말끝을 뗐으면 줄임꼴도(말리기 → 말리, 말려)"""
+    for end in sorted(_PARTICLE_ENDS + _VERB_ENDS, key=len, reverse=True):
+        if word.endswith(end) and len(word) > len(end):
+            stem = word[:-len(end)]
+            alt = _contracted(stem) if end in _VERB_ENDS else None
+            return [stem] + ([alt] if alt else [])
+    return [word]
+
+
+def _found(stem: str, question: str) -> bool:
+    if len(stem) >= 2:
+        return stem in question
+    return re.search(rf"(?:^|[\s,.?!~]){re.escape(stem)}", question) is not None  # 한 글자 어간은 단어 앞에서만
+
+
+def expression_matches(expression: str, question: str) -> bool:
+    """규칙 ②: 표현의 핵심 단어(두 글자 이상)마다 어간 중 하나가 질문에 있으면 맞춘 것"""
+    core = [w for w in expression.split() if len(w) >= 2]
+    return bool(core) and all(any(_found(s, question) for s in word_stems(w)) for w in core)
+
+
+def expand_query(question: str, terms: dict[str, list[str]]) -> str:
+    """맞은 표현의 설명서 용어를 질문 뒤에 덧붙인다(사용자 말은 그대로, 이미 있는 용어는 덧붙이지 않음)"""
+    flat = question.replace(" ", "")
+    add = [n for n, exprs in terms.items()
+           if n.replace(" ", "") not in flat and any(expression_matches(e, question) for e in exprs)]
+    return " ".join([question] + add)
 
 
 def sample_chunks(rows: list[dict], doc_ids: list[str], seed: int) -> list[dict]:
@@ -311,6 +386,36 @@ def m3_tidy(names: dict[str, str]) -> None:
     write_m3_review(result, names)
 
 
+M3_TERMS = Path(__file__).resolve().parent / "m3_terms.json"  # 확정 사전(기능 이름·평소 표현만, 설명서 본문 없음)
+
+
+def m3_finalize(names: dict[str, str]) -> None:
+    """확정: 검토한 목록(m3-terms-tidy.json) → 사용자 검토(m3_review.json) → 이름 끝 합치기 → 규칙 ③ → measure/m3_terms.json"""
+    tidy = json.loads((OUT / "m3-terms-tidy.json").read_text(encoding="utf-8"))["models"]
+    review = json.loads((Path(__file__).resolve().parent / "m3_review.json").read_text(encoding="utf-8"))
+    final, result = {}, {}
+    for model_id, r in tidy.items():
+        reviewed = apply_review(r["kept"], review.get(model_id, {}))
+        merged, kinds, record = merge_variants(reviewed, {n: r["kinds"][n] for n in reviewed})
+        kept, wide = drop_wide_expressions(merged)
+        final[model_id] = {"terms": kept, "merged": {n: r["merged"].get(n, []) + record.get(n, [])
+                                                     for n in kept if r["merged"].get(n) or record.get(n)},
+                           "wide_expressions": wide}
+        result[model_id] = {"kept": kept, "kinds": kinds, "removed": r["removed"], "merged": final[model_id]["merged"],
+                            "wide_expressions": wide}
+        print(model_id, "검토 후", len(reviewed), "합친 뒤", len(kept), "표현", sum(len(e) for e in kept.values()),
+              "새로 합친 묶음", len(record), "겹쳐서 지운 표현", len(wide), flush=True)
+    M3_TERMS.write_text(json.dumps({"_note": "검색 개선 M3 확정 용어 사전(2026-11-10). 설명서만 보고 AI 생성 → 규칙 ①·③, 사용자 검토"
+                                    "(measure/m3_review.json), 이름 끝 합치기. 질문 넓히기는 expand_query(규칙 ②)",
+                                    "models": final}, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_m3_review(result, names)
+    print(M3_TERMS)
+
+
+def load_terms() -> dict[str, dict[str, list[str]]]:
+    return {m: v["terms"] for m, v in json.loads(M3_TERMS.read_text(encoding="utf-8"))["models"].items()}
+
+
 def write_m3_review(result: dict, names: dict[str, str]) -> None:
     """검토용 표: measure/out/m3-terms-reduced.md(모델별 표 + 합친·지운 기록)와 .csv(남길까·고칠 표현 칸)"""
     lines = []
@@ -373,6 +478,7 @@ def main() -> None:
     ap.add_argument("--draft", action="store_true")
     ap.add_argument("--reduce", action="store_true")
     ap.add_argument("--tidy", action="store_true")
+    ap.add_argument("--finalize", action="store_true")
     args = ap.parse_args()
 
     from ingest.__main__ import load_env
@@ -389,6 +495,8 @@ def main() -> None:
             return m3_reduce(names)
         if args.tidy:
             return m3_tidy(names)
+        if args.finalize:
+            return m3_finalize(names)
         return m3_draft(names) if args.draft else print("M3는 초안(--draft)·줄이기(--reduce)만. 사용자 검토 후 질문 넓히기 함수를 만든다")
     with get_conn() as conn:
         rows = build_m1(conn, names)
