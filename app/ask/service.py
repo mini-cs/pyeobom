@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from app.answer.check import GUIDE_WARNING, NOT_FOUND_MESSAGE, Answer, parse_and_verify
 from app.answer.prompting import build_messages
 from app.answer.rewrite import RewriteResult
-from app.core.brand_guard import mentions_other_brand, other_brand_message
+from app.core.brand_guard import guard_message
 from app.core.config import Settings
 from app.core.observability import get_tracer
 from app.input_guard.pii import mask_history, mask_pii
@@ -43,7 +43,7 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
         embed_ms = search_total_ms = llm_ms = 0
         chunks, diagnostic_added, result = [], False, None
         rewritten, rewrite_ms = None, None  # 바꾸기를 시도하지 않으면 rewrite_ms는 null(측정 평균 왜곡 방지)
-        blocked = mentions_other_brand(question, deps.brand(model_id))  # 다른 제조사 질문은 AI 없이 안내(결정 A)
+        blocked = guard_message(question, deps.brand(model_id))  # 다른 제조사 이름·코드 질문은 AI 없이 안내(결정 A)
         if history and not blocked:
             # 앞 대화는 질문 바꾸기에만 쓰고 답변 AI에는 넘기지 않는다(바뀐 질문 + 조각만)
             t = time.perf_counter()
@@ -53,10 +53,10 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
             rewrite_ms = _ms(t)
             if r.used:
                 rewritten = r.text
-                blocked = mentions_other_brand(rewritten, deps.brand(model_id))  # 바꾼 질문에도 다시 적용
+                blocked = guard_message(rewritten, deps.brand(model_id))  # 바꾼 질문에도 다시 적용
         query = rewritten or question
         if blocked:
-            result = Answer(False, other_brand_message(deps.brand(model_id)), [])
+            result = Answer(False, blocked, [])
         else:
             t = time.perf_counter()
             with tracer.span("embed"):
