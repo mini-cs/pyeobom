@@ -310,7 +310,8 @@ def test_manual_link_shows_search_codes_as_only_exception(open_page):
 
 def test_chat_screen_has_no_footer_note(open_page):
     page = open_page()
-    expect(page.get_by_text("비영리 학습용 포트폴리오예요.")).to_be_visible()   # 랜딩에는 그대로
+    # 랜딩에는 그대로. 서랍(Task 6)에도 같은 문구가 있어 랜딩 안으로 좁힌다
+    expect(page.locator('[data-screen="landing"]').get_by_text("비영리 학습용 포트폴리오예요.")).to_be_visible()
     open_chat(page, "washer-lg-fx25")
     expect(page.locator('[data-screen="chat"]').get_by_text("비영리")).to_have_count(0)
     expect(page.get_by_text("비영리").locator("visible=true")).to_have_count(0)
@@ -752,3 +753,238 @@ def test_conversation_of_other_model_or_unknown_id_opens_new_chat(open_page):
     send(page, "가짜 질문입니다")
     wait_turns(page, 1)
     assert "history" not in asks[0]
+
+
+# ── ⑤ 지난 대화 서랍(설계 2절 ⑤, 계획 3 Task 6) ──
+STORE_NOTE = "대화는 이 기기에만 저장돼요. 공용 기기라면 다 쓴 뒤 지워 주세요."
+FOOTER_NOTE = "비영리 학습용 포트폴리오예요. 설명서 저작권은 각 제조사에 있어요."
+
+
+def open_drawer(page):
+    page.get_by_role("button", name="지난 대화").click()
+    expect(page.locator("#drawer")).to_be_visible()
+    return page.locator("#drawer")
+
+
+def drawer_cards(page):
+    return page.locator("#drawer .conv-card")
+
+
+def delete_button(page, title):
+    return page.get_by_role("button", name=f"'{title}' 대화 지우기")
+
+
+def stored_ids(page):
+    return [c["id"] for c in saved_conversations(page)]
+
+
+def test_drawer_opens_from_menu_on_topbar_screens_modal_and_esc_returns_focus(open_page):
+    page = open_page()
+    expect(page.get_by_role("button", name="지난 대화")).to_have_count(0)   # 랜딩은 위쪽 막대가 없어 서랍 버튼도 없다
+    go_category(page)
+    menu = page.get_by_role("button", name="지난 대화")
+    expect(menu).not_to_have_attribute("aria-disabled", "true")
+    drawer = open_drawer(page)
+    assert drawer.evaluate("(d) => d.matches(':modal')")   # showModal: 바깥은 누를 수도 포커스할 수도 없다
+    expect(page.get_by_role("dialog", name="지난 대화")).to_be_visible()
+    for _ in range(4):   # Tab이 서랍 밖으로 나가지 않는다
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.getElementById('drawer').contains(document.activeElement)")
+    page.keyboard.press("Escape")
+    expect(drawer).to_be_hidden()
+    expect(menu).to_be_focused()
+    page.get_by_role("button", name="세탁기").click()
+    expect(page.locator(".model-card")).to_have_count(2)
+    open_drawer(page)   # 모델 화면에서도
+    page.keyboard.press("Escape")
+    open_chat(page, "washer-lg-fx25")
+    open_drawer(page)   # 채팅 화면에서도
+    page.get_by_role("button", name="닫기").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    expect(menu).to_be_focused()
+
+
+def test_drawer_has_store_note_and_footer_note_at_bottom(open_page):
+    page = open_page()
+    go_category(page)
+    drawer = open_drawer(page)
+    expect(drawer.get_by_text(STORE_NOTE)).to_be_visible()
+    expect(drawer.get_by_text("저장된 대화가 없어요")).to_be_visible()   # 빈 서랍
+    expect(drawer.get_by_role("link", name="새 대화")).to_be_visible()
+    expect(drawer.get_by_role("button", name="전체 삭제")).to_be_hidden()   # 지울 대화가 없으면 숨긴다
+    footer = drawer.get_by_text(FOOTER_NOTE)
+    expect(footer).to_be_visible()
+    # 하단 고지는 서랍 맨 아래: 서랍 안 보이는 요소 가운데 가장 아래에 있다
+    lowest = page.evaluate("""() => { const items = [...document.querySelectorAll('#drawer *')].filter((e) => e.checkVisibility());
+        const max = Math.max(...items.map((e) => e.getBoundingClientRect().bottom));
+        return items.filter((e) => e.getBoundingClientRect().bottom === max).map((e) => e.textContent.replace(/\\s+/g, ' ').trim()); }""")
+    assert FOOTER_NOTE in lowest, lowest
+
+
+def test_drawer_cards_title_name_date_newest_first_without_codes(open_page):
+    conversations = [_conversation(i, mid) for i, mid in
+                     enumerate(["washer-lg-fx25", "aircon-lg-sq06fa1wds", "washer-samsung-wd90h25", "없는-모델"], 1)]
+    page = open_page(conversations=conversations)
+    go_category(page)
+    open_drawer(page)
+    cards = drawer_cards(page)
+    expect(cards).to_have_count(3)   # 목록에 없는 모델의 대화는 보이지 않는다(깨진 링크 방지)
+    expect(cards.locator(".card-title")).to_have_text(["가짜 질문 3", "가짜 질문 2", "가짜 질문 1"])   # updated_at 최신순
+    expect(cards.locator(".card-meta")).to_have_text([f"{NAMES['washer-samsung-wd90h25']} · 11월 3일",
+                                                      f"{NAMES['aircon-lg-sq06fa1wds']} · 11월 2일",
+                                                      f"{NAMES['washer-lg-fx25']} · 11월 1일"])
+    for text in cards.all_text_contents():
+        assert not [c for c in CODES if c in text], text   # 모델 코드 없음, 이름은 name
+    assert cards.first.get_attribute("href") == "#chat/washer-samsung-wd90h25/c3"
+    box = delete_button(page, "가짜 질문 3").bounding_box()
+    assert box["width"] >= 44 and box["height"] >= 44
+
+
+def test_drawer_conversation_of_other_model_continues_with_its_own_history(open_page):
+    # 계획 Review Focus 3: 모델 A 채팅 중 서랍에서 모델 B 대화를 열고 물으면 B의 모델·B의 앞 대화만 간다
+    b = _conversation(1, "aircon-lg-sq06fa1wds")
+    b["turns"].append({**b["turns"][0], "question_masked": "가짜 질문 1-2", "answer": "가짜 답 2"})
+    page, asks = open_page(ask=echo, conversations=[b], with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    send(page, "가짜 A 질문")
+    wait_turns(page, 1)
+    open_drawer(page)
+    drawer_cards(page).filter(has_text="가짜 질문 1").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    expect(page.locator("#chat-title")).to_have_text(TITLES["aircon-lg-sq06fa1wds"])
+    assert page.evaluate("location.hash") == "#chat/aircon-lg-sq06fa1wds/c1"
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1", "가짜 질문 1-2"])
+    send(page, "가짜 B 질문")
+    wait_turns(page, 3)
+    assert asks[1]["model_id"] == "aircon-lg-sq06fa1wds"
+    assert asks[1]["history"] == [{"question": "가짜 질문 1", "answer": "가짜 답"},
+                                  {"question": "가짜 질문 1-2", "answer": "가짜 답 2"}]
+
+
+def test_drawer_new_chat_goes_to_category(open_page):
+    page = open_page()
+    open_chat(page, "washer-lg-fx25")
+    open_drawer(page).get_by_role("link", name="새 대화").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert_screen(page, CATEGORY_H1)
+    assert page.evaluate("location.hash") == "#category"
+
+
+def test_drawer_delete_one_updates_list_storage_recent_and_focus(open_page):
+    conversations = [_conversation(i, "washer-lg-fx25") for i in range(1, 4)]
+    page = open_page(conversations=conversations)
+    go_category(page)
+    expect(page.locator("#category-recent .conv-card")).to_have_count(3)
+    open_drawer(page)
+    delete_button(page, "가짜 질문 2").click()   # 바로 지운다(전체 삭제만 한 번 더 확인)
+    expect(drawer_cards(page).locator(".card-title")).to_have_text(["가짜 질문 3", "가짜 질문 1"])
+    assert stored_ids(page) == ["c3", "c1"]
+    expect(delete_button(page, "가짜 질문 1")).to_be_focused()   # 다음 카드의 삭제 버튼
+    delete_button(page, "가짜 질문 1").click()
+    expect(delete_button(page, "가짜 질문 3")).to_be_focused()   # 다음이 없으면 이전 것
+    delete_button(page, "가짜 질문 3").click()
+    expect(page.locator("#drawer").get_by_text("저장된 대화가 없어요")).to_be_visible()
+    expect(page.locator("#drawer-title")).to_be_focused()   # 목록이 비면 서랍 제목
+    assert stored_ids(page) == []
+    page.keyboard.press("Escape")
+    expect(page.locator("#category-recent .conv-card")).to_have_count(0)   # 뒤 화면의 최근 대화 카드도 남지 않는다
+    page.go_back()
+    assert_screen(page, LANDING_H1)
+    expect(page.locator(".conv-card").locator("visible=true")).to_have_count(0)
+
+
+def test_drawer_delete_all_needs_in_page_confirm(open_page):
+    page = open_page(conversations=[_conversation(i, "washer-lg-fx25") for i in range(1, 4)])
+    native = []
+    page.on("dialog", lambda d: (native.append(d.type), d.dismiss()))   # 브라우저 기본 confirm 창을 쓰지 않는다
+    go_category(page)
+    drawer = open_drawer(page)
+    drawer.get_by_role("button", name="전체 삭제").click()
+    expect(drawer.get_by_text("대화 3개를 모두 지울까요?")).to_be_visible()
+    expect(drawer.get_by_role("button", name="취소")).to_be_focused()
+    drawer.get_by_role("button", name="취소").click()
+    expect(drawer.get_by_text("대화 3개를 모두 지울까요?")).to_be_hidden()
+    expect(drawer.get_by_role("button", name="전체 삭제")).to_be_focused()
+    expect(drawer_cards(page)).to_have_count(3)
+    assert stored_ids(page) == ["c3", "c2", "c1"]
+    drawer.get_by_role("button", name="전체 삭제").click()
+    drawer.get_by_role("button", name="모두 지우기").click()
+    expect(drawer_cards(page)).to_have_count(0)
+    expect(drawer.get_by_text("저장된 대화가 없어요")).to_be_visible()
+    expect(page.locator("#drawer-title")).to_be_focused()
+    assert stored_ids(page) == [] and native == []
+
+
+def test_deleting_open_conversation_shows_new_chat_other_keeps_screen(open_page):
+    conversations = [_conversation(i, "washer-lg-fx25") for i in range(1, 3)]
+    page = open_page(conversations=conversations)
+    open_chat(page, "washer-lg-fx25", "c1")
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1"])
+    open_drawer(page)
+    delete_button(page, "가짜 질문 2").click()   # 다른 대화를 지우면 지금 화면은 그대로
+    page.keyboard.press("Escape")
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1"])
+    assert page.evaluate("location.hash") == "#chat/washer-lg-fx25/c1"
+    open_drawer(page)
+    delete_button(page, "가짜 질문 1").click()   # 보고 있는 대화를 지우면 그 모델의 새 대화
+    page.keyboard.press("Escape")
+    expect(page.locator(".turn")).to_have_count(0)
+    expect(page.locator("#suggestions")).to_be_visible()
+    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+    assert page.evaluate("location.hash") == "#chat/washer-lg-fx25"
+
+
+def test_delete_all_while_viewing_conversation_shows_new_chat(open_page):
+    page = open_page(conversations=[_conversation(1, "aircon-lg-sq06fa1wds")])
+    open_chat(page, "aircon-lg-sq06fa1wds", "c1")
+    expect(page.locator(".turn")).to_have_count(1)
+    drawer = open_drawer(page)
+    drawer.get_by_role("button", name="전체 삭제").click()
+    drawer.get_by_role("button", name="모두 지우기").click()
+    page.keyboard.press("Escape")
+    expect(page.locator(".turn")).to_have_count(0)
+    assert page.evaluate("location.hash") == "#chat/aircon-lg-sq06fa1wds"
+
+
+def test_delete_failure_shows_line_and_keeps_list(open_page):
+    # 저장소 쓰기가 실패하면(deleteConversation이 false) 목록을 그대로 두고 한 줄 안내
+    init = "Storage.prototype.setItem = function () { throw new DOMException('가짜 공간 부족', 'QuotaExceededError'); };"
+    page = open_page(conversations=[_conversation(i, "washer-lg-fx25") for i in range(1, 3)], init=init)
+    go_category(page)
+    drawer = open_drawer(page)
+    delete_button(page, "가짜 질문 2").click()
+    expect(drawer.get_by_text("지우지 못했어요")).to_be_visible()
+    expect(drawer_cards(page)).to_have_count(2)
+    expect(drawer.locator(".error-card")).to_have_count(0)   # 오류 카드가 아니라 한 줄
+    drawer.get_by_role("button", name="전체 삭제").click()
+    drawer.get_by_role("button", name="모두 지우기").click()
+    expect(drawer.get_by_text("지우지 못했어요")).to_be_visible()
+    expect(drawer_cards(page)).to_have_count(2)
+    assert stored_ids(page) == ["c2", "c1"]
+
+
+def test_deleted_conversation_not_resurrected_by_late_answer(open_page):
+    # Task 5 검토: 답을 기다리는 동안 서랍에서 그 대화를 지우면, 늦게 온 답이 대화를 되살리지 않는다
+    held = []
+
+    def ask(body, route):
+        if body["question"] == "가짜 질문 2":
+            held.append(route)
+            return None
+        return fake(body)
+
+    page, asks = open_page(ask=ask, with_asks=True)
+    open_chat(page, "washer-lg-fx25")
+    send(page, "가짜 질문 1")
+    wait_turns(page, 1)
+    send(page, "가짜 질문 2")
+    wait_until(page, lambda: held)
+    open_drawer(page)
+    delete_button(page, "가린:가짜 질문 1").click()
+    page.keyboard.press("Escape")
+    expect(page.locator(".turn")).to_have_count(0)   # 보고 있던 대화를 지웠으므로 그 모델의 새 대화
+    assert page.evaluate("location.hash") == "#chat/washer-lg-fx25"
+    held[0].fulfill(json=fake(asks[1])[1])
+    page.wait_for_timeout(300)   # 늦은 답이 처리될 시간(이 화면에는 아무것도 나타나지 않아 기다릴 신호가 없다)
+    assert saved_conversations(page) == []
+    expect(page.locator(".turn")).to_have_count(0)
