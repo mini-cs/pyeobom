@@ -62,6 +62,8 @@ function parseRoute(hash) {
   return { screen: "landing" };
 }
 
+const heading = (name) => (name === "chat" ? ui.chatTitle : document.querySelector(`[data-screen="${name}"] h1`));
+
 function show(name, focus) {
   for (const s of document.querySelectorAll(".screen")) s.hidden = s.dataset.screen !== name;
   ui.topbar.hidden = name === "landing";
@@ -71,7 +73,7 @@ function show(name, focus) {
   ui.newChat.hidden = !chat;
   if (focus) {
     window.scrollTo(0, 0);
-    (chat ? ui.chatTitle : document.querySelector(`[data-screen="${name}"] h1`)).focus();
+    heading(name).focus();
   }
 }
 
@@ -492,6 +494,7 @@ const drawer = {
   all: $("delete-all"), confirm: $("delete-confirm"), confirmText: $("delete-confirm-text"), cancel: $("delete-cancel"),
 };
 let drawerModels = [];
+let closedByLink = false;  // 서랍 안 링크(대화 카드·새 대화)로 닫혔는지
 
 function renderDrawer() {
   const list = knownConversations(drawerModels);
@@ -545,8 +548,17 @@ ui.menu.addEventListener("click", async () => {
   drawer.title.focus();
 });
 $("drawer-close").addEventListener("click", () => drawer.box.close());
-drawer.box.addEventListener("click", (e) => { if (e.target.closest("a")) drawer.box.close(); });  // 대화 카드·새 대화는 주소로 이동
-drawer.box.addEventListener("close", () => ui.menu.focus());  // 브라우저가 돌려주지 않아도 ☰로
+drawer.box.addEventListener("click", (e) => {  // 대화 카드·새 대화는 주소로 이동
+  if (!e.target.closest("a")) return;
+  closedByLink = true;
+  drawer.box.close();
+});
+// 링크로 닫으면 그 화면의 h1로(주소가 같으면 hashchange가 없어 여기서 옮긴다), 그 밖에는 ☰로(브라우저가 돌려주지 않아도)
+drawer.box.addEventListener("close", () => {
+  if (closedByLink) heading(parseRoute(location.hash).screen).focus({ preventScroll: true });
+  else ui.menu.focus();
+  closedByLink = false;
+});
 drawer.all.addEventListener("click", () => {
   drawer.confirmText.textContent = `대화 ${loadConversations(storage()).length}개를 모두 지울까요?`;
   drawer.all.hidden = true;
