@@ -10,6 +10,7 @@
   --color-on-action: #FFFFFF;
   --color-error-bg: #FDECEA;
   --color-error-text: #B3261E;
+  --color-scrim: rgba(17, 17, 17, 0.4);
 
   --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
   --text-xs: 12px;
@@ -71,7 +72,7 @@ a { color: var(--color-text); }
 button { font: inherit; letter-spacing: inherit; }
 
 :focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: var(--focus-ring); }
-h1[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바꿀 때 옮겨 오는 포커스라 링은 그리지 않는다 */
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바꿀 때 옮겨 오는 포커스라 링은 그리지 않는다 */
 
 [hidden] { display: none !important; }  /* display를 준 요소도 hidden이면 숨긴다 */
 
@@ -125,7 +126,6 @@ h1[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바�
   padding: 0; border: 0; border-radius: var(--radius-pill);
   background: none; color: var(--color-text); cursor: pointer;
 }
-.icon-button[aria-disabled="true"] { color: var(--color-text-muted); cursor: default; }
 .chat-title { flex: 1; min-width: 0; margin: 0; }
 .new-chat { flex: none; padding: 0 var(--space-4); }
 
@@ -341,8 +341,48 @@ h1[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바�
 .form-error { color: var(--color-error-text); font-size: var(--text-sm); }
 .empty { color: var(--color-text-muted); font-size: var(--text-sm); }
 
+/* ── ⑤ 지난 대화 서랍: 왼쪽에서 나오는 전체 높이 판(가이드 5절 --motion-slide). 뒤 화면은 막으로 덮는다 ── */
+.drawer {
+  inset: 0 auto 0 0;
+  width: calc(100% - var(--tap-min)); max-width: calc(var(--content-max) / 2);
+  height: 100%; max-height: none;
+  margin: 0; padding: 0; border: 0;
+  background: var(--color-bg); color: var(--color-text);
+  overflow-y: auto;
+}
+.drawer[open] { animation: drawer-in var(--motion-slide); }
+.drawer::backdrop { background: var(--color-scrim); }
+@keyframes drawer-in { from { transform: translateX(-100%); } }
+.drawer-body {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  min-height: 100%;
+  padding: var(--space-2) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
+}
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.drawer-head h2 { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
+.drawer-item { display: flex; align-items: center; gap: var(--space-1); }
+.drawer-item .conv-card { flex: 1; min-width: 0; }
+.text-button {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  min-width: var(--tap-min); min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  background: none; color: var(--color-text);
+  border: 0; border-radius: var(--radius-pill);
+  font-size: var(--text-sm); line-height: var(--leading-ui); font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.drawer-body > .text-button { align-self: flex-start; }
+.confirm {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface); border-radius: var(--radius-md);
+}
+.confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.drawer-footer { margin-top: auto; }
+
 @media (prefers-reduced-motion: reduce) {
   .pill, .send, .fold .icon { transition: none; }
+  .drawer[open] { animation: none; }
   .tiles, .suggestions { scroll-behavior: auto; }
   .progress::after { animation: none; width: 100%; }
 }

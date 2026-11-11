@@ -12,9 +12,8 @@
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <!-- ☰ 서랍은 Task 6에서 연다. 그 전에는 누를 수 없음으로 둔다 -->
   <header class="topbar" id="topbar" hidden>
-    <button type="button" class="icon-button" id="drawer-open" aria-label="지난 대화" aria-disabled="true">
+    <button type="button" class="icon-button" id="drawer-open" aria-label="지난 대화" aria-haspopup="dialog">
       <span class="icon icon-menu" aria-hidden="true"></span>
     </button>
     <span class="brand" id="brand">펴봄</span>
@@ -22,6 +21,31 @@
     <h1 class="brand chat-title" id="chat-title" tabindex="-1" hidden></h1>
     <button type="button" class="pill new-chat" id="new-chat" hidden>새 대화</button>
   </header>
+
+  <!-- ⑤ 지난 대화 서랍(설계 2절 ⑤): showModal로 열어 Esc 닫기·바깥 비활성·포커스 가두기는 브라우저가 한다 -->
+  <dialog class="drawer" id="drawer" aria-labelledby="drawer-title" closedby="any">
+    <div class="drawer-body">
+      <div class="drawer-head">
+        <h2 id="drawer-title" tabindex="-1">지난 대화</h2>
+        <button type="button" class="text-button" id="drawer-close">닫기</button>
+      </div>
+      <a class="pill" href="#category">새 대화</a>
+      <p class="notice"><span class="icon icon-info" aria-hidden="true"></span>
+        <span><strong>저장 안내</strong> <span>대화는 이 기기에만 저장돼요. 공용 기기라면 다 쓴 뒤 지워 주세요.</span></span></p>
+      <ul class="conv-list" id="drawer-list"></ul>
+      <p class="empty" id="drawer-empty" hidden>저장된 대화가 없어요</p>
+      <p class="form-error" id="drawer-error" role="alert" hidden>지우지 못했어요</p>
+      <button type="button" class="text-button" id="delete-all">전체 삭제</button>
+      <div class="confirm" id="delete-confirm" role="group" aria-labelledby="delete-confirm-text" hidden>
+        <p id="delete-confirm-text"></p>
+        <div class="confirm-actions">
+          <button type="button" class="text-button" id="delete-cancel">취소</button>
+          <button type="button" class="pill" id="delete-ok">모두 지우기</button>
+        </div>
+      </div>
+      <p class="small-note drawer-footer">비영리 학습용 포트폴리오예요.<br> 설명서 저작권은 각 제조사에 있어요.</p>
+    </div>
+  </dialog>
 
   <main>
     <!-- ① 랜딩: 처음 열면 주소와 상관없이 이 화면 -->

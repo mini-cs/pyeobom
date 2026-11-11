@@ -787,9 +787,9 @@ def test_drawer_opens_from_menu_on_topbar_screens_modal_and_esc_returns_focus(op
     drawer = open_drawer(page)
     assert drawer.evaluate("(d) => d.matches(':modal')")   # showModal: 바깥은 누를 수도 포커스할 수도 없다
     expect(page.get_by_role("dialog", name="지난 대화")).to_be_visible()
-    for _ in range(4):   # Tab이 서랍 밖으로 나가지 않는다
+    for _ in range(6):   # Tab이 서랍 밖 화면 요소로 가지 않는다(끝에서는 브라우저 UI를 거쳐 서랍으로 돌아온다)
         page.keyboard.press("Tab")
-        assert page.evaluate("document.getElementById('drawer').contains(document.activeElement)")
+        assert page.evaluate("![...document.querySelectorAll('header, main')].some((e) => e.contains(document.activeElement))")
     page.keyboard.press("Escape")
     expect(drawer).to_be_hidden()
     expect(menu).to_be_focused()
@@ -814,11 +814,11 @@ def test_drawer_has_store_note_and_footer_note_at_bottom(open_page):
     expect(drawer.get_by_role("button", name="전체 삭제")).to_be_hidden()   # 지울 대화가 없으면 숨긴다
     footer = drawer.get_by_text(FOOTER_NOTE)
     expect(footer).to_be_visible()
-    # 하단 고지는 서랍 맨 아래: 서랍 안 보이는 요소 가운데 가장 아래에 있다
-    lowest = page.evaluate("""() => { const items = [...document.querySelectorAll('#drawer *')].filter((e) => e.checkVisibility());
-        const max = Math.max(...items.map((e) => e.getBoundingClientRect().bottom));
-        return items.filter((e) => e.getBoundingClientRect().bottom === max).map((e) => e.textContent.replace(/\\s+/g, ' ').trim()); }""")
-    assert FOOTER_NOTE in lowest, lowest
+    # 하단 고지는 서랍 맨 아래: 고지를 감싸지 않는 서랍 안 보이는 요소는 모두 고지 위에서 끝난다
+    above = footer.evaluate("""(f) => [...document.querySelectorAll('#drawer *')]
+        .filter((e) => e.checkVisibility() && !e.contains(f) && !f.contains(e))
+        .map((e) => e.getBoundingClientRect().bottom <= f.getBoundingClientRect().top)""")
+    assert above and all(above), above
 
 
 def test_drawer_cards_title_name_date_newest_first_without_codes(open_page):
@@ -906,7 +906,7 @@ def test_drawer_delete_all_needs_in_page_confirm(open_page):
     expect(drawer.get_by_text("대화 3개를 모두 지울까요?")).to_be_hidden()
     expect(drawer.get_by_role("button", name="전체 삭제")).to_be_focused()
     expect(drawer_cards(page)).to_have_count(3)
-    assert stored_ids(page) == ["c3", "c2", "c1"]
+    assert sorted(stored_ids(page)) == ["c1", "c2", "c3"]   # 저장소 원본 순서는 넣은 순서 그대로
     drawer.get_by_role("button", name="전체 삭제").click()
     drawer.get_by_role("button", name="모두 지우기").click()
     expect(drawer_cards(page)).to_have_count(0)
@@ -960,7 +960,7 @@ def test_delete_failure_shows_line_and_keeps_list(open_page):
     drawer.get_by_role("button", name="모두 지우기").click()
     expect(drawer.get_by_text("지우지 못했어요")).to_be_visible()
     expect(drawer_cards(page)).to_have_count(2)
-    assert stored_ids(page) == ["c2", "c1"]
+    assert sorted(stored_ids(page)) == ["c1", "c2"]
 
 
 def test_deleted_conversation_not_resurrected_by_late_answer(open_page):

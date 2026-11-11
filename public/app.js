@@ -1,5 +1,5 @@
-// 펴봄 화면 전환: ① 랜딩 → ② 카테고리 → ③ 모델 → ④ 채팅(# 주소, 브라우저 뒤로 가기). API 글자는 textContent로만 넣는다(XSS 방지).
-import { loadConversations, makeTitle, saveConversation, toStoredTurn } from "./js/store.js";
+// 펴봄 화면 전환: ① 랜딩 → ② 카테고리 → ③ 모델 → ④ 채팅(# 주소, 브라우저 뒤로 가기), ☰ ⑤ 지난 대화 서랍. API 글자는 textContent로만 넣는다(XSS 방지).
+import { deleteAllConversations, deleteConversation, loadConversations, makeTitle, saveConversation, toStoredTurn } from "./js/store.js";
 import { buildHistory, shouldShowRewritten } from "./js/history.js";
 import { EXAMPLES } from "./js/examples.js";
 
@@ -11,7 +11,7 @@ const RECENT_LIMIT = { landing: 1, category: 3 };  // 설계 2절 ①·②, 계�
 
 const $ = (id) => document.getElementById(id);
 const ui = {
-  topbar: $("topbar"), brand: $("brand"), newChat: $("new-chat"), tiles: $("tiles"), dots: $("tile-dots"),
+  topbar: $("topbar"), menu: $("drawer-open"), brand: $("brand"), newChat: $("new-chat"), tiles: $("tiles"), dots: $("tile-dots"),
   modelTitle: $("model-title"), modelCards: $("model-cards"), chatTitle: $("chat-title"),
   form: $("ask-form"), question: $("question"), counter: $("counter"), send: $("send"),
   formError: $("form-error"), pii: $("pii-note"), saveNote: $("save-note"), status: $("chat-status"),
@@ -104,20 +104,28 @@ function formatDate(iso) {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
 }
 
+// 목록에 있는 모델의 대화만, 최신순(깨진 링크 방지). 모델 코드는 모델 선택 화면에서만이라 이름은 name
+function knownConversations(models) {
+  const names = new Map(models.map((m) => [m.id, m.name]));
+  return loadConversations(storage()).filter((c) => names.has(c.model_id)).map((c) => ({ c, name: names.get(c.model_id) }));
+}
+
+function convCard({ c, name }) {
+  const a = el("a", "conv-card");
+  a.href = `#chat/${encodeURIComponent(c.model_id)}/${encodeURIComponent(c.id)}`;
+  const text = el("span", "card-text");
+  const date = formatDate(c.updated_at);
+  text.append(el("span", "card-title", String(c.title ?? "")), el("span", "card-meta", date ? `${name} · ${date}` : name));
+  a.append(text, icon("chevron"));
+  return a;
+}
+
 function renderRecent(section, limit, models) {
-  const names = new Map(models.map((m) => [m.id, m.name]));  // 모델 코드는 모델 선택 화면에서만
-  const list = loadConversations(storage()).filter((c) => names.has(c.model_id)).slice(0, limit);
+  const list = knownConversations(models).slice(0, limit);
   section.hidden = list.length === 0;
-  section.querySelector("ul").replaceChildren(...list.map((c) => {
-    const a = el("a", "conv-card");
-    a.href = `#chat/${encodeURIComponent(c.model_id)}/${encodeURIComponent(c.id)}`;
-    const text = el("span", "card-text");
-    const date = formatDate(c.updated_at);
-    text.append(el("span", "card-title", String(c.title ?? "")),
-      el("span", "card-meta", date ? `${names.get(c.model_id)} · ${date}` : names.get(c.model_id)));
-    a.append(text, icon("chevron"));
+  section.querySelector("ul").replaceChildren(...list.map((item) => {
     const li = el("li");
-    li.append(a);
+    li.append(convCard(item));
     return li;
   }));
 }
@@ -225,7 +233,7 @@ function entriesFrom(turns) {
 }
 
 function resetChat(model, conv) {
-  chat = { model, conv, entries: entriesFrom(conv ? conv.turns : []) };
+  chat = { model, conv, entries: entriesFrom(conv ? conv.turns : []), saved: !!conv };  // saved: 저장소에 있었던 대화
   setBusy(false);  // 기다리던 답은 원래 대화에 저장만 되고 이 화면은 막지 않는다
   ui.question.value = "";
   updateCounter();
@@ -393,10 +401,12 @@ function saveTurn(state, turn) {
   // 저장 직전에 같은 대화를 다시 읽어 그 턴들 뒤에 이어 붙인다. 그사이 같은 대화를 다시 연 화면이
   // 저장한 턴(또는 늦게 온 답)을 메모리의 옛 사본으로 덮어쓰지 않게. 개수 한도는 saveConversation(store.js)이 지킨다.
   // 이 대화의 앞 저장이 실패했으면 저장소 사본이 메모리보다 오래됐으므로 메모리 쪽을 쓴다
-  const stored = state.unsaved ? null : loadConversations(storage()).find((c) => c.id === state.conv.id);
-  const base = stored ?? state.conv;
+  const stored = loadConversations(storage()).find((c) => c.id === state.conv.id);
+  const base = state.unsaved || !stored ? state.conv : stored;
   state.conv = { ...base, turns: [...base.turns, turn], updated_at: now };
-  state.unsaved = !saveConversation(storage(), state.conv);
+  // 한 번이라도 저장된 대화가 저장소에 없으면 그사이 지운 것이다(서랍·다른 탭). 늦은 답으로 되살리지 않는다
+  state.unsaved = (state.saved && !stored) || !saveConversation(storage(), state.conv);
+  if (!state.unsaved) state.saved = true;
   // 안내는 요소 하나라 여러 번 실패해도 대화당 하나만 보인다. 새 대화(resetChat)에서 끈다
   if (state.unsaved && current) ui.saveNote.hidden = false;
 }
@@ -474,6 +484,84 @@ ui.question.addEventListener("keydown", (e) => {
 ui.form.addEventListener("submit", (e) => {
   e.preventDefault();
   ask(ui.question.value);
+});
+
+// ── ⑤ 지난 대화 서랍(설계 2절 ⑤): 카드·대화마다 삭제·전체 삭제(화면 안 확인 단계) ──
+const drawer = {
+  box: $("drawer"), title: $("drawer-title"), list: $("drawer-list"), empty: $("drawer-empty"), error: $("drawer-error"),
+  all: $("delete-all"), confirm: $("delete-confirm"), confirmText: $("delete-confirm-text"), cancel: $("delete-cancel"),
+};
+let drawerModels = [];
+
+function renderDrawer() {
+  const list = knownConversations(drawerModels);
+  drawer.list.replaceChildren(...list.map((item) => {
+    const del = el("button", "text-button", "지우기");
+    del.type = "button";
+    del.setAttribute("aria-label", `'${String(item.c.title ?? "")}' 대화 지우기`);
+    del.addEventListener("click", () => deleteOne(item.c.id, del));
+    const li = el("li", "drawer-item");
+    li.append(convCard(item), del);
+    return li;
+  }));
+  drawer.empty.hidden = list.length > 0;
+  drawer.all.hidden = list.length === 0;
+  drawer.confirm.hidden = true;
+  drawer.error.hidden = true;
+}
+
+// 지운 대화를 보고 있었으면 그 모델의 새 대화로. 뒤 화면의 최근 대화 카드도 다시 그린다. ids가 null이면 전체
+function afterDelete(ids) {
+  if (chat.conv && (!ids || ids.includes(chat.conv.id))) {
+    resetChat(chat.model, null);
+    if (parseRoute(location.hash).screen === "chat") history.replaceState(null, "", chatHash(chat.model.id));
+  }
+  const { screen } = parseRoute(location.hash);
+  if (RECENT_LIMIT[screen]) renderRecent($(`${screen}-recent`), RECENT_LIMIT[screen], drawerModels);
+  renderDrawer();
+}
+
+function deleteOne(id, button) {
+  if (!deleteConversation(storage(), id)) {  // 읽기·쓰기 실패나 다른 버전 데이터: 지우지 않았으니 목록은 그대로
+    drawer.error.hidden = false;
+    return;
+  }
+  const i = [...drawer.list.querySelectorAll("button")].indexOf(button);
+  afterDelete([id]);
+  const rest = [...drawer.list.querySelectorAll("button")];
+  (rest[i] ?? rest[i - 1] ?? drawer.title).focus();  // 다음 카드의 삭제 버튼, 없으면 이전 것, 비면 제목
+}
+
+function closeConfirm() {
+  drawer.confirm.hidden = true;
+  drawer.all.hidden = false;
+  drawer.all.focus();
+}
+
+ui.menu.addEventListener("click", async () => {
+  drawerModels = await modelsReady;
+  renderDrawer();
+  if (!drawer.box.open) drawer.box.showModal();
+  drawer.title.focus();
+});
+$("drawer-close").addEventListener("click", () => drawer.box.close());
+drawer.box.addEventListener("click", (e) => { if (e.target.closest("a")) drawer.box.close(); });  // 대화 카드·새 대화는 주소로 이동
+drawer.box.addEventListener("close", () => ui.menu.focus());  // 브라우저가 돌려주지 않아도 ☰로
+drawer.all.addEventListener("click", () => {
+  drawer.confirmText.textContent = `대화 ${loadConversations(storage()).length}개를 모두 지울까요?`;
+  drawer.all.hidden = true;
+  drawer.confirm.hidden = false;
+  drawer.cancel.focus();
+});
+drawer.cancel.addEventListener("click", closeConfirm);
+$("delete-ok").addEventListener("click", () => {
+  if (!deleteAllConversations(storage())) {
+    closeConfirm();
+    drawer.error.hidden = false;
+    return;
+  }
+  afterDelete(null);
+  drawer.title.focus();
 });
 
 // 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다
