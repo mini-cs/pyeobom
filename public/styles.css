@@ -38,6 +38,7 @@
   --tap-min: 44px;
   --content-max: 640px;
   --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-text);
+  --focus-ring-surface: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-text);
   --icon-md: 24px;
   --illust-size: 96px;
   --dot-size: 8px;
@@ -75,6 +76,9 @@ button { font: inherit; letter-spacing: inherit; }
 
 :focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: var(--focus-ring); }
 h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바꿀 때 옮겨 오는 포커스라 링은 그리지 않는다 */
+/* 회색 면 요소는 틈도 면 색이라 흰 줄이 뜨지 않는다(결정기록 024 결정 11). 검은 버튼·흰 바탕 글자 버튼은 위의 흰 틈 */
+.conv-card:focus-visible, .model-card:focus-visible, .tile:focus-visible, .suggestion:focus-visible,
+.composer-box:has(textarea:focus-visible) { box-shadow: var(--focus-ring-surface); }
 
 [hidden] { display: none !important; }  /* display를 준 요소도 hidden이면 숨긴다 */
 
@@ -313,7 +317,6 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
   background: var(--color-surface); border-radius: var(--radius-pill);
 }
-.composer-box:has(textarea:focus-visible) { box-shadow: var(--focus-ring); }
 .composer-box textarea {
   flex: 1; min-width: 0;
   max-height: calc(var(--text-md) * var(--leading-ui) * 4 + var(--space-3) * 2);
