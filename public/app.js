@@ -2,6 +2,7 @@
 import { deleteAllConversations, deleteConversation, loadConversations, makeTitle, saveConversation, toStoredTurn } from "./js/store.js";
 import { buildHistory, shouldShowRewritten } from "./js/history.js";
 import { EXAMPLES } from "./js/examples.js";
+import { wheelToScroll } from "./js/wheel.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
@@ -117,7 +118,9 @@ function convCard({ c, name }) {
   a.href = `#chat/${encodeURIComponent(c.model_id)}/${encodeURIComponent(c.id)}`;
   const text = el("span", "card-text");
   const date = formatDate(c.updated_at);
-  text.append(el("span", "card-title", String(c.title ?? "")), el("span", "card-meta", date ? `${name} · ${date}` : name));
+  const meta = el("span", "card-meta", name);
+  if (date) meta.append(" · ", el("span", "card-date", date));  // 날짜는 "11월 / 11일"로 나뉘지 않게 한 덩어리
+  text.append(el("span", "card-title", String(c.title ?? "")), meta);
   a.append(text, icon("chevron"));
   return a;
 }
@@ -170,11 +173,22 @@ function arrowKeys(box, selector) {
     }
   });
 }
-arrowKeys(ui.tiles, ".tile");
-arrowKeys(ui.suggestions, ".suggestion");
+// 마우스 세로 휠로도 옆으로 넘긴다. 휠이 조금씩 여러 번 들어와 바로 이동(instant)이 자연스럽고 동작 줄이기와도 맞다
+function wheelScroll(box) {
+  box.addEventListener("wheel", (e) => {
+    const left = wheelToScroll(e, box);
+    if (!left) return;
+    e.preventDefault();
+    box.scrollBy({ left, behavior: "instant" });
+  }, { passive: false });
+}
+for (const [box, selector] of [[ui.tiles, ".tile"], [ui.suggestions, ".suggestion"]]) {
+  arrowKeys(box, selector);
+  wheelScroll(box);
+}
 ui.tiles.addEventListener("click", (e) => {
   const tile = e.target.closest(".tile");
-  if (tile && tile.dataset.appliance) location.hash = `#model/${tile.dataset.appliance}`;  // "곧 추가"는 이동하지 않음
+  if (tile && tile.dataset.appliance) location.hash = `#model/${tile.dataset.appliance}`;  // "더 추가 예정"은 이동하지 않음
 });
 ui.tiles.addEventListener("scroll", updateDots, { passive: true });
 window.addEventListener("resize", () => { if (!ui.tiles.closest(".screen").hidden) updateDots(); });

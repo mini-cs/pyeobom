@@ -41,6 +41,8 @@
   --icon-md: 24px;
   --illust-size: 96px;
   --dot-size: 8px;
+  --tile-width: 128px;
+  --suggestion-max: 272px;
 
   --motion-fast: 150ms ease;
   --motion-slide: 250ms ease;
@@ -97,7 +99,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .icon-lock { --icon: url("/icons/lock.svg"); }
 .icon-washer { --icon: url("/icons/wash-machine.svg"); }
 .icon-aircon { --icon: url("/icons/air-conditioning.svg"); }
-.icon-fridge { --icon: url("/icons/fridge.svg"); }
+.icon-dots { --icon: url("/icons/dots.svg"); }
 .icon-chevron { --icon: url("/icons/chevron-right.svg"); }
 .icon-chevron-down { --icon: url("/icons/chevron-down.svg"); }
 .icon-arrow-up { --icon: url("/icons/arrow-up.svg"); }
@@ -126,7 +128,6 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   background: none; color: var(--color-text); cursor: pointer;
 }
 .chat-title { flex: 1; min-width: 0; margin: 0; }
-.new-chat { flex: none; padding: 0 var(--space-4); }
 
 /* 검은 알약 버튼 */
 .pill {
@@ -141,6 +142,8 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 }
 .pill:hover, .pill:active { background: var(--color-action-hover); }
 .pill:disabled { background: var(--color-surface); color: var(--color-text-muted); cursor: progress; }
+/* 위쪽 막대 새 대화: .pill 뒤에 둬야 여백이 덮이지 않는다. 높이 44px → 막대 52px(.chat 최소 높이의 가정) */
+.new-chat { flex: none; padding: 0 var(--space-4); }
 
 .small-note { font-size: var(--text-xs); line-height: var(--leading-ui); color: var(--color-text-muted); text-align: center; }
 
@@ -171,11 +174,12 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .conv-card .card-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .card-meta { font-size: var(--text-sm); color: var(--color-text-muted); }
 .card-meta strong { font-weight: var(--weight-semibold); }
+.card-date { white-space: nowrap; }
 .model-card .card-title { font-size: var(--text-lg); }
 .model-code { white-space: nowrap; }
 .model-illust { flex: none; width: var(--illust-size); height: var(--illust-size); }
 
-/* ── ② 카테고리 타일: 가로 한 줄, 마지막 타일이 반쯤 보이게 화면 끝까지 넘긴다 ── */
+/* ── ② 카테고리 타일: 가로 한 줄, 폭 고정(결정기록 024). 넘치면(휴대폰) 화면 끝까지 넘기고 점 표시 ── */
 .tiles {
   display: flex; gap: var(--space-2);
   overflow-x: auto;
@@ -185,7 +189,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   scroll-behavior: smooth;
 }
 .tile {
-  flex: 0 0 calc(100% / 2.5);
+  flex: 0 0 var(--tile-width);
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3);
   min-height: var(--tap-min);
   padding: var(--space-4);
@@ -275,7 +279,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 }
 @keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 
-/* 추천 카드: 타일과 같은 규칙으로 옆으로 넘긴다(가이드 6절 4·5) */
+/* 추천 카드: 글자 길이만큼, 최대 --suggestion-max에서 줄바꿈. 타일과 같은 규칙으로 옆으로 넘긴다(가이드 6절 4·5) */
 .suggestions {
   display: flex; gap: var(--space-2);
   overflow-x: auto;
@@ -285,7 +289,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   scroll-behavior: smooth;
 }
 .suggestion {
-  flex: 0 0 calc(100% / 1.5);
+  flex: none; max-width: var(--suggestion-max);
   display: flex; flex-direction: column; align-items: flex-start;
   min-height: var(--tap-min);
   padding: var(--space-3) var(--space-4);
