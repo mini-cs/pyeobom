@@ -647,6 +647,35 @@ def test_answer_after_reopening_same_model_goes_to_original_conversation(open_pa
     assert len(saved_conversations(page)) == 2
 
 
+def test_late_answer_kept_when_same_conversation_reopened_and_continued(open_page):
+    held = []
+
+    def ask(body, route):   # 두 번째 질문의 답만 붙잡아 둔다
+        if body["question"] == "가짜 질문 2":
+            held.append(route)
+            return None
+        return fake(body)
+
+    page, asks = open_page(ask=ask, conversations=[_conversation(1, "washer-lg-fx25")], with_asks=True)
+    open_chat(page, "washer-lg-fx25", "c1")
+    send(page, "가짜 질문 2")
+    wait_until(page, lambda: held)
+    open_chat(page, "aircon-lg-sq06fa1wds")   # 다른 화면(다른 모델 대화)으로 갔다가
+    page.evaluate("location.hash = '#category'")
+    assert_screen(page, CATEGORY_H1)
+    page.locator("#category-recent .conv-card").first.click()   # 최근 대화 카드로 같은 대화를 다시 연다
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1"])
+    held[0].fulfill(json=fake(asks[0])[1])
+    # 늦게 온 답은 원래 대화에 저장되고, 지금 같은 대화를 보고 있으므로 화면에도 나타난다
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1", "가린:가짜 질문 2"])
+    send(page, "가짜 질문 3")
+    wait_turns(page, 3)
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1", "가린:가짜 질문 2", "가린:가짜 질문 3"])
+    assert [h["question"] for h in asks[1]["history"]] == ["가짜 질문 1", "가린:가짜 질문 2"]
+    saved = {c["id"]: c for c in json.loads(stored(page))["conversations"]}
+    assert [t["question_masked"] for t in saved["c1"]["turns"]] == ["가짜 질문 1", "가린:가짜 질문 2", "가린:가짜 질문 3"]
+
+
 def test_malformed_stored_turn_still_renders_and_can_ask(open_page):
     bad = _conversation(9, "washer-lg-fx25")
     bad["turns"] = [{"question_masked": "가짜 질문 9", "rewritten_question": 5, "answer": "가짜 답", "found": True,
