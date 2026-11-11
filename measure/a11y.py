@@ -8,11 +8,14 @@
 """
 import contextlib
 import json
+import os
 import sys
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+
+from measure.load_common import bypass_headers
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE.parent / "public"
@@ -144,6 +147,11 @@ def _prepare(page, base, steps, replies):
         page.locator("#save-note").wait_for()
 
 
+def context_headers(url: str | None, secret: str | None) -> dict:
+    # 미리보기는 배포 보호가 있어 우회 값을 헤더로만 보낸다(Locust·Promptfoo와 같음). 로컬에는 보내지 않는다
+    return bypass_headers(secret) if url else {}
+
+
 def run(url: str | None = None) -> dict:
     from playwright.sync_api import sync_playwright  # 측정할 때만 필요(단위 테스트는 요약 함수만 씀)
 
@@ -158,8 +166,12 @@ def run(url: str | None = None) -> dict:
             models = list_models()
         p = stack.enter_context(sync_playwright())
         browser = p.chromium.launch(channel="chrome")  # 설치된 크롬 사용(브라우저 내려받기 없음)
+        if url:
+            from ingest.__main__ import load_env  # 우회 값은 .env에서 읽고 출력하지 않는다
+            load_env()
+        headers = context_headers(url, os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET"))
         for state, steps in STATES.items():
-            context = browser.new_context(viewport={"width": 360, "height": 740})
+            context = browser.new_context(viewport={"width": 360, "height": 740}, extra_http_headers=headers)
             replies, held = [], []
             context.route("**/api/ask", _ask_handler(replies, held))
             if models is not None:
