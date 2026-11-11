@@ -77,7 +77,7 @@ button { font: inherit; letter-spacing: inherit; }
 :focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: var(--focus-ring); }
 h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바꿀 때 옮겨 오는 포커스라 링은 그리지 않는다 */
 /* 회색 면 요소는 틈도 면 색이라 흰 줄이 뜨지 않는다(결정기록 024 결정 11). 검은 버튼·흰 바탕 글자 버튼은 위의 흰 틈 */
-.conv-card:focus-visible, .model-card:focus-visible, .tile:focus-visible, .suggestion:focus-visible,
+.conv-card:focus-visible, .model-card:focus-visible, .tile:focus-visible, .suggestion:focus-visible, .offer:focus-visible,
 .composer-box:has(textarea:focus-visible) { box-shadow: var(--focus-ring-surface); }
 
 [hidden] { display: none !important; }  /* display를 준 요소도 hidden이면 숨긴다 */
@@ -253,8 +253,21 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 }
 .evidence-label { font-size: var(--text-note); font-weight: var(--weight-semibold); }
 .evidence-title { font-size: var(--text-sm); color: var(--color-text-muted); }
-.evidence blockquote { margin: 0; font-size: var(--text-sm); white-space: pre-line; }
+.quotes { display: flex; flex-direction: column; gap: var(--space-1); padding-left: var(--space-4); list-style: disc; font-size: var(--text-sm); white-space: pre-line; }
+.evidence-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .doc-link { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+
+/* 근거 아래 회색 알약 버튼 하나("공식 설명서를 드릴까요?"). 누르면 그 자리에 링크(2026-11-11 사용자 결정) */
+.offer {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: var(--tap-min); padding: 0 var(--space-4);
+  background: var(--color-surface); color: var(--color-text);
+  border: 0; border-radius: var(--radius-pill);
+  font-size: var(--text-sm); line-height: var(--leading-ui); font-weight: var(--weight-semibold);
+  text-align: left; cursor: pointer;
+}
+.doc-links { display: flex; flex-direction: column; gap: var(--space-2); }
+.doc-link-row { display: flex; align-items: center; gap: var(--space-2); }
 
 /* 안내(개인정보·저장·브랜드·공용 가이드): 회색 면 + 아이콘 + 굵은 라벨(가이드 2절, 결정기록 024) */
 .notice {
@@ -265,7 +278,6 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   font-size: var(--text-sm); line-height: var(--leading-ui);
 }
 .notice strong { font-weight: var(--weight-semibold); }
-.evidence .notice { padding: 0; }
 
 .error-card {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3);

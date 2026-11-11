@@ -3,6 +3,7 @@ import { deleteAllConversations, deleteConversation, loadConversations, makeTitl
 import { buildHistory, shouldShowRewritten } from "./js/history.js";
 import { EXAMPLES } from "./js/examples.js";
 import { wheelToScroll } from "./js/wheel.js";
+import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
@@ -300,21 +301,59 @@ function setBusy(on) {
   ui.send.disabled = on;
 }
 
-function renderEvidence(c) {
+// 누르면 target을 펼치고 접는 한 줄(이전 답 접기·근거 접기 공용)
+function foldButton(text, target) {
+  const fold = el("button", "fold");
+  fold.type = "button";
+  fold.append(el("span", null, text), icon("chevron-down"));
+  fold.setAttribute("aria-controls", target.id);
+  fold.setAttribute("aria-expanded", "false");
+  fold.addEventListener("click", () => {
+    target.hidden = !target.hidden;
+    fold.setAttribute("aria-expanded", String(!target.hidden));
+  });
+  return fold;
+}
+
+// 같은 출처(설명서 쪽·가이드 문서) 한 상자: 라벨·제목·인용들만, 링크는 없다
+function renderGroup(g) {
   const box = el("div", "evidence");
-  if (c.doc_type === "manual") {
-    box.append(el("p", "evidence-label", `사용설명서 ${c.page}쪽`), el("p", "evidence-title", c.title));
-  } else {
-    box.append(el("p", "evidence-label", `공식 해결 가이드: ${c.title}`));
-  }
-  box.append(el("blockquote", null, c.quote));
-  // 설명서는 내려받기 페이지라 1차처럼 검색어(모델 코드)를 함께 알려 준다.
-  // "코드는 모델 선택 화면에서만"의 유일한 예외(2026-11-10 사용자 결정)
-  box.append(c.doc_type === "manual"
-    ? link(`공식 설명서 받기 (검색어: ${chat.model.model_codes.join("·")})`, c.url)
-    : link("공식 문서 열기", c.url));
-  if (c.warning) box.append(notice("info", "참고", c.warning));  // 가이드 6절 8: 근거 박스 맨 아래
+  if (g.doc_type === "manual") box.append(el("p", "evidence-label", `사용설명서 ${g.page}쪽`), el("p", "evidence-title", g.title));
+  else box.append(el("p", "evidence-label", `공식 해결 가이드: ${g.title}`));
+  const quotes = el("ul", "quotes");
+  quotes.append(...g.quotes.map((q) => el("li", null, q)));
+  box.append(quotes);
   return box;
+}
+
+let evidenceSeq = 0;  // 근거 묶음 id(aria-controls)용. 다시 그릴 때마다 새 번호
+
+// 근거 접기(2026-11-11 사용자 결정, 가이드 6절 7·8): 공용 가이드 경고 → 접힌 한 줄 → 회색 "드릴까요?" 버튼 하나
+function renderCitations(body, citations) {
+  const groups = groupCitations(citations);
+  if (!groups.length) return;
+  for (const w of warnings(citations)) body.append(notice("info", "참고", w));  // 경고는 접지 않는다
+  const list = el("div", "evidence-list");
+  list.id = `evidence-${++evidenceSeq}`;
+  list.hidden = true;
+  list.append(...groups.map(renderGroup));
+  body.append(foldButton(evidenceLabel(citations), list), list);
+  const links = docLinks(citations, chat.model.model_codes);
+  if (!links.length) return;
+  const offer = el("button", "offer");
+  offer.type = "button";
+  offer.append(icon("file"), el("span", null, offerText(citations)));
+  offer.addEventListener("click", () => {
+    const box = el("div", "doc-links");
+    box.append(...links.map(({ text, url }) => {
+      const row = el("p", "doc-link-row");
+      row.append(icon("file"), link(text, url));
+      return row;
+    }));
+    offer.replaceWith(box);
+    box.querySelector("a").focus();  // 버튼이 사라지므로 포커스는 첫 링크로
+  });
+  body.append(offer);
 }
 
 function notice(name, label, text) {
@@ -340,7 +379,7 @@ function answerBody(entry) {
     body.append(notice("info", "모델 안내", t.answer), again);
   } else {
     body.append(el("p", "answer", t.answer));
-    if (t.kind === "answer") (Array.isArray(t.citations) ? t.citations : []).forEach((c) => body.append(renderEvidence(c)));
+    if (t.kind === "answer") renderCitations(body, t.citations);
     else body.append(link("공식 고객센터에서 찾아보기", entry.officialUrl ?? chat.model.official_url));  // 저장한 턴에는 official_url이 없다
   }
   return body;
@@ -376,18 +415,9 @@ function renderEntry(entry, index, latest) {
     const body = answerBody(entry);
     if (!latest) {  // 이전 답은 본문과 근거를 함께 한 줄로 접는다(계획 기본값 11)
       const n = Array.isArray(entry.turn.citations) ? entry.turn.citations.length : 0;
-      const fold = el("button", "fold");
-      fold.type = "button";
-      fold.append(el("span", null, n ? `이전 답 · 근거 ${n}개` : "이전 답 · 근거 없음"), icon("chevron-down"));
       body.id = `turn-body-${index}`;
       body.hidden = true;
-      fold.setAttribute("aria-controls", body.id);
-      fold.setAttribute("aria-expanded", "false");
-      fold.addEventListener("click", () => {
-        body.hidden = !body.hidden;
-        fold.setAttribute("aria-expanded", String(!body.hidden));
-      });
-      turn.append(fold);
+      turn.append(foldButton(n ? `이전 답 · 근거 ${n}개` : "이전 답 · 근거 없음", body));
     }
     turn.append(body);
   }

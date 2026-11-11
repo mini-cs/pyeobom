@@ -42,6 +42,9 @@ STATES = {
     "chat-save-failed": ["nosave", "chat", "ask:found"],
     "drawer": ["chat", "ask:found", "drawer"],
     "delete-all-confirm": ["chat", "ask:found", "drawer", "delete-all"],
+    # 2026-11-11 근거 접기 확인용(조건 4의 15개 뒤에 덧붙임): 근거 펼침, 공식 링크 표시
+    "chat-evidence-open": ["chat", "ask:found", "evidence"],
+    "chat-doc-links": ["chat", "ask:found", "evidence", "links"],
 }
 NO_SAVE = "Storage.prototype.setItem = function () { throw new DOMException('측정용 공간 부족', 'QuotaExceededError'); };"
 FIXTURES = {"found": "ask_found.json", "not_found": "ask_not_found.json", "other_brand": "ask_other_brand.json"}
@@ -140,6 +143,12 @@ def _prepare(page, base, steps, replies):
         elif action == "drawer":
             page.get_by_role("button", name="지난 대화").click()
             page.locator("#drawer .conv-card").first.wait_for()
+        elif action == "evidence":
+            page.locator(".turn .fold").last.click()
+            page.locator(".turn .evidence").first.wait_for()
+        elif action == "links":
+            page.locator(".turn .offer").last.click()
+            page.locator(".turn .doc-links a").first.wait_for()
         elif action == "delete-all":
             page.get_by_role("button", name="전체 삭제").click()
             page.locator("#delete-confirm").wait_for()

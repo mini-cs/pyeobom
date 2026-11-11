@@ -1333,7 +1333,7 @@ def test_saved_conversation_renders_evidence_the_same_way(open_page):
     page = open_page(conversations=[conversation])
     open_chat(page, "washer-samsung-wd90h25", "c1")
     expect(page.locator(".turn")).to_have_count(2)
-    expect(page.get_by_role("button", name=MIXED_LABEL)).to_have_count(2)   # 이전 답(접힌 안)과 최신 답 모두 같은 구조
+    expect(page.locator(".turn .fold", has_text=MIXED_LABEL)).to_have_count(2)   # 이전 답(접힌 안, 숨김)과 최신 답 모두 같은 구조
     expect(page.locator(".turn").last.get_by_role("button", name="공식 설명서·문서를 드릴까요?")).to_be_visible()
     page.get_by_role("button", name="이전 답 · 근거 5개").click()
     first = page.locator(".turn").first
