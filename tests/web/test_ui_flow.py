@@ -1339,3 +1339,37 @@ def test_saved_conversation_renders_evidence_the_same_way(open_page):
     first = page.locator(".turn").first
     expect(first.get_by_role("button", name=MIXED_LABEL)).to_be_visible()
     expect(first.get_by_role("button", name="공식 설명서·문서를 드릴까요?")).to_be_visible()
+
+
+# ── 아래 고정 입력창에 포커스가 가려지지 않음(WCAG 2.2 2.4.11, 2026-11-11 사용자 결정). 위쪽 막대는 고정이 아니라 아래만 본다 ──
+def assert_focus_above_composer(page, step):
+    box = page.evaluate("""() => { const a = document.activeElement.getBoundingClientRect();
+        const c = document.querySelector('.composer').getBoundingClientRect();
+        return {bottom: a.bottom, top: a.top, composer: c.top, tag: document.activeElement.className || document.activeElement.tagName}; }""")
+    assert box["top"] >= 0 and box["bottom"] <= box["composer"], (step, box)
+
+
+@pytest.mark.parametrize("size", [(360, 640), (360, 560)])
+def test_keyboard_focus_never_hidden_under_sticky_composer(open_page, size):
+    page = open_page(ask=lambda body, route: fake(body, citations=MIXED))
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    open_chat(page, "washer-samsung-wd90h25")
+    for i in (1, 2):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+    tab_to(page, ".turn:last-child .fold")   # 최신 답의 근거 줄
+    assert_focus_above_composer(page, "근거 줄")
+    page.keyboard.press("Enter")
+    tab_to(page, ".turn:last-child .offer")
+    assert_focus_above_composer(page, "드릴까요 버튼")
+    page.keyboard.press("Enter")   # 버튼 자리에 링크, 포커스는 첫 링크
+    expect(page.locator(".turn:last-child .doc-links a").first).to_be_focused()
+    assert_focus_above_composer(page, "첫 링크")
+    page.keyboard.press("Tab")
+    expect(page.locator(".turn:last-child .doc-links a").nth(1)).to_be_focused()
+    assert_focus_above_composer(page, "둘째 링크")
+    tab_to(page, ".turn:first-child > .fold")   # 이전 답 접기 줄
+    assert_focus_above_composer(page, "이전 답 줄")
+    page.keyboard.press("Enter")
+    tab_to(page, ".turn:first-child .answer-body .fold")   # 이전 답 안의 근거 줄
+    assert_focus_above_composer(page, "이전 답 근거 줄")
