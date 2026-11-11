@@ -963,6 +963,12 @@ def test_delete_failure_shows_line_and_keeps_list(open_page):
     assert sorted(stored_ids(page)) == ["c1", "c2"]
 
 
+# 화면이 /api/ask 응답 본문을 다 읽은 횟수(window.__askBodiesRead). 읽은 뒤의 처리는 기다림 없이 이어진다
+ASK_BODIES_READ = """(() => { const json = Response.prototype.json; window.__askBodiesRead = 0;
+    Response.prototype.json = async function () {
+        try { return await json.call(this); } finally { if (this.url.endsWith('/api/ask')) window.__askBodiesRead += 1; } }; })();"""
+
+
 def test_deleted_conversation_not_resurrected_by_late_answer(open_page):
     # Task 5 검토: 답을 기다리는 동안 서랍에서 그 대화를 지우면, 늦게 온 답이 대화를 되살리지 않는다
     held = []
@@ -973,7 +979,7 @@ def test_deleted_conversation_not_resurrected_by_late_answer(open_page):
             return None
         return fake(body)
 
-    page, asks = open_page(ask=ask, with_asks=True)
+    page, asks = open_page(ask=ask, with_asks=True, init=ASK_BODIES_READ)
     open_chat(page, "washer-lg-fx25")
     send(page, "가짜 질문 1")
     wait_turns(page, 1)
@@ -985,6 +991,90 @@ def test_deleted_conversation_not_resurrected_by_late_answer(open_page):
     expect(page.locator(".turn")).to_have_count(0)   # 보고 있던 대화를 지웠으므로 그 모델의 새 대화
     assert page.evaluate("location.hash") == "#chat/washer-lg-fx25"
     held[0].fulfill(json=fake(asks[1])[1])
-    page.wait_for_timeout(300)   # 늦은 답이 처리될 시간(이 화면에는 아무것도 나타나지 않아 기다릴 신호가 없다)
+    # 고정 대기 대신 양의 신호: 화면이 늦은 답의 본문을 다 읽었다(그 뒤 저장 처리는 같은 흐름에서 바로 끝난다)
+    page.wait_for_function("window.__askBodiesRead === 2")
     assert saved_conversations(page) == []
     expect(page.locator(".turn")).to_have_count(0)
+
+
+# ── Task 7: 동작 줄이기·아래 안내 줄 위치·서랍 포커스 ──
+def moving_elements(page):
+    """0보다 긴 transition·animation이 남은 요소(::before·::after 포함)."""
+    return page.evaluate("""() => [...document.querySelectorAll('*')].flatMap((e) => [null, '::before', '::after'].map((p) => {
+        const s = getComputedStyle(e, p);
+        const long = (v) => v.split(',').some((d) => parseFloat(d) > 0);
+        const moving = long(s.transitionDuration) || (s.animationName !== 'none' && long(s.animationDuration));
+        return moving ? `${e.tagName.toLowerCase()}#${e.id}.${e.className}${p ?? ''}` : null;
+    })).filter(Boolean)""")
+
+
+def test_reduced_motion_turns_off_drawer_tiles_and_fold_motion(open_page):
+    held = []
+
+    def ask(body, route):   # 세 번째 답은 붙잡아 찾는 중(진행 막대)을 남긴다
+        if body["question"] == "가짜 질문 3":
+            held.append(route)
+            return None
+        return fake(body)
+
+    page = open_page(ask=ask)
+    open_chat(page, "washer-lg-fx25")
+    for i in (1, 2):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+    send(page, "가짜 질문 3")
+    wait_until(page, lambda: held)
+    expect(page.get_by_role("button", name="이전 답 · 근거 1개")).to_have_count(2)
+    open_drawer(page)
+    styles = """() => ({drawer: getComputedStyle(document.getElementById('drawer')).animationName,
+        fold: getComputedStyle(document.querySelector('.fold .icon')).transitionDuration,
+        tiles: getComputedStyle(document.getElementById('tiles')).scrollBehavior,
+        suggestions: getComputedStyle(document.getElementById('suggestions')).scrollBehavior})"""
+    # 기준: 동작 줄이기가 아니면 서랍은 밀려 나오고, 펼침 화살표는 돌고, 타일은 부드럽게 넘어간다(같은 요소를 보는지 확인)
+    assert page.evaluate(styles) == {"drawer": "drawer-in", "fold": "0.25s", "tiles": "smooth", "suggestions": "smooth"}
+    assert moving_elements(page)
+    page.emulate_media(reduced_motion="reduce")
+    assert page.evaluate(styles) == {"drawer": "none", "fold": "0s", "tiles": "auto", "suggestions": "auto"}
+    assert moving_elements(page) == []   # 버튼 색·진행 막대까지 움직임이 하나도 남지 않는다
+    held[0].fulfill(json=fake({"question": "가짜 질문 3"})[1])   # 붙잡은 요청을 남기지 않고 닫는다
+    wait_turns(page, 3)
+
+
+def test_composer_meta_line_stays_put_when_answer_arrives(open_page):
+    # 1차 CLS 0.080의 원인은 답이 오며 밀린 하단 고지였다. 채팅에는 하단 고지가 없으므로 입력창 아래 안내 줄을 본다
+    held = []
+    page = open_page(ask=lambda body, route: held.append(route))
+    open_chat(page, "washer-lg-fx25")
+    page.evaluate("async () => { await document.fonts.ready; }")
+    meta = page.locator(".composer-meta")
+    expect(meta).to_contain_text("앞 대화를 기억해요 · 모델을 바꾸면 새 대화")
+
+    def top():
+        return meta.evaluate("(m) => m.getBoundingClientRect().top")
+
+    before = top()
+    for i in (1, 2, 3):   # 첫 답, 이어지는 답(이전 답 접힘), 화면보다 길어진 대화
+        send(page, f"가짜 질문 {i}")
+        wait_until(page, lambda: len(held) == i)
+        expect(page.locator('.turn[data-state="loading"]')).to_have_count(1)
+        assert abs(top() - before) < 0.5, ("찾는 중", i, top(), before)
+        held[-1].fulfill(json=fake({"question": f"가짜 질문 {i}"})[1])
+        wait_turns(page, i)
+        assert abs(top() - before) < 0.5, ("답", i, top(), before)
+
+
+def test_drawer_card_of_open_conversation_moves_focus_to_chat_h1(open_page):
+    page = open_page(conversations=[_conversation(i, "washer-lg-fx25") for i in (1, 2)])
+    open_chat(page, "washer-lg-fx25", "c1")
+    open_drawer(page)
+    drawer_cards(page).filter(has_text="가짜 질문 1").click()   # 지금 보고 있는 대화(주소가 같아 hashchange가 없다)
+    expect(page.locator("#drawer")).to_be_hidden()
+    expect(page.locator("#chat-title")).to_be_focused()
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 1"])
+    open_drawer(page)
+    drawer_cards(page).filter(has_text="가짜 질문 2").click()   # 다른 대화 카드도 같은 곳
+    expect(page.locator(".turn .bubble")).to_have_text(["가짜 질문 2"])
+    expect(page.locator("#chat-title")).to_be_focused()
+    open_drawer(page)
+    page.keyboard.press("Escape")   # 카드를 누르지 않고 닫으면 ☰로
+    expect(page.get_by_role("button", name="지난 대화")).to_be_focused()

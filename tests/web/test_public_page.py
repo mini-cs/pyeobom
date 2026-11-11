@@ -21,7 +21,7 @@ def test_head_has_exact_title_and_link_preview_text():
     assert 'name="viewport"' in html
 
 
-def test_intro_and_footer_copy_are_exact():
+def test_landing_and_footer_copy_are_exact():
     # v1.5 랜딩(설계 2절 ①, 시안 5번)과 카테고리·모델 화면 문구. 줄바꿈 위치는 시안 5번처럼 <br>로 고정
     html = re.sub(r"<br>\s*", " ", read("index.html"))
     for text in ["펴봄", "가전 설명서, 대신 펴 봐 드려요", "고른 모델의 공식 설명서에서 근거를 찾아 답해요.",
@@ -79,9 +79,12 @@ def test_script_never_injects_api_text_as_html():
         assert "innerHTML" not in text and "insertAdjacentHTML" not in text, path.name   # API 글자는 textContent로만 넣는다(XSS 방지)
 
 
-def test_reduced_motion_disables_collapse_animation():
+def test_reduced_motion_block_turns_off_slide_fold_and_smooth_scroll():
+    # 1차 소개 접기 대신 v1.5 움직임(서랍 슬라이드·이전 답 펼침 화살표·타일 넘기기). 실제 계산 값은 test_ui_flow에서 본다
     css = read("styles.css")
-    assert "prefers-reduced-motion: reduce" in css and "transition: none" in css
+    block = css.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+    for text in ["transition: none", "animation: none", "scroll-behavior: auto"]:
+        assert text in block, text
 
 
 def screen_examples() -> dict:
