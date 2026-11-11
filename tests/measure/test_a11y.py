@@ -57,3 +57,11 @@ def test_local_server_serves_public_with_module_mime():
             assert res.headers["Content-Type"].startswith("text/javascript")   # JS 모듈은 JavaScript 형식이어야 불러와짐
         with urllib.request.urlopen(f"{base}/") as res:
             assert "펴봄" in res.read().decode("utf-8")
+
+
+def test_context_headers_send_bypass_only_to_remote_url():
+    # 미리보기는 배포 보호가 있어 우회 헤더가 필요하고, 로컬 정적 서버에는 보내지 않는다(Task 8)
+    from measure.a11y import context_headers
+    assert context_headers(None, "가짜값") == {}
+    assert context_headers("https://preview.example.vercel.app", "가짜값") == {"x-vercel-protection-bypass": "가짜값"}
+    assert context_headers("https://preview.example.vercel.app", None) == {}
