@@ -51,11 +51,16 @@ def test_evaluation_questions_are_not_blocked():
     assert blocked == []
 
 
+def _screen_examples():
+    # 화면 예시 질문(채팅 추천 카드)은 public/js/examples.js의 EXAMPLES에 있다: {모델 id: [{question, hint}, ...]}
+    js = (ROOT / "public" / "js" / "examples.js").read_text(encoding="utf-8")
+    block = re.search(r"export const EXAMPLES = (\{.*?\});", js, re.S).group(1)
+    examples = json.loads(re.sub(r",(\s*[}\]])", r"\1", block))
+    return {mid: [item["question"] for item in items] for mid, items in examples.items()}
+
+
 def test_screen_example_questions_are_not_blocked():
-    # 화면 예시 질문은 public/app.js의 EXAMPLES에 있다
-    js = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
-    block = re.search(r"const EXAMPLES = (\{.*?\});", js, re.S).group(1)
-    examples = json.loads(re.sub(r",\s*}", "}", block))
+    examples = _screen_examples()
     assert set(examples) == set(BRANDS)
     blocked = [q for mid, qs in examples.items() for q in qs if mentions_other_brand(q, BRANDS[mid])]
     assert blocked == []
@@ -126,8 +131,8 @@ def test_evaluation_questions_blocked_only_q18():
 
 
 def test_screen_example_questions_pass_both_rules():
-    js = (ROOT / "public" / "app.js").read_text(encoding="utf-8")
-    examples = json.loads(re.sub(r",\s*}", "}", re.search(r"const EXAMPLES = (\{.*?\});", js, re.S).group(1)))
+    examples = _screen_examples()
+    assert set(examples) == set(BRANDS)
     assert [q for mid, qs in examples.items() for q in qs if guard_message(q, BRANDS[mid])] == []
 
 

@@ -5,6 +5,12 @@
     "appliance": "washer",
     "model_name": "WD90H25AH* / WD90H25BH*",
     "display_name": "삼성 BESPOKE AI 콤보 세탁건조기 (WD90H25AH*·WD90H25BH*)",
+    "name": "삼성 BESPOKE AI 콤보 세탁건조기",
+    "short_name": "삼성 BESPOKE AI 콤보",
+    "model_codes": [
+      "WD90H25AH*",
+      "WD90H25BH*"
+    ],
     "official_url": "https://www.samsungsvc.co.kr/download",
     "model_name_hint": "제품에 붙은 라벨(옆면·뒷면 등)에서 모델명을 확인하세요. 위치는 제품마다 달라요",
     "diagnostic_refs": []
@@ -15,6 +21,12 @@
     "appliance": "washer",
     "model_name": "FX25*N* / FX24*N* / FX23*N*",
     "display_name": "LG 드럼세탁기 (FX25*N*·FX24*N*·FX23*N*)",
+    "name": "LG 드럼세탁기",
+    "model_codes": [
+      "FX25*N*",
+      "FX24*N*",
+      "FX23*N*"
+    ],
     "official_url": "https://www.lge.co.kr/support/product-manuals",
     "model_name_hint": "제품에 붙은 라벨(옆면·뒷면 등)에서 모델명을 확인하세요. 위치는 제품마다 달라요",
     "diagnostic_refs": [
@@ -27,6 +39,10 @@
     "appliance": "aircon",
     "model_name": "SQ06FA1WDS",
     "display_name": "LG 벽걸이 에어컨 (SQ06FA1WDS)",
+    "name": "LG 벽걸이 에어컨",
+    "model_codes": [
+      "SQ06FA1WDS"
+    ],
     "official_url": "https://www.lge.co.kr/support/product-manuals",
     "model_name_hint": "실내기에 붙은 라벨(옆면 등)에서 모델명을 확인하세요. 리모컨이 아니라 본체 라벨이에요",
     "diagnostic_refs": [
