@@ -193,7 +193,7 @@ def test_category_tiles_arrow_keys_disabled_tile_and_dots(open_page):
     go_category(page)
     washer = page.get_by_role("button", name="세탁기")
     aircon = page.get_by_role("button", name="에어컨")
-    soon = page.get_by_role("button", name="곧 추가")
+    soon = page.get_by_role("button", name="더 추가 예정")
     expect(page.locator("#tile-dots .dot").first).to_be_visible()
     # 비활성 점은 누르는 버튼이라 흰 바탕과 3:1 이상인 #8C8C8C(가이드 --color-dot)
     inactive = page.locator('#tile-dots .dot[aria-current="false"]').first
@@ -210,7 +210,7 @@ def test_category_tiles_arrow_keys_disabled_tile_and_dots(open_page):
     expect(aircon).to_be_focused()
     expect(soon).to_have_attribute("aria-disabled", "true")
     soon.click(force=True)  # aria-disabled라 Playwright가 누르기를 막으므로 강제로 누른다
-    assert_screen(page, CATEGORY_H1)  # 곧 추가는 눌러도 이동하지 않는다
+    assert_screen(page, CATEGORY_H1)  # 더 추가 예정은 눌러도 이동하지 않는다
 
 
 def test_recent_conversation_cards_landing_one_category_three(open_page):
@@ -1078,3 +1078,134 @@ def test_drawer_card_of_open_conversation_moves_focus_to_chat_h1(open_page):
     open_drawer(page)
     page.keyboard.press("Escape")   # 카드를 누르지 않고 닫으면 ☰로
     expect(page.get_by_role("button", name="지난 대화")).to_be_focused()
+
+
+# ── Task 8 Step 7 화면 확인에서 고친 것(2026-11-11 사용자 결정, 결정기록 024) ──
+def tile_layout(page):
+    return page.evaluate("""() => { const t = document.getElementById('tiles');
+        return {sw: t.scrollWidth, cw: t.clientWidth,
+                widths: [...t.querySelectorAll('.tile')].map((e) => e.getBoundingClientRect().width)}; }""")
+
+
+def test_tiles_fixed_width_fit_on_pc_without_dots_and_scroll_with_dots_on_phone(open_page):
+    page = open_page()
+    go_category(page)
+    phone = tile_layout(page)   # 360px: 넘기기 + 점
+    assert phone["sw"] > phone["cw"] and phone["widths"] == [128, 128, 128], phone
+    expect(page.locator("#tile-dots .dot").first).to_be_visible()
+    page.set_viewport_size({"width": 1280, "height": 800})   # PC(내용 폭 640px): 3개가 다 보이고 점은 숨김
+    expect(page.locator("#tile-dots")).to_be_hidden()
+    pc = tile_layout(page)
+    assert pc["sw"] <= pc["cw"] and pc["widths"] == [128, 128, 128], pc
+
+
+def test_long_tile_name_wraps_inside_tile_without_breaking_words(open_page):
+    page = open_page()
+    go_category(page)
+    result = page.evaluate("""() => {
+        const tile = document.querySelector('.tile[aria-disabled="true"]');
+        const text = [...tile.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+        text.textContent = '이름이 아주 긴 가전 종류 예시';   // 화면에서만 바꾸는 예시 문구
+        const r = document.createRange(); let from = 0;
+        const words = text.textContent.split(' ').map((w) => {
+            const at = text.textContent.indexOf(w, from); from = at + w.length;
+            r.setStart(text, at); r.setEnd(text, at + w.length);
+            return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; });
+        r.selectNodeContents(text);
+        const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size;
+        const boxes = [...document.querySelectorAll('.tile')].map((e) => e.getBoundingClientRect());
+        return {words, lines, sw: tile.scrollWidth, cw: tile.clientWidth,
+                width: boxes[2].width, heights: boxes.map((b) => Math.round(b.height))}; }""")
+    assert result["lines"] > 1 and set(result["words"]) == {1}, result   # 줄은 바뀌되 단어 중간에서 끊지 않는다
+    assert result["sw"] <= result["cw"] and result["width"] == 128, result   # 칸 밖으로 넘치지 않는다
+    assert len(set(result["heights"])) == 1, result   # 같은 줄 타일 높이는 같다
+
+
+def wheel_over(page, selector, dy):
+    box = page.locator(selector).bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.wheel(0, dy)
+
+
+def scrolled(page, selector):
+    return page.evaluate("(s) => ({left: document.querySelector(s).scrollLeft, y: window.scrollY})", selector)
+
+
+def test_vertical_wheel_scrolls_row_sideways_then_page_at_end_or_when_it_fits(open_page):
+    page = open_page(conversations=[_conversation(i, "washer-lg-fx25") for i in (1, 2, 3)])
+    page.set_viewport_size({"width": 360, "height": 400})   # 화면도 위아래로 스크롤되는 높이
+    go_category(page)
+    wheel_over(page, "#tiles", 40)   # 넘칠 때: 세로 휠 → 가로 이동, 화면은 그대로
+    wait_until(page, lambda: scrolled(page, "#tiles")["left"] > 0)
+    assert scrolled(page, "#tiles")["y"] == 0
+    page.evaluate("() => { const t = document.getElementById('tiles'); t.scrollTo({left: t.scrollWidth, behavior: 'instant'}); }")
+    end = scrolled(page, "#tiles")["left"]
+    wheel_over(page, "#tiles", 40)   # 오른쪽 끝: 휠이 갇히지 않고 화면이 내려간다
+    wait_until(page, lambda: scrolled(page, "#tiles")["y"] > 0)
+    assert scrolled(page, "#tiles")["left"] == end
+    page.set_viewport_size({"width": 1280, "height": 300})   # 안 넘칠 때: 화면 스크롤
+    page.evaluate("window.scrollTo({top: 0, behavior: 'instant'})")
+    wheel_over(page, "#tiles", 40)
+    wait_until(page, lambda: scrolled(page, "#tiles")["y"] > 0)
+    assert scrolled(page, "#tiles")["left"] == 0
+    page.set_viewport_size({"width": 360, "height": 640})   # 추천 카드도 같은 규칙
+    open_chat(page, "washer-samsung-wd90h25")
+    wheel_over(page, "#suggestions", 40)
+    wait_until(page, lambda: scrolled(page, "#suggestions")["left"] > 0)
+
+
+def test_suggestion_cards_fit_text_up_to_max_width(open_page):
+    page = open_page()
+    page.set_viewport_size({"width": 1280, "height": 800})
+    open_chat(page, "washer-lg-fx25")
+    widths = page.locator(".suggestion").evaluate_all("(cs) => cs.map((c) => c.getBoundingClientRect().width)")
+    assert len(widths) == 2 and all(w <= 272 for w in widths), widths
+    box = page.evaluate("() => { const s = document.getElementById('suggestions'); return [s.scrollWidth, s.clientWidth]; }")
+    assert box[0] <= box[1], box   # PC에서는 두 장이 다 보인다
+
+
+@pytest.mark.parametrize("size", [(360, 640), (1280, 800)])
+def test_short_chat_has_no_vertical_scroll_and_new_chat_button_is_tap_min(open_page, size):
+    page = open_page()
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    open_chat(page, "washer-lg-fx25")
+    expect(page.locator(".suggestion")).to_have_count(2)
+    assert page.locator("#new-chat").bounding_box()["height"] == 44
+    assert page.evaluate("document.documentElement.scrollHeight") <= size[1]
+
+
+def test_card_date_stays_on_one_line_in_drawer_at_360(open_page):
+    conversation = {**_conversation(1, "washer-samsung-wd90h25"), "updated_at": "2026-11-11T09:00:00.000Z"}
+    page = open_page(conversations=[conversation])
+    go_category(page)
+    open_drawer(page)
+    meta = drawer_cards(page).first.locator(".card-meta")
+    expect(meta).to_have_text(f"{NAMES['washer-samsung-wd90h25']} · 11월 11일")
+    # 줄이 바뀌는 자리는 글꼴·기기 폭에 따라 달라서, 카드 글자 폭을 1px씩 바꿔 가며 날짜가 두 줄로 나뉘는 폭이 없는지 본다
+    split = meta.evaluate("""(m) => {
+        const nodes = []; const w = document.createTreeWalker(m, NodeFilter.SHOW_TEXT);
+        while (w.nextNode()) nodes.push(w.currentNode);
+        const at = (i) => { for (const n of nodes) { if (i < n.length) return [n, i]; i -= n.length; } };
+        const date = '11월 11일';
+        const start = nodes.map((n) => n.textContent).join('').indexOf(date);
+        const [last, end] = at(start + date.length - 1);
+        const r = document.createRange(); r.setStart(...at(start)); r.setEnd(last, end + 1);
+        const bad = [];
+        for (let px = 100; px <= 320; px++) {
+            m.style.width = `${px}px`;
+            if (new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size > 1) bad.push(px);
+        }
+        m.style.width = '';
+        return bad; }""")
+    assert split == []
+
+
+def test_first_screen_has_no_console_errors_or_failed_requests(open_page):
+    page = open_page(path="about:blank")
+    errors, failed = [], []
+    page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    page.on("response", lambda r: failed.append((r.status, r.url)) if r.status >= 400 else None)
+    page.goto("/")
+    assert_screen(page, LANDING_H1)
+    page.wait_for_load_state("networkidle")
+    assert errors == [] and failed == [], (errors, failed)

@@ -29,7 +29,7 @@ def test_landing_and_footer_copy_are_exact():
                  "모르면 모른다고 해요", "설명서에 없으면 지어내지 않아요",
                  "개인정보는 적지 마세요", "적어도 AI에 보내기 전에 가려요", "시작하기",
                  "비영리 학습용 포트폴리오예요. 설명서 저작권은 각 제조사에 있어요.",
-                 "어떤 가전이 궁금하세요?", "곧 추가",
+                 "어떤 가전이 궁금하세요?", "더 추가 예정",
                  "제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요."]:
         assert text in html, text
 
@@ -112,3 +112,16 @@ def test_chat_copy_is_exact():
     for text in ["새 대화", "앞 대화를 기억해요 · 모델을 바꾸면 새 대화", "이 대화는 저장되지 않아요", "500자 남음",
                  'aria-label="보내기"']:
         assert text in html, text
+
+
+def test_third_tile_more_coming_with_tabler_dots_icon_and_no_fridge():
+    # 2026-11-11 사용자 결정(결정기록 024): 특정 가전 없이 "더 추가 예정". 냉장고는 다루지 않는다(결정기록 003·008)
+    html, css = read("index.html"), read("styles.css")
+    assert re.search(r'class="tile" aria-disabled="true">\s*<span class="icon icon-dots" aria-hidden="true"></span>더 추가 예정</button>', html)
+    assert "icon-tabler-dots" in read("icons/dots.svg")   # Tabler 3.19.0 파일 그대로(다른 아이콘과 같은 꾸러미)
+    assert "fridge" not in html and "fridge" not in css and not (PUBLIC / "icons" / "fridge.svg").exists()
+
+
+def test_favicon_request_blocked_with_empty_data_url():
+    # 로고 아이콘은 나중에. 그전까지 /favicon.ico 404 콘솔 오류가 나지 않게 요청만 막는다
+    assert '<link rel="icon" href="data:,">' in read("index.html")
