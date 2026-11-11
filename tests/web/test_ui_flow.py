@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from app.answer.check import GUIDE_WARNING
 from app.catalog.routes import list_models
 
 pytestmark = pytest.mark.ui
@@ -300,10 +301,11 @@ def test_manual_link_shows_search_codes_as_only_exception(open_page):
         open_chat(page, m["id"])
         send(page, "가짜 질문입니다")
         wait_turns(page, 1)
-        links = page.locator(".turn .evidence a")
-        expect(links).to_have_text([f"공식 설명서 받기 (검색어: {'·'.join(m['model_codes'])})", "공식 문서 열기"])
+        page.locator(".turn").last.get_by_role("button", name="공식 설명서·문서를 드릴까요?").click()
+        links = page.locator(".turn").last.locator(".doc-links a")
+        expect(links).to_have_text([f"공식 설명서 받기 (검색어: {'·'.join(m['model_codes'])})", "공식 문서 열기: 가짜 가이드"])
         rest = page.evaluate("""() => { const c = document.querySelector('[data-screen="chat"]').cloneNode(true);
-            c.querySelectorAll('.evidence a').forEach((a) => a.remove());
+            c.querySelectorAll('.doc-links a').forEach((a) => a.remove());
             return document.getElementById('topbar').textContent + c.textContent; }""")
         assert not [c for c in CODES if c in rest], rest   # 예외는 설명서 링크 하나뿐
 
@@ -516,9 +518,12 @@ def test_only_latest_answer_expanded_previous_folded(open_page):
     wait_turns(page, 2)
     first, last = page.locator(".turn").first, page.locator(".turn").last
     expect(last.locator(".answer")).to_be_visible()
+    expect(last.locator(".evidence")).to_be_hidden()   # 최신 답도 근거는 접힌 한 줄(2026-11-11 근거 접기)
+    last.get_by_role("button", name="근거 보기 · 사용설명서 12쪽").click()
     expect(last.locator(".evidence")).to_be_visible()
-    expect(last.locator(".evidence a")).to_have_attribute("target", "_blank")
-    assert "noopener" in last.locator(".evidence a").get_attribute("rel")
+    last.get_by_role("button", name="공식 설명서를 드릴까요?").click()
+    expect(last.locator(".doc-links a")).to_have_attribute("target", "_blank")
+    assert "noopener" in last.locator(".doc-links a").get_attribute("rel")
     fold = first.get_by_role("button", name="이전 답 · 근거 2개")
     expect(fold).to_have_attribute("aria-expanded", "false")
     expect(first.locator(".answer")).to_be_hidden()
@@ -527,6 +532,8 @@ def test_only_latest_answer_expanded_previous_folded(open_page):
     fold.click()
     expect(fold).to_have_attribute("aria-expanded", "true")
     expect(first.locator(".answer")).to_be_visible()
+    expect(first.locator(".evidence").nth(1)).to_be_hidden()   # 이전 답 안에서도 근거는 다시 접힌 한 줄
+    first.get_by_role("button", name="근거 보기 · 사용설명서 12·13쪽").click()
     expect(first.locator(".evidence").nth(1)).to_be_visible()
 
 
@@ -1260,3 +1267,75 @@ def test_focus_ring_gray_gap_on_surface_elements_white_gap_on_buttons(open_page)
         assert page.evaluate("getComputedStyle(document.activeElement).outlineStyle") == "solid"   # 강제 색 모드용 outline 유지
     tab_to(page, "#drawer .conv-card")
     assert ring(page) == RING_SURFACE
+
+
+# ── 근거 접기(2026-11-11 사용자 결정): 접힌 한 줄 + 같은 출처 한 상자 + "드릴까요?" 버튼 하나 ──
+GUIDE_CITE = {"doc_type": "guide", "title": "가짜 가이드", "page": None, "url": "https://example.com/guide",
+              "quote": "가짜 가이드 인용입니다(테스트).", "warning": GUIDE_WARNING}
+MIXED = [CITE, {**CITE, "page": 13, "quote": "가짜 인용 둘(테스트)."}, {**CITE, "quote": "가짜 인용 셋(테스트)."},
+         GUIDE_CITE, {**GUIDE_CITE, "quote": "가짜 가이드 인용 둘(테스트)."}]
+MIXED_LABEL = "근거 보기 · 사용설명서 12·13쪽 · 공식 해결 가이드 1개"
+
+
+def test_evidence_folded_grouped_and_links_only_after_offer(open_page):
+    page = open_page(ask=lambda body, route: fake(body, citations=MIXED))
+    open_chat(page, "washer-samsung-wd90h25")
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 1)
+    turn = page.locator(".turn").last
+    fold = turn.get_by_role("button", name=MIXED_LABEL)
+    expect(fold).to_have_attribute("aria-expanded", "false")   # 처음에는 접힘, 라벨에 쪽(중복 없이 오름차순)과 가이드 수
+    controls = fold.get_attribute("aria-controls")
+    expect(page.locator(f"#{controls}")).to_be_hidden()
+    warning = turn.locator(".notice", has_text=GUIDE_WARNING)
+    expect(warning).to_have_count(1)   # 공용 가이드 경고는 한 번만, 접힌 줄 밖(위)에 보인다
+    expect(warning).to_be_visible()
+    assert warning.evaluate("(n, id) => !n.closest('#' + id)", controls)
+    assert warning.evaluate("(n) => !!(n.compareDocumentPosition(n.parentElement.querySelector('.fold')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+    fold.click()
+    expect(fold).to_have_attribute("aria-expanded", "true")
+    boxes = turn.locator(".evidence")
+    expect(boxes).to_have_count(3)   # 12쪽·13쪽·가이드 한 상자씩(인용이 처음 나온 순서)
+    expect(boxes.locator(".evidence-label")).to_have_text(["사용설명서 12쪽", "사용설명서 13쪽", "공식 해결 가이드: 가짜 가이드"])
+    expect(boxes.nth(0).locator("li")).to_have_text(["가짜 인용입니다(테스트).", "가짜 인용 셋(테스트)."])
+    expect(boxes.nth(2).locator("li")).to_have_count(2)
+    expect(page.locator(f"#{controls} a")).to_have_count(0)   # 상자 안에는 링크가 없다
+    offer = turn.get_by_role("button", name="공식 설명서·문서를 드릴까요?")
+    expect(offer).to_have_count(1)
+    assert offer.bounding_box()["height"] >= 44
+    offer.click()
+    expect(offer).to_have_count(0)   # 버튼 자리에 링크가 나온다(한 번만, URL 중복 없이)
+    links = turn.locator(".doc-links a")
+    codes = "·".join(next(m for m in MODELS if m["id"] == "washer-samsung-wd90h25")["model_codes"])
+    expect(links).to_have_text([f"공식 설명서 받기 (검색어: {codes})", "공식 문서 열기: 가짜 가이드"])
+    expect(links.first).to_be_focused()
+    expect(turn.locator("a")).to_have_count(2)
+
+
+def test_evidence_keyboard_only_expand_and_offer(open_page):
+    page = open_page(ask=lambda body, route: fake(body, citations=MIXED))
+    open_chat(page, "washer-samsung-wd90h25")
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 1)
+    tab_to(page, ".turn .fold")
+    page.keyboard.press("Enter")
+    expect(page.locator(".turn .fold")).to_have_attribute("aria-expanded", "true")
+    tab_to(page, ".turn .offer")
+    assert ring(page) == RING_SURFACE   # 회색 면 버튼이라 회색 틈(결정기록 024 결정 11)
+    page.keyboard.press("Enter")
+    expect(page.locator(".turn .doc-links a").first).to_be_focused()
+
+
+def test_saved_conversation_renders_evidence_the_same_way(open_page):
+    conversation = _conversation(1, "washer-samsung-wd90h25")
+    conversation["turns"] = [{"question_masked": f"가짜 질문 {i}", "rewritten_question": None, "answer": "가짜 답", "found": True,
+                              "citations": MIXED, "kind": "answer"} for i in (1, 2)]
+    page = open_page(conversations=[conversation])
+    open_chat(page, "washer-samsung-wd90h25", "c1")
+    expect(page.locator(".turn")).to_have_count(2)
+    expect(page.get_by_role("button", name=MIXED_LABEL)).to_have_count(2)   # 이전 답(접힌 안)과 최신 답 모두 같은 구조
+    expect(page.locator(".turn").last.get_by_role("button", name="공식 설명서·문서를 드릴까요?")).to_be_visible()
+    page.get_by_role("button", name="이전 답 · 근거 5개").click()
+    first = page.locator(".turn").first
+    expect(first.get_by_role("button", name=MIXED_LABEL)).to_be_visible()
+    expect(first.get_by_role("button", name="공식 설명서·문서를 드릴까요?")).to_be_visible()

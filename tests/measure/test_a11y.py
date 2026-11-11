@@ -21,11 +21,13 @@ def test_summarize_violations_empty():
 
 
 def test_states_are_plan_condition_4_list():
-    # 계획 3 채택 조건 4의 상태 목록 그대로(순서 포함): 랜딩 2, 카테고리, 모델 2, 채팅 8, 서랍, 전체 삭제 확인
+    # 계획 3 채택 조건 4의 상태 목록 그대로(순서 포함): 랜딩 2, 카테고리, 모델 2, 채팅 8, 서랍, 전체 삭제 확인.
+    # 그 뒤에 2026-11-11 근거 접기 확인용 2개(근거 펼침, 공식 링크 표시)를 덧붙인다(조건 4의 15개는 그대로)
     assert list(STATES) == [
         "landing-empty", "landing-recent", "category", "model-washer", "model-aircon",
         "chat-empty", "chat-loading", "chat-answer", "chat-followup", "chat-not-found", "chat-other-brand",
         "chat-error", "chat-save-failed", "drawer", "delete-all-confirm",
+        "chat-evidence-open", "chat-doc-links",
     ]
 
 
