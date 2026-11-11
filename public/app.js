@@ -319,14 +319,13 @@ function foldButton(text, target) {
   return fold;
 }
 
-// 같은 출처(설명서 쪽·가이드 문서) 한 상자: 라벨·제목·인용들만, 링크는 없다
+// 같은 출처(설명서 쪽·가이드 문서) 한 상자: 라벨·제목·인용들만, 링크는 없다.
+// 인용은 원문이 "•"로 시작하는 일이 많아 목록 기호를 붙이지 않고 인용마다 blockquote(원문 그대로, 간격으로 구분)
 function renderGroup(g) {
   const box = el("div", "evidence");
   if (g.doc_type === "manual") box.append(el("p", "evidence-label", `사용설명서 ${g.page}쪽`), el("p", "evidence-title", g.title));
   else box.append(el("p", "evidence-label", `공식 해결 가이드: ${g.title}`));
-  const quotes = el("ul", "quotes");
-  quotes.append(...g.quotes.map((q) => el("li", null, q)));
-  box.append(quotes);
+  box.append(...g.quotes.map((q) => el("blockquote", null, q)));
   return box;
 }
 

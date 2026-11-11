@@ -256,7 +256,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 }
 .evidence-label { font-size: var(--text-note); font-weight: var(--weight-semibold); }
 .evidence-title { font-size: var(--text-sm); color: var(--color-text-muted); }
-.quotes { display: flex; flex-direction: column; gap: var(--space-1); padding-left: var(--space-4); list-style: disc; font-size: var(--text-sm); white-space: pre-line; }
+.evidence blockquote { margin: 0; font-size: var(--text-sm); white-space: pre-line; }
 .evidence-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .doc-link { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 
