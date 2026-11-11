@@ -228,6 +228,7 @@ h1[tabindex="-1"]:focus { outline: none; box-shadow: none; }  /* 화면을 바�
 .rewritten { font-size: var(--text-sm); line-height: var(--leading-ui); color: var(--color-text-muted); }
 .answer-body { display: flex; flex-direction: column; gap: var(--space-3); }
 .answer { white-space: pre-line; }
+.answer-body .pill { align-self: flex-start; }
 .fold {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   width: 100%; min-height: var(--tap-min); padding: 0;

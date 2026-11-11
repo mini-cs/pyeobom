@@ -620,7 +620,13 @@ def test_same_model_card_again_opens_new_chat(open_page):
 
 def test_answer_after_reopening_same_model_goes_to_original_conversation(open_page):
     held = []
-    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+
+    def ask(body, route):   # 첫 질문의 답만 붙잡아 둔다
+        if held:
+            return fake(body)
+        held.append(route)
+
+    page, asks = open_page(ask=ask, with_asks=True)
     go_lg_washer_chat(page)
     send(page, "가짜 질문 1")
     wait_until(page, lambda: held)
@@ -670,6 +676,11 @@ def test_conversation_saved_then_reopened_continues_with_its_history(open_page):
                                     "citations": [CITE], "kind": "answer"}
     assert page.evaluate("location.hash") == f"#chat/washer-lg-fx25/{saved[0]['id']}"
     page.get_by_role("button", name="새 대화").click()
+    expect(page.locator(".turn")).to_have_count(0)
+    assert page.evaluate("location.hash") == "#chat/washer-lg-fx25"
+    page.go_back()   # 새 대화에서 뒤로 가면 앞 대화로 돌아간다
+    expect(page.locator(".turn .bubble")).to_have_text(["가린:가짜 질문 1"])
+    page.go_forward()   # 대화 id 없는 주소는 새 대화
     expect(page.locator(".turn")).to_have_count(0)
     expect(page.locator("#suggestions .suggestion")).to_have_count(2)
     expect(page.locator("#suggestions")).to_be_visible()

@@ -197,18 +197,15 @@ function renderModelCards(appliance, models) {
 
 // ── ④ 채팅(설계 2절 ④·5절): 대화 하나 = 모델 하나. 저장은 가린 질문만(toStoredTurn) ──
 // entries: 화면의 턴. { question, history, pending } → 응답 뒤 { turn(저장 형식), officialUrl } 또는 { error }
-// createdHere: 이 화면에서 첫 답으로 만든 대화(답을 기다리다 다른 화면에 갔다 와도 이어서 보이게)
-let chat = { model: null, conv: null, entries: [], createdHere: false, token: 0 };
+// 대화를 열거나 새로 시작할 때마다 새 chat 객체를 만든다. 기다리던 답은 보낸 때의 객체(대화)에 저장한다
+let chat = { model: null, conv: null, entries: [] };
 
 const chatHash = (modelId, convId) => `#chat/${encodeURIComponent(modelId)}` + (convId ? `/${encodeURIComponent(convId)}` : "");
 
 function openChat(model, conversationId) {
   ui.chatTitle.textContent = model.short_name ?? model.name;  // 위쪽 막대 한 줄(2026-11-10 사용자 결정)
-  if (chat.model?.id === model.id && (conversationId ?? null) === (chat.conv?.id ?? null)) return;  // 같은 대화면 그대로
-  if (chat.model?.id === model.id && !conversationId && chat.createdHere) {
-    history.replaceState(null, "", chatHash(model.id, chat.conv.id));  // 다른 화면에 있는 동안 만든 대화: 주소만 맞춘다
-    return;
-  }
+  // 같은 대화 주소면 그대로 둔다. 대화 id가 없는 주소(모델 카드·새 대화)는 언제나 새 대화(2026-11-10 사용자 결정)
+  if (conversationId && chat.model?.id === model.id && conversationId === chat.conv?.id) return;
   const saved = conversationId
     ? loadConversations(storage()).find((c) => c.id === conversationId && c.model_id === model.id)
     : null;  // 없는 id이거나 다른 모델의 대화면 새 대화(다른 모델의 앞 대화가 섞이지 않게)
@@ -224,8 +221,8 @@ function resetChat(model, conv) {
       rewritten_question: typeof t.rewritten_question === "string" ? t.rewritten_question : null,
       citations: Array.isArray(t.citations) ? t.citations.filter((c) => c !== null && typeof c === "object") : [],
     }));
-  chat = { model, conv, entries: turns.map((t) => ({ question: t.question_masked, turn: t })), createdHere: false, token: chat.token + 1 };
-  setBusy(false);  // 기다리던 응답은 token이 달라 버려진다
+  chat = { model, conv, entries: turns.map((t) => ({ question: t.question_masked, turn: t })) };
+  setBusy(false);  // 기다리던 답은 원래 대화에 저장만 되고 이 화면은 막지 않는다
   ui.question.value = "";
   updateCounter();
   showFormError("");
@@ -236,10 +233,12 @@ function resetChat(model, conv) {
   renderChat();
 }
 
+// 화면은 여기서 바로 비우고, 주소는 pushState로만 바꾼다(hashchange가 늦게 와서 그사이 보낸 질문까지 비우지 않게).
+// 뒤로 가기로 앞 대화 주소에 돌아가면 hashchange가 와서 그 대화를 다시 연다
 ui.newChat.addEventListener("click", () => {
   const target = chatHash(chat.model.id);
   resetChat(chat.model, null);
-  if (location.hash !== target) location.hash = target;
+  if (location.hash !== target) history.pushState(null, "", target);
 });
 
 function renderSuggestions() {
@@ -281,8 +280,11 @@ function renderEvidence(c) {
     box.append(el("p", "evidence-label", `공식 해결 가이드: ${c.title}`));
   }
   box.append(el("blockquote", null, c.quote));
-  // 1차 문구에서 검색어(모델 코드)만 뺐다: 모델 코드는 모델 선택 화면에서만 보인다(Task 4 사용자 결정)
-  box.append(link(c.doc_type === "manual" ? "공식 설명서 받기" : "공식 문서 열기", c.url));
+  // 설명서는 내려받기 페이지라 1차처럼 검색어(모델 코드)를 함께 알려 준다.
+  // "코드는 모델 선택 화면에서만"의 유일한 예외(2026-11-10 사용자 결정)
+  box.append(c.doc_type === "manual"
+    ? link(`공식 설명서 받기 (검색어: ${chat.model.model_codes.join("·")})`, c.url)
+    : link("공식 문서 열기", c.url));
   if (c.warning) box.append(notice("info", "참고", c.warning));  // 가이드 6절 8: 근거 박스 맨 아래
   return box;
 }
@@ -303,13 +305,15 @@ function answerBody(entry) {
   if (shouldShowRewritten(t.question_masked, t.rewritten_question)) {
     body.append(el("p", "rewritten", `'${t.rewritten_question}'로 찾았어요`));
   }
-  const supportUrl = entry.officialUrl ?? chat.model.official_url;  // 저장한 턴에는 official_url이 없다
-  if (t.kind === "other_brand") {
-    body.append(notice("info", "모델 안내", t.answer), link("공식 고객센터에서 찾아보기", supportUrl));
+  if (t.kind === "other_brand") {  // 서버 답 그대로 + 앱 안에서 모델을 다시 고르게(2026-11-10 사용자 결정)
+    const again = el("button", "pill", "모델 다시 고르기");
+    again.type = "button";
+    again.addEventListener("click", () => { location.hash = "#category"; });
+    body.append(notice("info", "모델 안내", t.answer), again);
   } else {
     body.append(el("p", "answer", t.answer));
     if (t.kind === "answer") (Array.isArray(t.citations) ? t.citations : []).forEach((c) => body.append(renderEvidence(c)));
-    else body.append(link("공식 고객센터에서 찾아보기", supportUrl));
+    else body.append(link("공식 고객센터에서 찾아보기", entry.officialUrl ?? chat.model.official_url));  // 저장한 턴에는 official_url이 없다
   }
   return body;
 }
@@ -346,7 +350,7 @@ function renderEntry(entry, index, latest) {
       const n = Array.isArray(entry.turn.citations) ? entry.turn.citations.length : 0;
       const fold = el("button", "fold");
       fold.type = "button";
-      fold.append(el("span", null, `이전 답 · 근거 ${n}개`), icon("chevron-down"));
+      fold.append(el("span", null, n ? `이전 답 · 근거 ${n}개` : "이전 답 · 근거 없음"), icon("chevron-down"));
       body.id = `turn-body-${index}`;
       body.hidden = true;
       fold.setAttribute("aria-controls", body.id);
@@ -374,18 +378,18 @@ function renderChat() {
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 // 첫 정상 응답에서 대화를 만들고(계획 기본값 4), 응답마다 턴을 더해 저장한다. 실패해도 화면은 계속 간다(설계 5절)
-function saveTurn(turn) {
+// state는 질문을 보낸 때의 대화. 지금 보고 있는 대화가 아니면 저장만 하고 화면·주소는 건드리지 않는다
+function saveTurn(state, turn) {
   const now = new Date().toISOString();
-  if (!chat.conv) {
-    chat.conv = { id: newId(), model_id: chat.model.id, title: makeTitle(turn.question_masked), created_at: now, updated_at: now, turns: [] };
-    chat.createdHere = true;
-    // 지금 이 모델의 새 대화 화면일 때만 주소를 바꾼다. 다른 화면이면 돌아올 때 openChat이 맞춘다
-    if (location.hash === chatHash(chat.model.id)) history.replaceState(null, "", chatHash(chat.model.id, chat.conv.id));
+  const current = state === chat;
+  if (!state.conv) {
+    state.conv = { id: newId(), model_id: state.model.id, title: makeTitle(turn.question_masked), created_at: now, updated_at: now, turns: [] };
+    if (current && location.hash === chatHash(state.model.id)) history.replaceState(null, "", chatHash(state.model.id, state.conv.id));
   }
-  chat.conv.turns.push(turn);
-  chat.conv.updated_at = now;
+  state.conv.turns.push(turn);
+  state.conv.updated_at = now;
   // 안내는 요소 하나라 여러 번 실패해도 대화당 하나만 보인다. 새 대화(resetChat)에서 끈다
-  if (!saveConversation(storage(), chat.conv)) ui.saveNote.hidden = false;
+  if (!saveConversation(storage(), state.conv) && current) ui.saveNote.hidden = false;
 }
 
 const isAnswer = (d) => d && !d.error_code && typeof d.answer === "string" && typeof d.question_masked === "string";
@@ -408,7 +412,8 @@ async function ask(text, retryOf) {
   setBusy(true);
   ui.status.textContent = "설명서를 펴 보는 중…";
   renderChat();
-  const { token, model } = chat;
+  const state = chat;
+  const { model } = state;
   let res = null;
   let data = null;
   try {
@@ -416,13 +421,16 @@ async function ask(text, retryOf) {
     res = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     data = await res.json().catch(() => null);
   } catch { /* 네트워크 오류는 아래에서 오류 카드로 */ }
-  if (token !== chat.token) return;  // 그사이 새 대화·다른 모델로 옮겼으면 버린다
   entry.pending = false;
-  if (res?.ok && isAnswer(data)) {
+  const answered = res?.ok && isAnswer(data);
+  if (answered) {
     entry.turn = toStoredTurn(data);
     entry.officialUrl = data.official_url;
+    saveTurn(state, entry.turn);  // 그사이 새 대화·다른 대화로 옮겼어도 보낸 대화에 저장한다
+  }
+  if (state !== chat) return;  // 화면에 그리는 것은 지금 보고 있는 대화일 때만
+  if (answered) {
     ui.pii.hidden = !data.pii_masked;
-    saveTurn(entry.turn);
     ui.status.textContent = "답이 도착했어요";
   } else {
     // 입력 오류는 고쳐서 다시 보내면 되고, 그 밖의 오류는 같은 질문으로 다시 시도한다
