@@ -676,6 +676,21 @@ def test_late_answer_kept_when_same_conversation_reopened_and_continued(open_pag
     assert [t["question_masked"] for t in saved["c1"]["turns"]] == ["가짜 질문 1", "가린:가짜 질문 2", "가린:가짜 질문 3"]
 
 
+def test_turn_kept_when_one_save_failed_in_between(open_page):
+    # 두 번째 저장만 실패(공간 부족 등): 저장소 사본(턴 1)이 메모리(턴 1·2)보다 오래됐으므로 메모리 쪽에 이어 붙인다
+    init = """(() => { let n = 0; const orig = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) { n += 1; if (n === 2) throw new DOMException('가짜', 'QuotaExceededError');
+            return orig.call(this, k, v); }; })();"""
+    page = open_page(ask=echo, init=init)
+    open_chat(page, "washer-lg-fx25")
+    for i in range(1, 4):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+    expect(page.locator(".turn .bubble")).to_have_text([f"가린:가짜 질문 {i}" for i in range(1, 4)])
+    turns = json.loads(stored(page))["conversations"][0]["turns"]
+    assert [t["question_masked"] for t in turns] == [f"가린:가짜 질문 {i}" for i in range(1, 4)]
+
+
 def test_malformed_stored_turn_still_renders_and_can_ask(open_page):
     bad = _conversation(9, "washer-lg-fx25")
     bad["turns"] = [{"question_masked": "가짜 질문 9", "rewritten_question": 5, "answer": "가짜 답", "found": True,

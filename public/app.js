@@ -212,16 +212,20 @@ function openChat(model, conversationId) {
   resetChat(model, saved ?? null);
 }
 
-function resetChat(model, conv) {
-  // 저장소의 턴은 그리기 전에 모양을 맞춘다(망가진 항목 때문에 화면이 멈추지 않게)
-  const turns = (conv ? conv.turns : [])
+// 저장소의 턴은 그리기 전에 모양을 맞춘다(망가진 항목 때문에 화면이 멈추지 않게)
+function entriesFrom(turns) {
+  return turns
     .filter((t) => t && typeof t.question_masked === "string" && typeof t.answer === "string")
     .map((t) => ({
       ...t,
       rewritten_question: typeof t.rewritten_question === "string" ? t.rewritten_question : null,
       citations: Array.isArray(t.citations) ? t.citations.filter((c) => c !== null && typeof c === "object") : [],
-    }));
-  chat = { model, conv, entries: turns.map((t) => ({ question: t.question_masked, turn: t })) };
+    }))
+    .map((t) => ({ question: t.question_masked, turn: t }));
+}
+
+function resetChat(model, conv) {
+  chat = { model, conv, entries: entriesFrom(conv ? conv.turns : []) };
   setBusy(false);  // 기다리던 답은 원래 대화에 저장만 되고 이 화면은 막지 않는다
   ui.question.value = "";
   updateCounter();
@@ -386,10 +390,15 @@ function saveTurn(state, turn) {
     state.conv = { id: newId(), model_id: state.model.id, title: makeTitle(turn.question_masked), created_at: now, updated_at: now, turns: [] };
     if (current && location.hash === chatHash(state.model.id)) history.replaceState(null, "", chatHash(state.model.id, state.conv.id));
   }
-  state.conv.turns.push(turn);
-  state.conv.updated_at = now;
+  // 저장 직전에 같은 대화를 다시 읽어 그 턴들 뒤에 이어 붙인다. 그사이 같은 대화를 다시 연 화면이
+  // 저장한 턴(또는 늦게 온 답)을 메모리의 옛 사본으로 덮어쓰지 않게. 개수 한도는 saveConversation(store.js)이 지킨다.
+  // 이 대화의 앞 저장이 실패했으면 저장소 사본이 메모리보다 오래됐으므로 메모리 쪽을 쓴다
+  const stored = state.unsaved ? null : loadConversations(storage()).find((c) => c.id === state.conv.id);
+  const base = stored ?? state.conv;
+  state.conv = { ...base, turns: [...base.turns, turn], updated_at: now };
+  state.unsaved = !saveConversation(storage(), state.conv);
   // 안내는 요소 하나라 여러 번 실패해도 대화당 하나만 보인다. 새 대화(resetChat)에서 끈다
-  if (!saveConversation(storage(), state.conv) && current) ui.saveNote.hidden = false;
+  if (state.unsaved && current) ui.saveNote.hidden = false;
 }
 
 const isAnswer = (d) => d && !d.error_code && typeof d.answer === "string" && typeof d.question_masked === "string";
@@ -427,8 +436,17 @@ async function ask(text, retryOf) {
     entry.turn = toStoredTurn(data);
     entry.officialUrl = data.official_url;
     saveTurn(state, entry.turn);  // 그사이 새 대화·다른 대화로 옮겼어도 보낸 대화에 저장한다
+    // 화면의 대화가 같은 대화면(다시 연 사본 포함) 저장된 턴으로 맞춘다. 방금 답은 entry를 그대로 써서
+    // 응답의 official_url을 지키고, 그 화면에서 기다리는 질문·오류 카드는 뒤에 남긴다
+    if (chat.conv?.id === state.conv.id) {
+      const turns = state.conv.turns;
+      const last = state === chat ? [entry] : entriesFrom(turns.slice(-1));
+      chat.conv = state.conv;
+      chat.entries = [...entriesFrom(turns.slice(0, -1)), ...last, ...chat.entries.filter((e) => e.pending || e.error)];
+      if (state !== chat) renderChat();
+    }
   }
-  if (state !== chat) return;  // 화면에 그리는 것은 지금 보고 있는 대화일 때만
+  if (state !== chat) return;  // 그 밖의 화면 처리는 지금 보고 있는 대화일 때만
   if (answered) {
     ui.pii.hidden = !data.pii_masked;
     ui.status.textContent = "답이 도착했어요";
