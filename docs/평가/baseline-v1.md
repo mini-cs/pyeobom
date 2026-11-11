@@ -58,6 +58,7 @@
 - **방법:** `.venv/Scripts/python -m measure.a11y` (먼저 `measure/`에서 `npm install`)
   - `/api/models`는 실제 API, `/api/ask`는 Playwright로 가로채 고정 응답(`measure/fixtures/`, 근거 1개·가짜 인용)을 돌려준다. **AI를 부르지 않는다.**
   - 오류 상태는 504 `AI_TIMEOUT` 본문을 돌려준다. 상태마다 결과 카드가 나온 뒤 `axe.run()`을 실행했다. 원본 결과는 `measure/out/axe-<상태>.json`(저장소에 넣지 않음)
+  - (2026-11-11 덧붙임) 계획 3 Task 7에서 `measure/a11y.py`가 v1.5 화면 상태 15개로 바뀌었다. 이제 주소를 주지 않으면 **로컬 정적 서버**(`public/`)를 대상으로 하고, 운영·미리보기는 주소를 인자로 준다(`python -m measure.a11y <주소>`). 결과 파일 이름도 `measure/out/axe-<local|호스트>-<상태>.json`으로 바뀌었다. 위 1차 기록의 명령·파일 이름은 2026-11-08 당시 기준이다.
 - **결과:**
 
 | 상태 | 위반 수 | critical | serious | moderate | minor | 위반 규칙 | 확인 필요(incomplete) |
