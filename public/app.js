@@ -183,6 +183,10 @@ function wheelScroll(box) {
     box.scrollBy({ left, behavior: "instant" });
   }, { passive: false });
 }
+// 아래 고정 입력창 높이를 --composer-h로 알려, 스크롤·포커스 이동 때 그 높이만큼 여백을 둔다(styles.css html, WCAG 2.2 2.4.11).
+// 채팅이 아닌 화면에서는 입력창이 숨어 0이 된다
+new ResizeObserver(() => document.documentElement.style.setProperty("--composer-h", `${ui.form.offsetHeight}px`)).observe(ui.form);
+
 for (const [box, selector] of [[ui.tiles, ".tile"], [ui.suggestions, ".suggestion"]]) {
   arrowKeys(box, selector);
   wheelScroll(box);

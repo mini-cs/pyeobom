@@ -46,11 +46,16 @@ def base_url():
 
 
 @pytest.fixture(scope="module")
-def browser():
-    with sync_playwright() as p:
-        b = p.chromium.launch()
-        yield b
-        b.close()
+def playwright():
+    with sync_playwright() as p:   # 한 스레드에 하나만 열 수 있어 브라우저들이 함께 쓴다
+        yield p
+
+
+@pytest.fixture(scope="module")
+def browser(playwright):
+    b = playwright.chromium.launch()
+    yield b
+    b.close()
 
 
 def _conversation(i, model_id):
@@ -1349,9 +1354,18 @@ def assert_focus_above_composer(page, step):
     assert box["top"] >= 0 and box["bottom"] <= box["composer"], (step, box)
 
 
+@pytest.fixture(scope="module")
+def chrome(playwright):
+    # 입력창 높이는 ResizeObserver(화면 갱신 프레임 때 불림)로 잰다. 기본 headless shell에서는 이 페이지에서
+    # requestAnimationFrame이 1초 안에 한 번도 돌지 않아(2026-11-11 확인) 설치된 Chrome으로 연다(measure/a11y.py와 같음)
+    b = playwright.chromium.launch(channel="chrome")
+    yield b
+    b.close()
+
+
 @pytest.mark.parametrize("size", [(360, 640), (360, 560)])
-def test_keyboard_focus_never_hidden_under_sticky_composer(open_page, size):
-    page = open_page(ask=lambda body, route: fake(body, citations=MIXED))
+def test_keyboard_focus_never_hidden_under_sticky_composer(chrome, base_url, size):
+    page, _ = _open(chrome, base_url, ask=lambda body, route: fake(body, citations=MIXED))
     page.set_viewport_size({"width": size[0], "height": size[1]})
     open_chat(page, "washer-samsung-wd90h25")
     for i in (1, 2):
@@ -1373,3 +1387,4 @@ def test_keyboard_focus_never_hidden_under_sticky_composer(open_page, size):
     page.keyboard.press("Enter")
     tab_to(page, ".turn:first-child .answer-body .fold")   # 이전 답 안의 근거 줄
     assert_focus_above_composer(page, "이전 답 근거 줄")
+    page.context.close()
