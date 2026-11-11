@@ -126,6 +126,7 @@
 - **axe(15개 상태, `/api/ask` 가로챔):** **위반 0 → 통과.** 확인 필요 2건: 서랍(열림)·전체 삭제 확인의 `color-contrast`(서랍 안 저장 안내 글자와 대화 카드 둘째 줄, "다른 요소와 겹쳐 바탕색을 정하지 못함", 로컬과 같음) → Step 7에서 사람이 확인
 - **Lighthouse(랜딩, 모바일 기본, 3회 중앙값, Lighthouse 13.6.0):** **LCP 852ms, CLS 0.0006**(TBT 1ms, FCP 852ms, 성능 1.00) → **CLS 0.1 이하·LCP 2.5초 이하 통과.** 기준 출처: web.dev "Web Vitals"(https://web.dev/articles/vitals, 페이지 표기 "Last updated: October 31, 2024", 2026-11-11 확인) — "LCP should occur within 2.5 seconds of when the page first starts loading", "pages should maintain a CLS of 0.1. or less". 세 번 모두 미리보기 첫 화면(`finalDisplayedUrl`이 미리보기 주소)을 잼
 - **설계 7절 화면 확인 5개 등:** Step 7에서 사용자 확인(대기)
+- **화면 수정 후 재측정(2026-11-11):** axe 위반 0(확인 필요 같은 2건), Lighthouse LCP 853ms·CLS 0.0006 → 통과 유지. 아래 "화면 수정 후 재측정" 절
 
 ### 참고 기록
 
@@ -158,3 +159,20 @@
 - 남긴 것
   - 좁은 PC 창의 가로 스크롤바: 마우스 사용자에게 옆으로 넘길 수 있다는 표시라 유지
   - 모델 카드를 화면 읽기 프로그램이 읽는 이름이 김(카드 전체 글자): 나중에
+
+## 화면 수정 후 재측정: 조건 4 (2026-11-11)
+
+- **대상:** PR #54 새 미리보기 `https://pyeobom-j2qs1fibw-mini-0fbe.vercel.app`(배포 `dpl_DNXFVqpgTr5L1hzFju4D8MWbzCfK`, 커밋 2dc5a8f. GitHub 커밋 상태의 Vercel 링크와 배포 id가 같고, 받은 `index.html`에 파비콘 줄과 "더 추가 예정"이 있음을 확인)
+- **방법:** 지난번(Step 6)과 같음. axe는 `measure/a11y.py` 15개 상태(`/api/ask` 가로챔, AI 질문 없음), Lighthouse는 랜딩 모바일 기본 3회 중앙값. 보호 우회 값은 헤더로만 보내고, Lighthouse 결과 JSON에 남은 값은 측정 직후 `<redacted>`로 바꿈
+- **조건 1~3은 다시 재지 않음:** 화면(`public/`)만 바꾸고 서버·프롬프트는 그대로라 답·시간 결과가 달라질 이유가 없음
+
+| 항목 | 기준 | 지난 값(Step 6, `pyeobom-3wv22r2jt`, cbe0c7b) | 화면 수정 후(`pyeobom-j2qs1fibw`, 2dc5a8f) | 판정 |
+|---|---|---|---|---|
+| axe 위반(15개 상태) | 0 | 0 | **0** | 통과 |
+| axe 확인 필요 | 사람 확인 | 2(서랍·전체 삭제 확인 color-contrast) | 2(같은 상태·같은 요소: 저장 안내 글자, 대화 카드 둘째 줄) | Step 7 사람 확인 |
+| Lighthouse LCP(3회 중앙값) | 2.5초 이하 | 852ms | **853ms**(850·853·853) | 통과 |
+| Lighthouse CLS(3회 중앙값) | 0.1 이하 | 0.0006 | **0.0006**(세 번 모두 0.000589) | 통과 |
+| 참고: TBT·FCP·성능 | — | 1ms·852ms·1.00 | 0ms·853ms·1.00 | — |
+
+- axe 4.14.0, Lighthouse 13.6.0. 세 번 모두 새 미리보기 첫 화면(`finalDisplayedUrl`)을 잼
+
