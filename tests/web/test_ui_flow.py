@@ -1209,3 +1209,54 @@ def test_first_screen_has_no_console_errors_or_failed_requests(open_page):
     assert_screen(page, LANDING_H1)
     page.wait_for_load_state("networkidle")
     assert errors == [] and failed == [], (errors, failed)
+
+
+# ── 포커스 링: 회색 면 요소는 회색 틈(--focus-ring-surface), 그 밖은 흰 틈(--focus-ring). 2026-11-11 결정기록 024 결정 11 ──
+RING_SURFACE = "rgb(242, 242, 242) 0px 0px 0px 2px, rgb(17, 17, 17) 0px 0px 0px 4px"
+RING_WHITE = "rgb(255, 255, 255) 0px 0px 0px 2px, rgb(17, 17, 17) 0px 0px 0px 4px"
+
+
+def tab_to(page, selector):
+    # 키보드(Tab)로만 옮겨 :focus-visible 상태를 실제와 같게 만든다
+    for _ in range(30):
+        page.keyboard.press("Tab")
+        if page.evaluate("(s) => document.activeElement.matches(s)", selector):
+            return
+    raise AssertionError(f"Tab으로 {selector}에 가지 못함")
+
+
+def ring(page, selector=None):
+    return page.evaluate("(s) => getComputedStyle(s ? document.querySelector(s) : document.activeElement).boxShadow", selector)
+
+
+def test_focus_ring_gray_gap_on_surface_elements_white_gap_on_buttons(open_page):
+    page = open_page(conversations=[_conversation(1, "washer-lg-fx25")])
+    tab_to(page, ".conv-card")   # 랜딩 최근 대화 카드(회색 면)
+    assert ring(page) == RING_SURFACE
+    tab_to(page, ".pill")   # 랜딩 "시작하기"(검은 버튼): 흰 틈
+    assert ring(page) == RING_WHITE
+    go_category(page)
+    tab_to(page, ".tile")
+    assert ring(page) == RING_SURFACE
+    page.keyboard.press("ArrowRight")
+    page.keyboard.press("ArrowRight")   # 더 추가 예정(aria-disabled)도 같은 면
+    assert page.evaluate("document.activeElement.textContent.trim()") == "더 추가 예정" and ring(page) == RING_SURFACE
+    page.get_by_role("button", name="세탁기").click()
+    expect(page.locator(".model-card").first).to_be_visible()
+    tab_to(page, ".model-card")
+    assert ring(page) == RING_SURFACE
+    open_chat(page, "washer-samsung-wd90h25")
+    tab_to(page, ".suggestion")
+    assert ring(page) == RING_SURFACE
+    tab_to(page, "#question")   # 입력창: 알약 전체(.composer-box)에 회색 틈
+    assert ring(page, ".composer-box") == RING_SURFACE and ring(page) == "none"
+    page.keyboard.type("가짜 질문")
+    tab_to(page, "#send")   # 보내기(검은 동그라미): 흰 틈
+    assert ring(page) == RING_WHITE
+    open_drawer(page)
+    for selector in ("#drawer-close", "#drawer .pill"):   # 흰 바탕 글자 버튼·검은 버튼은 흰 틈
+        tab_to(page, selector)
+        assert ring(page) == RING_WHITE, selector
+        assert page.evaluate("getComputedStyle(document.activeElement).outlineStyle") == "solid"   # 강제 색 모드용 outline 유지
+    tab_to(page, "#drawer .conv-card")
+    assert ring(page) == RING_SURFACE
