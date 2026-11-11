@@ -291,6 +291,31 @@ def test_model_codes_absent_outside_model_screen(open_page):
         no_codes(page.get_by_role("heading", level=1))
 
 
+def test_manual_link_shows_search_codes_as_only_exception(open_page):
+    # 2026-11-10 사용자 결정: 내려받기 페이지는 모델 코드로 찾으므로 설명서 링크 옆에만 1차처럼 검색어를 붙인다
+    guide = {"doc_type": "guide", "title": "가짜 가이드", "page": None, "url": "https://example.com/guide",
+             "quote": "가짜 가이드 인용입니다(테스트)."}
+    page = open_page(ask=lambda body, route: fake(body, citations=[CITE, guide]))
+    for m in MODELS:
+        open_chat(page, m["id"])
+        send(page, "가짜 질문입니다")
+        wait_turns(page, 1)
+        links = page.locator(".turn .evidence a")
+        expect(links).to_have_text([f"공식 설명서 받기 (검색어: {'·'.join(m['model_codes'])})", "공식 문서 열기"])
+        rest = page.evaluate("""() => { const c = document.querySelector('[data-screen="chat"]').cloneNode(true);
+            c.querySelectorAll('.evidence a').forEach((a) => a.remove());
+            return document.getElementById('topbar').textContent + c.textContent; }""")
+        assert not [c for c in CODES if c in rest], rest   # 예외는 설명서 링크 하나뿐
+
+
+def test_chat_screen_has_no_footer_note(open_page):
+    page = open_page()
+    expect(page.get_by_text("비영리 학습용 포트폴리오예요.")).to_be_visible()   # 랜딩에는 그대로
+    open_chat(page, "washer-lg-fx25")
+    expect(page.locator('[data-screen="chat"]').get_by_text("비영리")).to_have_count(0)
+    expect(page.get_by_text("비영리").locator("visible=true")).to_have_count(0)
+
+
 # ── ④ 채팅(설계 2절 ④·5절, 계획 3 Task 5). /api/ask는 가짜 JSON으로만 답한다 ──
 FAKE_PHONE = "010-1234-5678"
 CITE = {"doc_type": "manual", "title": "가짜 제목", "page": 12, "url": "https://example.com/manual",
@@ -468,10 +493,14 @@ def test_not_found_and_other_brand_are_distinct_states(open_page):
     expect(not_found.get_by_role("link", name="공식 고객센터에서 찾아보기")).to_have_attribute("href", SUPPORT_URL)
     send(page, "가짜 브랜드 질문")
     wait_turns(page, 2)
+    expect(not_found.get_by_role("button", name="이전 답 · 근거 없음")).to_have_attribute("aria-expanded", "false")
     brand = page.locator('.turn[data-state="other-brand"]')
-    expect(brand).to_contain_text("가짜 브랜드 안내입니다(테스트)")
-    expect(brand.get_by_role("link")).to_have_attribute("href", "https://example.com/brand")
+    expect(brand).to_contain_text("가짜 브랜드 안내입니다(테스트)")   # 서버 답 그대로
+    expect(brand.get_by_role("link")).to_have_count(0)   # 고객센터 링크 대신 앱 안 버튼
     expect(brand.locator(".evidence")).to_have_count(0)
+    brand.get_by_role("button", name="모델 다시 고르기").click()
+    assert_screen(page, CATEGORY_H1)
+    assert page.evaluate("location.hash") == "#category"
 
 
 def test_only_latest_answer_expanded_previous_folded(open_page):
@@ -541,27 +570,75 @@ def test_save_failure_notice_once_and_answers_still_shown(open_page):
     assert visible_save_notices(page) == 1   # 새 대화에서 실패하면 다시 한 번
 
 
-def test_first_answer_arriving_on_other_screen_keeps_url_and_answer(open_page):
-    held = []
-    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+def go_lg_washer_chat(page):
     go_category(page)
     page.get_by_role("button", name="세탁기").click()
     page.locator(".model-card").nth(1).click()   # LG 드럼세탁기
     expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+
+
+def saved_conversations(page):
+    return json.loads(stored(page) or '{"conversations": []}')["conversations"]
+
+
+def test_answer_arriving_on_other_screen_is_saved_without_changing_screen(open_page):
+    held = []
+    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+    go_lg_washer_chat(page)
     send(page, "가짜 질문 1")
     wait_until(page, lambda: held)
     page.go_back()   # 답을 기다리는 동안 모델 화면으로
     expect(page.locator(".model-card")).to_have_count(2)
     held[0].fulfill(json=fake(asks[0])[1])
     page.wait_for_function(f"localStorage.getItem({json.dumps(STORE_KEY)}) !== null")
-    assert page.evaluate("location.hash") == "#model/washer"   # 지금 화면의 주소를 바꾸지 않는다
+    assert page.evaluate("location.hash") == "#model/washer"   # 지금 화면과 주소는 그대로
     expect(page.locator(".model-card")).to_have_count(2)
-    page.go_forward()
-    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
-    wait_turns(page, 1)   # 받은 답이 화면에 남아 있다
+    saved = saved_conversations(page)
+    assert [t["question_masked"] for t in saved[0]["turns"]] == ["가린:가짜 질문 1"]
+    page.go_back()   # 카테고리 화면의 최근 대화 카드로 그 대화를 연다
+    assert_screen(page, CATEGORY_H1)
+    page.locator("#category-recent .conv-card").first.click()
+    wait_turns(page, 1)
     expect(page.locator(".turn .bubble")).to_have_text("가린:가짜 질문 1")
-    saved_id = json.loads(stored(page))["conversations"][0]["id"]
-    assert page.evaluate("location.hash") == f"#chat/washer-lg-fx25/{saved_id}"
+    expect(page.locator(".turn .answer")).to_have_text("가짜 답입니다(테스트): 가짜 질문 1")
+    assert page.evaluate("location.hash") == f"#chat/washer-lg-fx25/{saved[0]['id']}"
+
+
+def test_same_model_card_again_opens_new_chat(open_page):
+    page = open_page(ask=echo)
+    go_lg_washer_chat(page)
+    send(page, "가짜 질문 1")
+    wait_turns(page, 1)
+    page.go_back()
+    expect(page.locator(".model-card")).to_have_count(2)
+    page.locator(".model-card").nth(1).click()   # 같은 모델을 다시 고르면 새 대화
+    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+    expect(page.locator(".turn")).to_have_count(0)
+    expect(page.locator("#suggestions")).to_be_visible()
+    assert page.evaluate("location.hash") == "#chat/washer-lg-fx25"
+
+
+def test_answer_after_reopening_same_model_goes_to_original_conversation(open_page):
+    held = []
+    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+    go_lg_washer_chat(page)
+    send(page, "가짜 질문 1")
+    wait_until(page, lambda: held)
+    page.go_back()
+    page.locator(".model-card").nth(1).click()   # 기다리는 중에 같은 모델로 새 대화
+    expect(page.locator("#suggestions")).to_be_visible()
+    expect(page.locator("#send")).to_be_enabled()
+    held[0].fulfill(json=fake(asks[0])[1])
+    page.wait_for_function(f"localStorage.getItem({json.dumps(STORE_KEY)}) !== null")
+    saved = saved_conversations(page)
+    assert len(saved) == 1 and [t["question_masked"] for t in saved[0]["turns"]] == ["가린:가짜 질문 1"]
+    expect(page.locator(".turn")).to_have_count(0)   # 새 대화 화면에는 나타나지 않는다
+    expect(page.locator("#suggestions")).to_be_visible()
+    assert page.evaluate("location.hash") == "#chat/washer-lg-fx25"
+    send(page, "가짜 질문 2")   # 새 대화는 앞 대화 없이 따로 저장된다
+    wait_turns(page, 1)
+    assert "history" not in asks[1]
+    assert len(saved_conversations(page)) == 2
 
 
 def test_malformed_stored_turn_still_renders_and_can_ask(open_page):
