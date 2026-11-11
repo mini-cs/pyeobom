@@ -1302,8 +1302,8 @@ def test_evidence_folded_grouped_and_links_only_after_offer(open_page):
     boxes = turn.locator(".evidence")
     expect(boxes).to_have_count(3)   # 12쪽·13쪽·가이드 한 상자씩(인용이 처음 나온 순서)
     expect(boxes.locator(".evidence-label")).to_have_text(["사용설명서 12쪽", "사용설명서 13쪽", "공식 해결 가이드: 가짜 가이드"])
-    expect(boxes.nth(0).locator("li")).to_have_text(["가짜 인용입니다(테스트).", "가짜 인용 셋(테스트)."])
-    expect(boxes.nth(2).locator("li")).to_have_count(2)
+    expect(boxes.nth(0).locator("blockquote")).to_have_text(["가짜 인용입니다(테스트).", "가짜 인용 셋(테스트)."])
+    expect(boxes.nth(2).locator("blockquote")).to_have_count(2)
     expect(page.locator(f"#{controls} a")).to_have_count(0)   # 상자 안에는 링크가 없다
     offer = turn.get_by_role("button", name="공식 설명서·문서를 드릴까요?")
     expect(offer).to_have_count(1)
@@ -1388,3 +1388,21 @@ def test_keyboard_focus_never_hidden_under_sticky_composer(chrome, base_url, siz
     tab_to(page, ".turn:first-child .answer-body .fold")   # 이전 답 안의 근거 줄
     assert_focus_above_composer(page, "이전 답 근거 줄")
     page.context.close()
+
+
+def test_evidence_quote_kept_as_is_without_list_marker(open_page):
+    # 설명서 인용은 원래 "•"로 시작하고 줄바꿈이 있다. 상자가 목록 기호를 또 붙이면 "• •"로 겹친다(2026-11-11 화면 확인)
+    quote = "• 배수 필터를 확인하세요(테스트).\n• 필터 마개를 돌려 빼세요(테스트)."
+    page = open_page(ask=lambda body, route: fake(body, citations=[{**CITE, "quote": quote}, {**CITE, "quote": "가짜 인용 둘(테스트)."}]))
+    open_chat(page, "washer-samsung-wd90h25")
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 1)
+    turn = page.locator(".turn").last
+    turn.get_by_role("button", name="근거 보기 · 사용설명서 12쪽").click()
+    quotes = turn.locator(".evidence blockquote")
+    expect(quotes).to_have_count(2)   # 인용마다 하나, 인용끼리는 간격으로 구분
+    assert quotes.first.text_content() == quote   # 인용 글자는 원문 그대로(기호·줄바꿈 포함)
+    assert quotes.first.evaluate("(q) => q.getClientRects().length && q.getBoundingClientRect().height > parseFloat(getComputedStyle(q).lineHeight) * 1.5")   # 줄바꿈이 살아 있다
+    markers = turn.locator(".evidence").evaluate("(box) => [...box.querySelectorAll('*')].filter((e) => getComputedStyle(e).display === 'list-item').length")
+    assert markers == 0   # CSS 목록 기호 없음
+
