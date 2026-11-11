@@ -100,10 +100,18 @@ def test_examples_per_model_and_not_eval_questions():
     assert set(examples) == model_ids and all(len(v) == 2 for v in examples.values())
     for item in (i for items in examples.values() for i in items):   # 카드 첫 줄(질문)과 둘째 줄(짧은 화면 문구)
         assert set(item) == {"question", "hint"} and item["question"].strip() and item["hint"].strip(), item
-    with (PUBLIC.parent / "evaluation" / "questions.csv").open(encoding="utf-8") as f:
-        eval_questions = [r["question"] for r in csv.DictReader(f)]
+    eval_questions = []
+    for name in ("questions.csv", "followups.csv"):   # 연 평가 질문(30문항·새 세트). 확인용 세트는 열지 않는다
+        with (PUBLIC.parent / "evaluation" / name).open(encoding="utf-8-sig") as f:
+            eval_questions += [r["question"] for r in csv.DictReader(line for line in f if not line.startswith("#"))]
     for q in (i["question"] for items in examples.values() for i in items):   # 평가 질문과 같거나 겹치는 문장은 예시로 쓰지 않는다
         assert not any(q in e or e in q for e in eval_questions), q
+
+
+def test_samsung_second_example_is_the_rechecked_sentence():
+    # "물이 안 빠지고 5C가 떠요"는 2026-11-11 로컬 3회 모두 찾지 못함(인용 번호가 검색된 조각에 없어 검증에서 떨어짐)이라 바꿈.
+    # 바꾼 문장은 로컬 3회 모두 찾음·72쪽 인용으로 확인(docs/평가/v15-ui.md "추천 카드 5C 재현 확인"). 다시 바꾸면 다시 확인한다
+    assert screen_examples()["washer-samsung-wd90h25"][1] == {"question": "물이 안 빠지고 탈수가 안 돼요", "hint": "원인과 해결 방법"}
 
 
 def test_chat_copy_is_exact():
