@@ -217,3 +217,37 @@ done
 
 - 최종 설정을 한곳에서 보려면 015를 보면 됩니다.
 - 그 밖의 문서: 기획서 `docs/기획서.md`, 구현 계획 `docs/superpowers/plans/2026-10-27-pyeobom-phase1.md`, 개발일지 `docs/개발일지/`, AI 실수 기록 `docs/AI-실수-기록.md`, 안정성 기록 `docs/안정성-테스트.md`
+
+## 외부 스킬과 라이선스
+
+- `.claude/skills/accessibility/`: Claude Code 프로젝트 스킬(접근성 점검, WCAG 2.2). 출처 [addyosmani/web-quality-skills](https://github.com/addyosmani/web-quality-skills) `skills/accessibility`, **MIT License**(Copyright (c) 2026 Addy Osmani). 내려받은 그대로이며 고치지 않았다(`skills-lock.json`의 `computedHash`로 확인).
+- 라이선스 안내를 스킬 폴더 안에 두지 않은 이유: 폴더에 파일을 더하면 `skills-lock.json`의 해시가 달라져 수정된 스킬로 보인다.
+
+<details>
+<summary>MIT License 원문 (addyosmani/web-quality-skills)</summary>
+
+```
+MIT License
+
+Copyright (c) 2026 Addy Osmani
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
