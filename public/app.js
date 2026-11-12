@@ -302,6 +302,8 @@ function showFormError(message) {
 
 function setBusy(on) {
   busy = on;
+  // 꺼지는 버튼에 있던 키보드 포커스는 body로 떨어진다. 입력창으로 옮겨 둔다(계획 3 최종 검토 M2)
+  if (on && document.activeElement === ui.send) ui.question.focus();
   ui.send.disabled = on;
 }
 
