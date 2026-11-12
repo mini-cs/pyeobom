@@ -1406,3 +1406,33 @@ def test_evidence_quote_kept_as_is_without_list_marker(open_page):
     markers = turn.locator(".evidence").evaluate("(box) => [...box.querySelectorAll('*')].filter((e) => getComputedStyle(e).display === 'list-item').length")
     assert markers == 0   # CSS 목록 기호 없음
 
+
+
+def test_history_question_over_server_limit_is_cut_when_sent(open_page):
+    # 가린 질문은 원래 질문보다 길어질 수 있다(주소 → [주소]). 500자를 넘는 앞 대화 질문이 있어도 다음 질문이 막히지 않는다
+    long_q = "가짜 가린 질문 " * 70   # 630자
+    conv = {**_conversation(1, "washer-lg-fx25"), "turns": [{"question_masked": long_q, "rewritten_question": None,
+            "answer": "가짜 답", "found": False, "citations": [], "kind": "not_found"}]}
+    page, asks = open_page(conversations=[conv], ask=echo, with_asks=True)
+    open_chat(page, "washer-lg-fx25", "c1")
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 2)
+    assert asks[0]["history"] == [{"question": long_q[:500], "answer": "가짜 답"}]
+    assert json.loads(stored(page))["conversations"][0]["turns"][0]["question_masked"] == long_q   # 저장된 기록은 그대로
+
+
+def test_focus_returns_to_question_when_sent_with_send_button_keyboard(open_page):
+    # 보내기 버튼은 기다리는 동안 꺼진다. 그 버튼에 있던 키보드 포커스가 body로 떨어지지 않게(2026-11-11 최종 검토 M2)
+    held = []
+    page = open_page(ask=lambda body, route: held.append((route, body)))
+    open_chat(page, "washer-lg-fx25")
+    for key in ["Enter", " "]:
+        page.locator("#question").fill("가짜 질문입니다")
+        page.locator("#send").focus()
+        page.keyboard.press(key)
+        wait_until(page, lambda: len(held) == 1)
+        expect(page.locator("#question")).to_be_focused()   # 보낸 직후
+        route, body = held.pop()
+        route.fulfill(json=fake(body)[1])
+        expect(page.locator('.turn[data-state="loading"]')).to_have_count(0)
+        expect(page.locator("#question")).to_be_focused()   # 답이 온 뒤
