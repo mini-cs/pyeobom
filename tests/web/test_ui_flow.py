@@ -1406,3 +1406,97 @@ def test_evidence_quote_kept_as_is_without_list_marker(open_page):
     markers = turn.locator(".evidence").evaluate("(box) => [...box.querySelectorAll('*')].filter((e) => getComputedStyle(e).display === 'list-item').length")
     assert markers == 0   # CSS 목록 기호 없음
 
+
+
+def test_history_question_over_server_limit_is_cut_when_sent(open_page):
+    # 가린 질문은 원래 질문보다 길어질 수 있다(주소 → [주소]). 500자를 넘는 앞 대화 질문이 있어도 다음 질문이 막히지 않는다
+    long_q = "가짜 가린 질문 " * 70   # 630자
+    conv = {**_conversation(1, "washer-lg-fx25"), "turns": [{"question_masked": long_q, "rewritten_question": None,
+            "answer": "가짜 답", "found": False, "citations": [], "kind": "not_found"}]}
+    page, asks = open_page(conversations=[conv], ask=echo, with_asks=True)
+    open_chat(page, "washer-lg-fx25", "c1")
+    send(page, "가짜 질문입니다")
+    wait_turns(page, 2)
+    assert asks[0]["history"] == [{"question": long_q[:500], "answer": "가짜 답"}]
+    assert json.loads(stored(page))["conversations"][0]["turns"][0]["question_masked"] == long_q   # 저장된 기록은 그대로
+
+
+def test_focus_returns_to_question_when_sent_with_send_button_keyboard(open_page):
+    # 보내기 버튼은 기다리는 동안 꺼진다. 그 버튼에 있던 키보드 포커스가 body로 떨어지지 않게(2026-11-11 최종 검토 M2)
+    held = []
+    page = open_page(ask=lambda body, route: held.append((route, body)))
+    open_chat(page, "washer-lg-fx25")
+    for key in ["Enter", " "]:
+        page.locator("#question").fill("가짜 질문입니다")
+        page.locator("#send").focus()
+        page.keyboard.press(key)
+        wait_until(page, lambda: len(held) == 1)
+        expect(page.locator("#question")).to_be_focused()   # 보낸 직후
+        route, body = held.pop()
+        route.fulfill(json=fake(body)[1])
+        expect(page.locator('.turn[data-state="loading"]')).to_have_count(0)
+        expect(page.locator("#question")).to_be_focused()   # 답이 온 뒤
+
+
+# ── 답이 와서 대화 목록을 다시 그려도 키보드 포커스를 돌려줌(계획 3 최종 검토 M2, 2026-11-12 사용자 결정) ──
+def shift_tab_to(page, selector):
+    for _ in range(30):
+        page.keyboard.press("Shift+Tab")
+        if page.evaluate("(s) => document.activeElement.matches(s)", selector):
+            return
+    raise AssertionError(f"Shift+Tab으로 {selector}에 가지 못함")
+
+
+def _open_second_answer(page):
+    # 기다리는 동안 둘째 답은 이미 "이전 답"으로 접혀 있다. 키보드로 펼친다
+    shift_tab_to(page, ".turn:nth-child(2) > .fold")
+    page.keyboard.press("Enter")
+    expect(page.locator(".turn:nth-child(2) .answer-body")).to_be_visible()
+
+
+def _second_evidence_fold(page):
+    _open_second_answer(page)
+    tab_to(page, ".turn:nth-child(2) .answer-body .fold")
+
+
+def _second_doc_link(page):
+    _open_second_answer(page)
+    tab_to(page, ".turn:nth-child(2) .offer")
+    page.keyboard.press("Enter")   # 버튼 자리에 링크, 포커스는 첫 링크
+    expect(page.locator(".turn:nth-child(2) .doc-links a").first).to_be_focused()
+
+
+FOCUS_CASES = {
+    # 기다리는 동안 포커스를 둔 곳 → 답이 온 뒤 포커스가 있어야 할 곳
+    "previous-fold": (lambda page: shift_tab_to(page, ".turn:nth-child(1) > .fold"), ".turn:nth-child(1) > .fold"),
+    "evidence-fold": (_second_evidence_fold, ".turn:nth-child(2) > .fold"),   # 펼친 답은 다시 접히므로 그 턴의 접기 줄
+    "doc-link": (_second_doc_link, ".turn:nth-child(2) > .fold"),
+    "question": (lambda page: None, "#question"),
+}
+
+
+@pytest.mark.parametrize("width", [360, 1280])
+@pytest.mark.parametrize("case", list(FOCUS_CASES))
+def test_focus_kept_in_thread_when_answer_arrives(open_page, case, width):
+    held = []
+    page = open_page(ask=lambda body, route: held.append((route, body)))
+    page.set_viewport_size({"width": width, "height": 780})
+    open_chat(page, "washer-lg-fx25")
+    for i in (1, 2, 3):
+        page.locator("#question").focus()
+        page.keyboard.type(f"가짜 질문 {i}")
+        page.keyboard.press("Enter")
+        wait_until(page, lambda: len(held) == 1)
+        if i < 3:
+            route, body = held.pop()
+            route.fulfill(json=fake(body)[1])
+            wait_turns(page, i)
+    move, expected = FOCUS_CASES[case]
+    move(page)   # 세 번째 답을 기다리는 동안 키보드로 옮김
+    route, body = held.pop()
+    route.fulfill(json=fake(body)[1])
+    wait_turns(page, 3)
+    assert page.evaluate("document.activeElement !== document.body"), "포커스가 body로 떨어짐"
+    assert page.evaluate("(s) => document.activeElement.matches(s)", expected), page.evaluate("document.activeElement.outerHTML.slice(0, 120)")
+    expect(page.locator(".turn:nth-child(2) .answer-body")).to_be_hidden()   # 펼침 상태는 지금 규칙대로(이전 답은 접힘)
+    expect(page.locator("#chat-status")).to_have_text("답이 도착했어요")
