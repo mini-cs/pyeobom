@@ -263,7 +263,7 @@ function resetChat(model, conv) {
   ui.saveNote.hidden = true;
   ui.status.textContent = "";
   renderSuggestions();
-  renderChat();
+  renderChat(false);
 }
 
 // 화면은 여기서 바로 비우고, 주소는 pushState로만 바꾼다(hashchange가 늦게 와서 그사이 보낸 질문까지 비우지 않게).
@@ -429,13 +429,36 @@ function renderEntry(entry, index, latest) {
   return turn;
 }
 
-function renderChat() {
+// 다시 그리면 목록 안 요소가 새로 만들어져 키보드 포커스가 body로 떨어진다(계획 3 최종 검토 M2).
+// 몇 번째 턴의 어떤 줄인지 기억해 두었다가 같은 줄 → 그 턴의 이전 답 접기 줄 → 입력창 순서로 돌려준다
+function focusSpot() {
+  const a = document.activeElement;
+  const turn = a?.closest(".turn");
+  if (!turn || turn.parentElement !== ui.thread) return null;
+  const inBody = !!a.closest(".answer-body");
+  const sel = a.tagName + [...a.classList].map((c) => `.${CSS.escape(c)}`).join("");
+  const scope = inBody ? a.closest(".answer-body") : turn;
+  return { index: [...ui.thread.children].indexOf(turn), inBody, sel, nth: [...scope.querySelectorAll(sel)].indexOf(a) };
+}
+
+function restoreFocus(spot) {
+  const turn = ui.thread.children[spot.index];
+  const scope = spot.inBody ? turn?.querySelector(".answer-body") : turn;
+  const same = scope?.querySelectorAll(spot.sel)[spot.nth];
+  const fold = turn?.querySelector(":scope > .fold");
+  const target = [same, fold, ui.question].find((e) => e && e.getClientRects().length);  // 숨겨진 요소는 건너뜀
+  target?.focus({ preventScroll: true });  // 새 답으로 옮긴 스크롤은 그대로
+}
+
+function renderChat(keepFocus = true) {
   const { entries } = chat;
+  const spot = keepFocus ? focusSpot() : null;  // 다른 대화를 여는 resetChat은 돌려주지 않는다
   ui.thread.replaceChildren(...entries.map((e, i) => renderEntry(e, i, i === entries.length - 1)));
   ui.suggestions.hidden = entries.length > 0;
   ui.question.placeholder = entries.some((e) => e.turn) ? "이어서 물어보세요" : PLACEHOLDER;
   updateCounter();  // 안내 문구가 바뀌어도 입력창 높이를 다시 맞춘다
   ui.thread.lastElementChild?.scrollIntoView({ block: "start" });
+  if (spot) restoreFocus(spot);
 }
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
