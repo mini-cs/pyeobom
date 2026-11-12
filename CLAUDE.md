@@ -98,3 +98,14 @@ Refs: Task <번호>, docs/기획서.md <절>
 2. 통과 후: `feat`/`fix` 커밋
 
 병합은 merge commit 방식으로 해서 "테스트 → 구현" 순서가 기록에 남게 한다.
+
+## 스킬
+
+작업 종류에 맞는 스킬을 먼저 불러 그 절차를 따른다.
+
+- 계획 실행: `superpowers:executing-plans` 또는 `superpowers:subagent-driven-development`
+- 구현: `superpowers:test-driven-development`(테스트 먼저)
+- 원인을 모르는 문제: `superpowers:systematic-debugging`
+- "끝났다"고 보고하기 전: `superpowers:verification-before-completion`
+- 계획 끝: `superpowers:requesting-code-review`(최종 검토 서브에이전트), `superpowers:finishing-a-development-branch`
+- 작업 시작 보고에 "이번에 쓸 스킬: …"을 한 줄로 적는다
