@@ -1693,6 +1693,18 @@ def test_drawer_back_updates_on_hashchange(open_page):
     assert_screen(page, CATEGORY_H1)
 
 
+def test_drawer_back_hidden_moves_focus(open_page):
+    page = open_page()
+    go_washer_models(page)
+    open_drawer(page)
+    page.locator("#drawer-back").focus()
+    page.go_back()   # 서랍이 열린 채 브라우저 뒤로: 가전 고르기(← 숨김)
+    assert_screen(page, CATEGORY_H1)
+    expect(page.locator("#drawer")).to_be_visible()
+    expect(page.locator("#drawer-back")).to_be_hidden()
+    expect(page.locator("#drawer-title")).to_be_focused()   # 포커스가 body로 떨어지지 않음
+
+
 def test_drawer_back_models_failed(open_page):
     page = open_page()
     errors = []
