@@ -1638,6 +1638,7 @@ def test_drawer_back_while_waiting(open_page):
     drawer_cards(page).first.click()   # 그 대화를 다시 열면 답이 저장돼 있음
     wait_turns(page, 1)
     expect(page.locator(".turn .answer")).to_have_text("가짜 답입니다(테스트): 가짜 질문 1")
+    expect(page.locator("#question")).to_be_visible()   # 서랍 카드로 연 채팅 화면이 보인 뒤에 잰다
     assert page.locator("#question").evaluate("(q) => q.clientHeight") >= 44   # 숨은 채 답이 와도 돌아온 뒤 입력창 높이가 0으로 줄지 않음
 
 

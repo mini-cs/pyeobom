@@ -235,7 +235,10 @@ const chatHash = (modelId, convId) => `#chat/${encodeURIComponent(modelId)}` + (
 function openChat(model, conversationId) {
   ui.chatTitle.textContent = model.short_name ?? model.name;  // 위쪽 막대 한 줄(2026-11-10 사용자 결정)
   // 같은 대화 주소면 그대로 둔다. 대화 id가 없는 주소(모델 카드·새 대화)는 언제나 새 대화(2026-11-10 사용자 결정)
-  if (conversationId && chat.model?.id === model.id && conversationId === chat.conv?.id) return;
+  if (conversationId && chat.model?.id === model.id && conversationId === chat.conv?.id) {
+    updateCounter();  // 숨은 채 답이 와서 renderChat이 높이를 0으로 잰 경우가 있어 보이는 지금 다시 잰다
+    return;
+  }
   const saved = conversationId
     ? loadConversations(storage()).find((c) => c.id === conversationId && c.model_id === model.id)
     : null;  // 없는 id이거나 다른 모델의 대화면 새 대화(다른 모델의 앞 대화가 섞이지 않게)
