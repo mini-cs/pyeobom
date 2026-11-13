@@ -1500,3 +1500,226 @@ def test_focus_kept_in_thread_when_answer_arrives(open_page, case, width):
     assert page.evaluate("(s) => document.activeElement.matches(s)", expected), page.evaluate("document.activeElement.outerHTML.slice(0, 120)")
     expect(page.locator(".turn:nth-child(2) .answer-body")).to_be_hidden()   # 펼침 상태는 지금 규칙대로(이전 답은 접힘)
     expect(page.locator("#chat-status")).to_have_text("답이 도착했어요")
+
+# ── 서랍 맨 윗줄 ←·⌂·✕(2026-11-13 사용자 결정, docs/superpowers/specs/2026-11-13-drawer-nav-design.md) ──
+MODEL_H1_WASHER = "세탁기 모델을 골라 주세요"
+
+
+def go_washer_models(page):
+    go_category(page)
+    page.get_by_role("button", name="세탁기").click()
+    assert_screen(page, MODEL_H1_WASHER)
+
+
+def test_drawer_back_from_chat(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    page.locator("#drawer-back").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert page.evaluate("location.hash") == "#model/washer"
+    assert_screen(page, MODEL_H1_WASHER)
+    assert_focus_on_h1(page, MODEL_H1_WASHER)
+
+
+def test_drawer_back_from_model(open_page):
+    page = open_page()
+    go_washer_models(page)
+    open_drawer(page)
+    page.locator("#drawer-back").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert page.evaluate("location.hash") == "#category"
+    assert_screen(page, CATEGORY_H1)
+    assert_focus_on_h1(page, CATEGORY_H1)
+
+
+def test_drawer_back_hidden_on_category(open_page):
+    page = open_page()
+    go_category(page)
+    open_drawer(page)
+    expect(page.locator("#drawer-back")).to_be_hidden()
+    expect(page.locator("#drawer-home")).to_be_visible()
+
+
+def test_drawer_home(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    page.locator("#drawer-home").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert_screen(page, LANDING_H1)
+    expect(page.locator("#topbar")).to_be_hidden()
+    assert_focus_on_h1(page, LANDING_H1)
+
+
+def test_drawer_close_icon(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    page.locator("#drawer-close").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    expect(page.locator("#drawer-open")).to_be_focused()
+    open_drawer(page)
+    page.keyboard.press("Escape")
+    expect(page.locator("#drawer")).to_be_hidden()
+    expect(page.locator("#drawer-open")).to_be_focused()
+
+
+def test_drawer_nav_names_and_order(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    drawer = open_drawer(page)
+    expect(page.locator("#drawer-title")).to_be_focused()   # 열자마자 포커스는 지금처럼 제목
+    expect(drawer.get_by_role("link", name="뒤로", exact=True)).to_have_attribute("id", "drawer-back")
+    expect(drawer.get_by_role("link", name="처음으로", exact=True)).to_have_attribute("id", "drawer-home")
+    expect(drawer.get_by_role("button", name="닫기", exact=True)).to_have_attribute("id", "drawer-close")
+    for selector in ("#drawer-back", "#drawer-home", "#drawer-close"):   # 아이콘만(보이는 글자 없음)
+        assert page.locator(selector).inner_text().strip() == "", selector
+    order = page.evaluate("""() => [...document.querySelectorAll('#drawer-back, #drawer-home, #drawer-close, #drawer-title')]
+        .map((e) => e.id)""")
+    assert order == ["drawer-close", "drawer-back", "drawer-home", "drawer-title"]   # 2026-11-13 변경: ✕를 맨 왼쪽(☰ 자리)으로
+    for expected in ("drawer-home", "drawer-back", "drawer-close"):   # 제목에서 Shift+Tab: ⌂ → ← → ✕
+        page.keyboard.press("Shift+Tab")
+        assert page.evaluate("document.activeElement.id") == expected
+
+
+@pytest.mark.parametrize("width", [360, 768, 1280])
+def test_drawer_menu_spot_closes(open_page, width):
+    # 서랍을 연 뒤 ☰가 있던 자리를 다시 누르면 서랍만 닫히고 화면은 그대로(☰ 자리에 ←가 오면 안 됨)
+    page = open_page()
+    page.set_viewport_size({"width": width, "height": 780})
+    go_lg_washer_chat(page)
+    box = page.locator("#drawer-open").bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    open_drawer(page)
+    page.wait_for_function("document.getElementById('drawer').getAnimations().length === 0")
+    hash_before = page.evaluate("location.hash")
+    page.mouse.click(x, y)
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert page.evaluate("location.hash") == hash_before
+    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+
+
+def _box(page, selector):
+    b = page.locator(selector).bounding_box()
+    return tuple(round(b[k], 1) for k in ("x", "y", "width", "height"))
+
+
+@pytest.mark.parametrize("width", [360, 700, 768, 1280])
+def test_menu_button_matches_close_spot(open_page, width):
+    # ☰ 상자가 서랍을 열었을 때의 ✕ 상자와 같은 자리(창 기준 4,8, 44×44). 2026-11-13 사용자 결정: 넓은 화면에서 ☰만 창 왼쪽 끝으로
+    page = open_page()
+    page.set_viewport_size({"width": width, "height": 780})
+    go_lg_washer_chat(page)
+    menu, title = _box(page, "#drawer-open"), _box(page, "#chat-title")
+    assert menu[0] + menu[2] <= title[0], (menu, title)   # ☰와 모델 이름이 겹치지 않음(700px처럼 본문 칸 여백이 좁은 폭 포함)
+    if width == 360:   # 휴대폰 위쪽 막대는 고치기 전과 같은 자리(2026-11-13 고치기 전에 잰 값)
+        assert menu == (4, 8, 44, 44)
+        assert title[0] == 56
+        chat = _box(page, "#new-chat")   # 오른쪽 끝·높이는 레이아웃이 정한다(글자 폭에 묶지 않음)
+        assert (round(chat[0] + chat[2], 1), chat[1], chat[3]) == (344, 8, 44)
+        assert _box(page, "#topbar")[3] == 52
+    else:   # 넓은 화면: 이름은 본문 칸 왼쪽+16(☰와 겹치는 좁은 폭은 ☰ 오른쪽 56), 새 대화는 본문 칸 오른쪽 여백 안 제자리
+        column = (width - 640) / 2
+        assert title[0] == max(column + 16, 56), title
+        chat = _box(page, "#new-chat")
+        assert round(chat[0] + chat[2], 1) == column + 640 - 16, chat
+    open_drawer(page)
+    page.wait_for_function("document.getElementById('drawer').getAnimations().length === 0")
+    close = _box(page, "#drawer-close")
+    assert (menu[0], menu[1]) == (close[0], close[1]), (menu, close)
+    assert (menu[2], menu[3]) == (close[2], close[3]) == (44, 44)
+
+
+def test_drawer_nav_tap_size_360(open_page):
+    page = open_page()   # 360px
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    page.wait_for_function("document.getElementById('drawer').getAnimations().length === 0")   # 서랍이 다 들어온 뒤에 잰다(서랍 애니메이션만 본다)
+    boxes = [page.locator(s).bounding_box() for s in ("#drawer-back", "#drawer-home", "#drawer-close")]
+    for b in boxes:
+        assert b["width"] >= 44 and b["height"] >= 44, b
+    for i in range(3):
+        for j in range(i + 1, 3):
+            a, b = boxes[i], boxes[j]
+            assert a["x"] + a["width"] <= b["x"] or b["x"] + b["width"] <= a["x"], (a, b)   # 가로로 겹치지 않음
+    d = page.locator("#drawer").bounding_box()
+    for b in boxes:
+        assert d["x"] <= b["x"] and b["x"] + b["width"] <= d["x"] + d["width"], (b, d)
+        assert d["y"] <= b["y"] and b["y"] + b["height"] <= d["y"] + d["height"], (b, d)
+
+
+def test_drawer_back_while_waiting(open_page):
+    held = []
+    page, asks = open_page(ask=lambda body, route: held.append(route), with_asks=True)
+    go_lg_washer_chat(page)
+    send(page, "가짜 질문 1")
+    wait_until(page, lambda: held)
+    open_drawer(page)
+    page.locator("#drawer-back").click()   # 답을 기다리는 동안 ☰ → ←
+    assert_screen(page, MODEL_H1_WASHER)
+    held[0].fulfill(json=fake(asks[0])[1])
+    page.wait_for_function(f"localStorage.getItem({json.dumps(STORE_KEY)}) !== null")
+    assert page.evaluate("location.hash") == "#model/washer"
+    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.get_by_text("가짜 답입니다(테스트): 가짜 질문 1")).to_be_hidden()   # 모델 고르기 화면에 답이 그려지지 않음
+    saved = saved_conversations(page)
+    assert [t["question_masked"] for t in saved[0]["turns"]] == ["가린:가짜 질문 1"]
+    open_drawer(page)
+    drawer_cards(page).first.click()   # 그 대화를 다시 열면 답이 저장돼 있음
+    wait_turns(page, 1)
+    expect(page.locator(".turn .answer")).to_have_text("가짜 답입니다(테스트): 가짜 질문 1")
+    expect(page.locator("#question")).to_be_visible()   # 서랍 카드로 연 채팅 화면이 보인 뒤에 잰다
+    assert page.locator("#question").evaluate("(q) => q.clientHeight") >= 44   # 숨은 채 답이 와도 돌아온 뒤 입력창 높이가 0으로 줄지 않음
+
+
+def test_drawer_back_rechecked_on_open(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    expect(page.locator("#drawer-back")).to_have_attribute("href", "#model/washer")
+    page.keyboard.press("Escape")
+    page.go_back()   # 브라우저 뒤로: 모델 고르기
+    assert_screen(page, MODEL_H1_WASHER)
+    open_drawer(page)
+    expect(page.locator("#drawer-back")).to_have_attribute("href", "#category")
+
+
+def test_drawer_back_updates_on_hashchange(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    page.go_back()   # 서랍이 열린 채 브라우저 뒤로: 모델 고르기
+    assert_screen(page, MODEL_H1_WASHER)
+    expect(page.locator("#drawer")).to_be_visible()
+    expect(page.locator("#drawer-back")).to_have_attribute("href", "#category")
+    page.locator("#drawer-back").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert page.evaluate("location.hash") == "#category"
+    assert_screen(page, CATEGORY_H1)
+
+
+def test_drawer_back_hidden_moves_focus(open_page):
+    page = open_page()
+    go_washer_models(page)
+    open_drawer(page)
+    page.locator("#drawer-back").focus()
+    page.go_back()   # 서랍이 열린 채 브라우저 뒤로: 가전 고르기(← 숨김)
+    assert_screen(page, CATEGORY_H1)
+    expect(page.locator("#drawer")).to_be_visible()
+    expect(page.locator("#drawer-back")).to_be_hidden()
+    expect(page.locator("#drawer-title")).to_be_focused()   # 포커스가 body로 떨어지지 않음
+
+
+def test_drawer_back_models_failed(open_page):
+    page = open_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.route("**/api/models", lambda route: route.fulfill(status=500, json={}))   # 페이지 가로채기가 먼저 쓰인다
+    page.reload()
+    go_washer_models(page)
+    open_drawer(page)
+    page.locator("#drawer-back").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert_screen(page, CATEGORY_H1)
+    assert errors == []

@@ -4,6 +4,7 @@ import { buildHistory, shouldShowRewritten } from "./js/history.js";
 import { EXAMPLES } from "./js/examples.js";
 import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
+import { parentHash } from "./js/nav.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
@@ -234,7 +235,10 @@ const chatHash = (modelId, convId) => `#chat/${encodeURIComponent(modelId)}` + (
 function openChat(model, conversationId) {
   ui.chatTitle.textContent = model.short_name ?? model.name;  // 위쪽 막대 한 줄(2026-11-10 사용자 결정)
   // 같은 대화 주소면 그대로 둔다. 대화 id가 없는 주소(모델 카드·새 대화)는 언제나 새 대화(2026-11-10 사용자 결정)
-  if (conversationId && chat.model?.id === model.id && conversationId === chat.conv?.id) return;
+  if (conversationId && chat.model?.id === model.id && conversationId === chat.conv?.id) {
+    updateCounter();  // 숨은 채 답이 와서 renderChat이 높이를 0으로 잰 경우가 있어 보이는 지금 다시 잰다
+    return;
+  }
   const saved = conversationId
     ? loadConversations(storage()).find((c) => c.id === conversationId && c.model_id === model.id)
     : null;  // 없는 id이거나 다른 모델의 대화면 새 대화(다른 모델의 앞 대화가 섞이지 않게)
@@ -564,6 +568,7 @@ ui.form.addEventListener("submit", (e) => {
 const drawer = {
   box: $("drawer"), title: $("drawer-title"), list: $("drawer-list"), empty: $("drawer-empty"), error: $("drawer-error"),
   all: $("delete-all"), confirm: $("delete-confirm"), confirmText: $("delete-confirm-text"), cancel: $("delete-cancel"),
+  back: $("drawer-back"),
 };
 let drawerModels = [];
 let closedByLink = false;  // 서랍 안 링크(대화 카드·새 대화)로 닫혔는지
@@ -613,9 +618,18 @@ function closeConfirm() {
   drawer.all.focus();
 }
 
+// ← 주소는 지금 화면 기준(서랍을 열 때와, 열린 채 주소가 바뀔 때 다시 정한다)
+function updateBack() {
+  const back = parentHash(parseRoute(location.hash), drawerModels);
+  if (!back && document.activeElement === drawer.back) drawer.title.focus();  // 숨기기 전에 옮긴다(body로 떨어지지 않게)
+  drawer.back.hidden = !back;  // 가전 고르기에서는 ⌂와 같아서 숨긴다
+  if (back) drawer.back.href = back;
+}
+
 ui.menu.addEventListener("click", async () => {
   drawerModels = await modelsReady;
   renderDrawer();
+  updateBack();
   if (!drawer.box.open) drawer.box.showModal();
   drawer.title.focus();
 });
@@ -650,5 +664,8 @@ $("delete-ok").addEventListener("click", () => {
 
 // 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다
 history.replaceState(null, "", location.pathname + location.search);
-window.addEventListener("hashchange", () => render(true));
+window.addEventListener("hashchange", () => {
+  if (drawer.box.open) updateBack();  // 서랍이 열린 채 브라우저 뒤로·앞으로
+  render(true);
+});
 render(false);
