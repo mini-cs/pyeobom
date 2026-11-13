@@ -1583,7 +1583,7 @@ def test_drawer_nav_names_and_order(open_page):
         assert page.evaluate("document.activeElement.id") == expected
 
 
-@pytest.mark.parametrize("width", [360, 1280])
+@pytest.mark.parametrize("width", [360, 768, 1280])
 def test_drawer_menu_spot_closes(open_page, width):
     # 서랍을 연 뒤 ☰가 있던 자리를 다시 누르면 서랍만 닫히고 화면은 그대로(☰ 자리에 ←가 오면 안 됨)
     page = open_page()
@@ -1598,6 +1598,31 @@ def test_drawer_menu_spot_closes(open_page, width):
     expect(page.locator("#drawer")).to_be_hidden()
     assert page.evaluate("location.hash") == hash_before
     expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
+
+
+def _box(page, selector):
+    b = page.locator(selector).bounding_box()
+    return tuple(round(b[k], 1) for k in ("x", "y", "width", "height"))
+
+
+@pytest.mark.parametrize("width", [360, 700, 768, 1280])
+def test_menu_button_matches_close_spot(open_page, width):
+    # ☰ 상자가 서랍을 열었을 때의 ✕ 상자와 같은 자리(창 기준 4,8, 44×44). 2026-11-13 사용자 결정: 넓은 화면에서 ☰만 창 왼쪽 끝으로
+    page = open_page()
+    page.set_viewport_size({"width": width, "height": 780})
+    go_lg_washer_chat(page)
+    menu, title = _box(page, "#drawer-open"), _box(page, "#chat-title")
+    assert menu[0] + menu[2] <= title[0], (menu, title)   # ☰와 모델 이름이 겹치지 않음(700px처럼 본문 칸 여백이 좁은 폭 포함)
+    if width == 360:   # 휴대폰 위쪽 막대는 고치기 전과 같은 자리(2026-11-13 고치기 전에 잰 값)
+        assert menu == (4, 8, 44, 44)
+        assert title[0] == 56
+        assert _box(page, "#new-chat") == (267.5, 8, 76.5, 44)
+        assert _box(page, "#topbar")[3] == 52
+    open_drawer(page)
+    page.wait_for_function("document.getElementById('drawer').getAnimations().length === 0")
+    close = _box(page, "#drawer-close")
+    assert (menu[0], menu[1]) == (close[0], close[1]), (menu, close)
+    assert (menu[2], menu[3]) == (close[2], close[3]) == (44, 44)
 
 
 def test_drawer_nav_tap_size_360(open_page):
