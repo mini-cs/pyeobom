@@ -1654,6 +1654,20 @@ def test_drawer_back_rechecked_on_open(open_page):
     expect(page.locator("#drawer-back")).to_have_attribute("href", "#category")
 
 
+def test_drawer_back_updates_on_hashchange(open_page):
+    page = open_page()
+    go_lg_washer_chat(page)
+    open_drawer(page)
+    page.go_back()   # 서랍이 열린 채 브라우저 뒤로: 모델 고르기
+    assert_screen(page, MODEL_H1_WASHER)
+    expect(page.locator("#drawer")).to_be_visible()
+    expect(page.locator("#drawer-back")).to_have_attribute("href", "#category")
+    page.locator("#drawer-back").click()
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert page.evaluate("location.hash") == "#category"
+    assert_screen(page, CATEGORY_H1)
+
+
 def test_drawer_back_models_failed(open_page):
     page = open_page()
     errors = []
