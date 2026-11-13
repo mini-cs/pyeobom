@@ -392,7 +392,8 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   min-height: 100%;
   padding: var(--space-2) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
 }
-/* 서랍 맨 윗줄: 왼쪽에 [✕][←][⌂]. ✕가 ☰ 자리에 와서 ☰ 자리를 다시 누르면 닫힌다(2026-11-13 변경).
+/* 서랍 맨 윗줄: 왼쪽에 [✕][←][⌂]. ✕는 창 기준 4,8이고 ☰도 모든 폭에서 같은 자리라(640px보다 넓으면 위 .topbar 미디어 쿼리)
+   서랍을 연 뒤 ☰ 자리를 다시 누르면 닫힌다(2026-11-13 변경).
    첫 버튼(✕, 늘 보임)만 음수 여백으로 아이콘을 글줄에 맞춘다(서로 겹치지 않게) */
 .drawer-head { display: flex; align-items: center; gap: var(--space-2); }
 .drawer-head .icon-button { margin-left: 0; }
