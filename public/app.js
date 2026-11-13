@@ -621,6 +621,7 @@ function closeConfirm() {
 // ← 주소는 지금 화면 기준(서랍을 열 때와, 열린 채 주소가 바뀔 때 다시 정한다)
 function updateBack() {
   const back = parentHash(parseRoute(location.hash), drawerModels);
+  if (!back && document.activeElement === drawer.back) drawer.title.focus();  // 숨기기 전에 옮긴다(body로 떨어지지 않게)
   drawer.back.hidden = !back;  // 가전 고르기에서는 ⌂와 같아서 숨긴다
   if (back) drawer.back.href = back;
 }
