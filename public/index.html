@@ -27,9 +27,11 @@
   <dialog class="drawer" id="drawer" aria-labelledby="drawer-title" closedby="any">
     <div class="drawer-body">
       <div class="drawer-head">
-        <h2 id="drawer-title" tabindex="-1">지난 대화</h2>
-        <button type="button" class="text-button" id="drawer-close">닫기</button>
+        <a class="icon-button" id="drawer-back" aria-label="뒤로"><span class="icon icon-arrow-left" aria-hidden="true"></span></a>
+        <a class="icon-button" id="drawer-home" href="#" aria-label="처음으로"><span class="icon icon-home" aria-hidden="true"></span></a>
+        <button type="button" class="icon-button" id="drawer-close" aria-label="닫기"><span class="icon icon-x" aria-hidden="true"></span></button>
       </div>
+      <h2 id="drawer-title" tabindex="-1">지난 대화</h2>
       <a class="pill" href="#category">새 대화</a>
       <p class="notice"><span class="icon icon-info" aria-hidden="true"></span>
         <span><strong>저장 안내</strong> <span>대화는 이 기기에만 저장돼요. 공용 기기라면 다 쓴 뒤 지워 주세요.</span></span></p>

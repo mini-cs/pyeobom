@@ -112,6 +112,9 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .icon-arrow-up { --icon: url("/icons/arrow-up.svg"); }
 .icon-alert { --icon: url("/icons/alert-circle.svg"); }
 .icon-info { --icon: url("/icons/info-circle.svg"); }
+.icon-arrow-left { --icon: url("/icons/arrow-left.svg"); }
+.icon-home { --icon: url("/icons/home.svg"); }
+.icon-x { --icon: url("/icons/x.svg"); }
 
 /* ── 공통 틀 ── */
 .topbar, .screen {
@@ -377,8 +380,13 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
   min-height: 100%;
   padding: var(--space-2) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
 }
-.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.drawer-head h2 { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
+/* 서랍 맨 윗줄: 왼쪽 [←][⌂], 오른쪽 [✕]. 바깥쪽 버튼만 음수 여백으로 아이콘을 글줄에 맞춘다(서로 겹치지 않게) */
+.drawer-head { display: flex; align-items: center; gap: var(--space-2); }
+.drawer-head .icon-button { margin-left: 0; }
+.drawer-head > :first-child, .drawer-head > [hidden] + * { margin-left: calc(-1 * var(--space-3)); }
+.drawer-head > :last-child { margin-left: auto; margin-right: calc(-1 * var(--space-3)); }
+a.icon-button { text-decoration: none; }
+.drawer-body > h2 { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
 .drawer-item { display: flex; align-items: center; gap: var(--space-1); }
 .drawer-item .conv-card { flex: 1; min-width: 0; }
 .text-button {

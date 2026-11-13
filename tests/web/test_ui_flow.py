@@ -1587,6 +1587,7 @@ def test_drawer_nav_tap_size_360(open_page):
     page = open_page()   # 360px
     go_lg_washer_chat(page)
     open_drawer(page)
+    page.wait_for_function("document.getAnimations().length === 0")   # 서랍이 다 들어온 뒤에 잰다
     boxes = [page.locator(s).bounding_box() for s in ("#drawer-back", "#drawer-home", "#drawer-close")]
     for b in boxes:
         assert b["width"] >= 44 and b["height"] >= 44, b

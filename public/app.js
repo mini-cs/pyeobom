@@ -4,6 +4,7 @@ import { buildHistory, shouldShowRewritten } from "./js/history.js";
 import { EXAMPLES } from "./js/examples.js";
 import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
+import { parentHash } from "./js/nav.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
@@ -564,6 +565,7 @@ ui.form.addEventListener("submit", (e) => {
 const drawer = {
   box: $("drawer"), title: $("drawer-title"), list: $("drawer-list"), empty: $("drawer-empty"), error: $("drawer-error"),
   all: $("delete-all"), confirm: $("delete-confirm"), confirmText: $("delete-confirm-text"), cancel: $("delete-cancel"),
+  back: $("drawer-back"),
 };
 let drawerModels = [];
 let closedByLink = false;  // 서랍 안 링크(대화 카드·새 대화)로 닫혔는지
@@ -616,6 +618,9 @@ function closeConfirm() {
 ui.menu.addEventListener("click", async () => {
   drawerModels = await modelsReady;
   renderDrawer();
+  const back = parentHash(parseRoute(location.hash), drawerModels);  // 열 때마다 지금 화면 기준으로 다시 정한다
+  drawer.back.hidden = !back;  // 가전 고르기에서는 ⌂와 같아서 숨긴다
+  if (back) drawer.back.href = back;
   if (!drawer.box.open) drawer.box.showModal();
   drawer.title.focus();
 });
