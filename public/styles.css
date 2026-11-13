@@ -129,6 +129,18 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .screen h2 { font-size: var(--text-sm); line-height: var(--leading-ui); font-weight: var(--weight-regular); color: var(--color-text-muted); }
 
 .topbar { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); }
+/* 640px(--content-max)보다 넓으면 위쪽 막대는 가운데 본문 칸에 있고 서랍은 창 왼쪽 끝에서 나온다.
+   ☰만 창 왼쪽 끝(서랍 ✕ 자리, 창 기준 4,8)으로 옮겨 서랍을 연 뒤 ☰ 자리를 다시 누르면 ✕가 눌리게 한다(2026-11-13 사용자 결정).
+   이름은 본문 칸 왼쪽 여백에서 시작하고, 본문 칸 바깥 여백이 좁은 폭(약 720px 미만)에서는 ☰와 겹치지 않게 ☰ 오른쪽에서 시작한다.
+   미디어 쿼리에는 변수를 쓸 수 없어 641px로 적는다(= --content-max보다 넓을 때). 640px 이하(휴대폰)는 바뀌지 않는다 */
+@media (min-width: 641px) {
+  .topbar {
+    min-height: calc(var(--space-2) + var(--tap-min));  /* ☰가 흐름에서 빠져도 막대 높이는 그대로 */
+    padding-left: max(var(--space-4),
+      calc(var(--space-4) - var(--space-3) + var(--tap-min) + var(--space-2) - (100% - var(--content-max)) / 2));
+  }
+  .topbar > .icon-button { position: absolute; left: calc(var(--space-4) - var(--space-3)); top: var(--space-2); margin-left: 0; }
+}
 .brand { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
 .icon-button {
   display: inline-flex; align-items: center; justify-content: center;
