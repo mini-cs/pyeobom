@@ -88,7 +88,7 @@ test("모르는 모델·빈 목록이면 가전 고르기", () => {
   - `test_drawer_back_hidden_on_category`: 가전 고르기에서 ☰ → `#drawer-back` 안 보임, `#drawer-home` 보임
   - `test_drawer_home`: 채팅에서 ☰ → ⌂ → 첫 화면 보임, 위쪽 막대 숨김, 포커스가 첫 화면 h1
   - `test_drawer_close_icon`: ✕ → 서랍 닫힘, 포커스 `#drawer-open`. Esc도 같음
-  - `test_drawer_nav_names_and_order`: 접근 이름 "뒤로"·"처음으로"·"닫기", DOM 순서 ← ⌂ ✕ 다음 `#drawer-title`, 열자마자 포커스 `#drawer-title`
+  - `test_drawer_nav_names_and_order`: 접근 이름 "뒤로"·"처음으로"·"닫기", DOM 순서 ← ⌂ ✕ 다음 `#drawer-title`, 열자마자 포커스 `#drawer-title` → 2026-11-13 변경(사용자 결정): 기본값 3 참고, [✕][←][⌂] 셋 다 왼쪽
   - `test_drawer_nav_tap_size_360`: 360px에서 세 버튼 상자가 각각 44×44 이상, 서로 겹치지 않음, 서랍 안에 있음
   - `test_drawer_back_while_waiting`: `/api/ask` 응답을 늦춤 → 질문 보냄 → ☰ → ← → 모델 고르기 화면에 답 없음, 응답 뒤 그 대화를 다시 열면 답이 저장돼 있음
   - `test_drawer_back_rechecked_on_open`: 채팅에서 서랍 열고 닫기 → 브라우저 뒤로(모델 고르기) → 다시 열기 → ← 주소 `#category`
@@ -97,7 +97,7 @@ test("모르는 모델·빈 목록이면 가전 고르기", () => {
 - [ ] **Step 3: 구현**
   - index.html: `.drawer-head`를 `<a id="drawer-back" class="icon-button" aria-label="뒤로">`, `<a id="drawer-home" class="icon-button" href="#" aria-label="처음으로">`, `<button type="button" id="drawer-close" class="icon-button" aria-label="닫기">`(각 안에 `<span class="icon icon-…" aria-hidden="true">`)로 바꾸고 `<h2 id="drawer-title" tabindex="-1">지난 대화</h2>`는 그 아래로 옮긴다.
   - app.js: 서랍을 열 때(`renderDrawer()` 옆) `parentHash(parseRoute(location.hash), drawerModels)`로 ←의 `href`를 넣고, null이면 `hidden`.
-  - styles.css: 아이콘 클래스 3개. 서랍 머리에서는 첫 버튼만 왼쪽 음수 여백, ✕는 오른쪽 끝(`margin-left: auto`) + 오른쪽 음수 여백. `<a>` 아이콘 버튼은 밑줄 없음.
+  - styles.css: 아이콘 클래스 3개. 서랍 머리에서는 첫 버튼만 왼쪽 음수 여백, ✕는 오른쪽 끝(`margin-left: auto`) + 오른쪽 음수 여백. `<a>` 아이콘 버튼은 밑줄 없음. → 2026-11-13 변경(사용자 결정): 기본값 3 참고, [✕][←][⌂] 셋 다 왼쪽
 - [ ] **Step 4: Run** `pytest -m "not integration"` + `node --test tests/web/js/` → PASS
 - [ ] **Step 5: 캡처** `measure/out/drawer-nav/`(git 제외)에 360px·1280px × 가전 고르기·모델 고르기·채팅의 서랍 열린 화면 6장. 겹침·잘림이 없는지 보고에 적는다.
 - [ ] **Step 6: Commit(구현)**
