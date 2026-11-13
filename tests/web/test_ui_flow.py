@@ -1616,8 +1616,14 @@ def test_menu_button_matches_close_spot(open_page, width):
     if width == 360:   # 휴대폰 위쪽 막대는 고치기 전과 같은 자리(2026-11-13 고치기 전에 잰 값)
         assert menu == (4, 8, 44, 44)
         assert title[0] == 56
-        assert _box(page, "#new-chat") == (267.5, 8, 76.5, 44)
+        chat = _box(page, "#new-chat")   # 오른쪽 끝·높이는 레이아웃이 정한다(글자 폭에 묶지 않음)
+        assert (round(chat[0] + chat[2], 1), chat[1], chat[3]) == (344, 8, 44)
         assert _box(page, "#topbar")[3] == 52
+    else:   # 넓은 화면: 이름은 본문 칸 왼쪽+16(☰와 겹치는 좁은 폭은 ☰ 오른쪽 56), 새 대화는 본문 칸 오른쪽 여백 안 제자리
+        column = (width - 640) / 2
+        assert title[0] == max(column + 16, 56), title
+        chat = _box(page, "#new-chat")
+        assert round(chat[0] + chat[2], 1) == column + 640 - 16, chat
     open_drawer(page)
     page.wait_for_function("document.getElementById('drawer').getAnimations().length === 0")
     close = _box(page, "#drawer-close")
