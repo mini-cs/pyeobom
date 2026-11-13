@@ -618,12 +618,17 @@ function closeConfirm() {
   drawer.all.focus();
 }
 
+// ← 주소는 지금 화면 기준(서랍을 열 때와, 열린 채 주소가 바뀔 때 다시 정한다)
+function updateBack() {
+  const back = parentHash(parseRoute(location.hash), drawerModels);
+  drawer.back.hidden = !back;  // 가전 고르기에서는 ⌂와 같아서 숨긴다
+  if (back) drawer.back.href = back;
+}
+
 ui.menu.addEventListener("click", async () => {
   drawerModels = await modelsReady;
   renderDrawer();
-  const back = parentHash(parseRoute(location.hash), drawerModels);  // 열 때마다 지금 화면 기준으로 다시 정한다
-  drawer.back.hidden = !back;  // 가전 고르기에서는 ⌂와 같아서 숨긴다
-  if (back) drawer.back.href = back;
+  updateBack();
   if (!drawer.box.open) drawer.box.showModal();
   drawer.title.focus();
 });
@@ -658,5 +663,8 @@ $("delete-ok").addEventListener("click", () => {
 
 // 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다
 history.replaceState(null, "", location.pathname + location.search);
-window.addEventListener("hashchange", () => render(true));
+window.addEventListener("hashchange", () => {
+  if (drawer.box.open) updateBack();  // 서랍이 열린 채 브라우저 뒤로·앞으로
+  render(true);
+});
 render(false);
