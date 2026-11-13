@@ -1577,10 +1577,27 @@ def test_drawer_nav_names_and_order(open_page):
         assert page.locator(selector).inner_text().strip() == "", selector
     order = page.evaluate("""() => [...document.querySelectorAll('#drawer-back, #drawer-home, #drawer-close, #drawer-title')]
         .map((e) => e.id)""")
-    assert order == ["drawer-back", "drawer-home", "drawer-close", "drawer-title"]
-    for expected in ("drawer-close", "drawer-home", "drawer-back"):   # 제목에서 Shift+Tab: ✕ → ⌂ → ←
+    assert order == ["drawer-close", "drawer-back", "drawer-home", "drawer-title"]   # 2026-11-13 변경: ✕를 맨 왼쪽(☰ 자리)으로
+    for expected in ("drawer-home", "drawer-back", "drawer-close"):   # 제목에서 Shift+Tab: ⌂ → ← → ✕
         page.keyboard.press("Shift+Tab")
         assert page.evaluate("document.activeElement.id") == expected
+
+
+@pytest.mark.parametrize("width", [360, 1280])
+def test_drawer_menu_spot_closes(open_page, width):
+    # 서랍을 연 뒤 ☰가 있던 자리를 다시 누르면 서랍만 닫히고 화면은 그대로(☰ 자리에 ←가 오면 안 됨)
+    page = open_page()
+    page.set_viewport_size({"width": width, "height": 780})
+    go_lg_washer_chat(page)
+    box = page.locator("#drawer-open").bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    open_drawer(page)
+    page.wait_for_function("document.getElementById('drawer').getAnimations().length === 0")
+    hash_before = page.evaluate("location.hash")
+    page.mouse.click(x, y)
+    expect(page.locator("#drawer")).to_be_hidden()
+    assert page.evaluate("location.hash") == hash_before
+    expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
 
 
 def test_drawer_nav_tap_size_360(open_page):
