@@ -69,6 +69,14 @@
 - 지난 확인용 봉인: `tests/evaluation/test_paraphrase_set.py` 4 passed(`evaluation/paraphrase_test.csv` 해시가 `evaluation/paraphrase_split.json`과 같음). 본문은 열지 않음
 - v1.6 OpenAI 사용량 대조 덧붙임: `docs/평가/v16-not-found.md` 장부 아래
 
+## 측정 전 결정: 계획 보완 (2026-11-16, 사용자 결정)
+
+도구 출력을 보기 전(0단계 측정 전)에 정했다. 계획서 끝 "계획 보완" 절과 같은 내용.
+
+- ① 쪽 표시 끝 20자 검사는 앞에서 지운 것이 없을 때만 한다(설계 6절 보완, 지우는 범위를 좁힘). 앞·끝에서 지운 수는 따로 기록한다(Task 6 실행 도구, Claude Code 판단). Step 5 측정은 끝 검사를 끈 채라 숫자는 바뀌지 않는다(다시 돌려 같음을 확인)
+- ② 쪽 표시를 지운 뒤 제목 위치를 맞춰 주는 `strip_plain_page`를 `ingest/page_marker.py`에 더했다. 지운 구간과 글자 범위가 겹치는 제목은 버리고, 구간 뒤 제목은 지운 길이만큼 당긴다. Task 6 "<도구> 800자"와 Task 8 소제목 실험 조각이 쓴다
+- ③ Task 4 Step 6(도구 실행) 뒤, Step 7(판정) 전에 `markdown_to_plain` 출력에 남은 기호를 도구별로 숫자로만 센다(백슬래시 escape, HTML 태그 이름별, 마크다운 링크 `](`, 홑 `*`·`_`로 감싼 글 후보). 0이 아니면 멈추고 보고한다. 정리 규칙은 사용자·채팅 Claude가 정한 뒤 테스트로 고정하고 판정한다
+
 ## 쪽 표시 지우기 확인 (Task 2, 2026-11-16, AI 호출 없음, 비용 0)
 
 - 방법: 설명서 3종을 지금 운영과 같은 흐름(`extract_pages` + `clean_text`)으로 쪽 글을 만들고 `strip_page_marker`(앞 20자 안만, 끝 검사 끔)를 돌림. 운영 적재 코드에는 연결하지 않음. 도구: `python -m measure.v17_page_marker`(테스트 `tests/measure/test_v17_page_marker.py`)
