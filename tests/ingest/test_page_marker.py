@@ -15,3 +15,6 @@ def test_tail(): assert strip_page_marker("본문 끝\n55", 55, check_tail=True)
 def test_tail_off_by_default(): t = "본문 끝\n55"; assert strip_page_marker(t, 55) == (t, [])
 def test_count_remaining(): assert count_remaining_markers("본문\n55\n더\n한국어 55 끝", 55) == 2
 def test_count_ignores_other_numbers(): assert count_remaining_markers("55 ml\n155", 55) == 0
+def test_tail_removes_one_break_only():
+    assert strip_page_marker("본문\n\n55", 55, check_tail=True) == ("본문\n", ["\n55"])
+    assert strip_page_marker("본문 \n55", 55, check_tail=True) == ("본문 ", ["\n55"])

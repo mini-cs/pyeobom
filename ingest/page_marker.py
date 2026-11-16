@@ -33,7 +33,7 @@ def strip_page_marker(text: str, page: int, *, check_tail: bool = False) -> tupl
     if check_tail:
         for m in pat.finditer(text):
             if _num_span(m, page)[0] >= len(text) - WINDOW:
-                before = re.search(_BREAK + r"$", text[:m.start()])
+                before = re.search(_BREAK + r"\Z", text[:m.start()])
                 start = before.start() if before else m.start()
                 removed.append(text[start:m.end()])
                 text = text[:start] + text[m.end():]
