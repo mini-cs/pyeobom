@@ -71,6 +71,33 @@ def method_fns(method: str, base_search: Callable, variant_search: Callable, ter
     return base_search, None
 
 
+def bundle_fns(bundle: str, models: dict[str, dict], get_conn: Callable) -> tuple[Callable, Callable]:
+    """실험 조각 한 벌(bundle_chunks)에서 (검색, 진단 쪽). 진단 쪽 계산은 운영 get_deps와 같다(diagnostic_pages)"""
+    from app.ask.routes import diagnostic_pages
+    from app.retrieval.search import fetch_manual_pages, search_vector
+    from measure.v17_bundle import bundle_exists
+
+    # 저장되지 않은 이름(오타)이면 검색·진단이 모두 []라 적중률 0인 CSV를 쓰게 된다
+    if not bundle.strip():
+        raise SystemExit("--bundle 이름이 비어 있어 멈춤")
+    with get_conn() as conn:
+        if not bundle_exists(conn, bundle):
+            raise SystemExit(f"저장된 실험 조각 한 벌이 없어 멈춤: {bundle}")
+
+    def search(model_id, vec, text, k):
+        with get_conn() as conn:
+            return search_vector(conn, model_id, vec, k, bundle=bundle)
+
+    def diagnostic(model_id):
+        pages = diagnostic_pages(models[model_id])
+        if not pages:
+            return []
+        with get_conn() as conn:
+            return fetch_manual_pages(conn, model_id, pages, bundle=bundle)
+
+    return search, diagnostic
+
+
 def rank_changes(base_rows: list[dict], rows: list[dict]) -> dict[str, str]:
     from measure.retrieval_probe import compare
     base = {r["id"]: r["rank"] for r in base_rows}
@@ -82,7 +109,10 @@ def main() -> None:
     ap.add_argument("cases")
     ap.add_argument("--label", required=True)
     ap.add_argument("--method", choices=list(METHODS), default="m0")
+    ap.add_argument("--bundle", help="v1.7 실험 조각 한 벌 이름(measure/bundle_chunks.sql)")
     args = ap.parse_args()
+    if args.bundle is not None and args.method != "m0":
+        raise SystemExit("--bundle과 --method는 같이 쓸 수 없어 멈춤")
 
     from ingest.__main__ import load_env
     load_env()
@@ -104,7 +134,14 @@ def main() -> None:
             return search_vector(conn, model_id, vec, k, variant=variant)
 
     search, transform = method_fns(args.method, deps.search, variant_search, load_terms() if args.method == "m3" else {})
-    rows = run_eval(read_cases(args.cases), deps.embed_query, search, deps.diagnostic, transform=transform, top_k=settings.top_k)
+    diagnostic, experiment = deps.diagnostic, None if args.method == "m0" else {"method": args.method, "desc": METHODS[args.method]}
+    if args.bundle is not None:  # 빈 이름("")도 bundle_fns에서 멈추게 한다
+        if settings.search_mode != "vector":
+            raise SystemExit("--bundle은 벡터 검색(search_mode=vector)에서만 써서 멈춤")
+        from app.catalog.registry import load_models
+        search, diagnostic = bundle_fns(args.bundle, {m["id"]: m for m in load_models()}, get_conn)
+        experiment = {"bundle": args.bundle}
+    rows = run_eval(read_cases(args.cases), deps.embed_query, search, diagnostic, transform=transform, top_k=settings.top_k)
     summary = metrics([r["rank"] for r in rows]) | {
         "hit5_or_diag": round(sum(r["hit5_or_diag"] for r in rows) / len(rows), 4) if rows else 0.0}
     OUT.mkdir(exist_ok=True)
@@ -113,8 +150,7 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    write_settings(out, settings, f"search-eval-{args.label}",
-                   experiment=None if args.method == "m0" else {"method": args.method, "desc": METHODS[args.method]})
+    write_settings(out, settings, f"search-eval-{args.label}", experiment=experiment)
     for r in rows:
         print(r["id"], r["rank"], r["top5"], r["diag"] or "-", flush=True)
     print(summary, "csv:", out.name)

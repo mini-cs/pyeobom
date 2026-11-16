@@ -35,6 +35,11 @@ class AskBody(BaseModel):
     history: list[HistoryTurn] = Field(default_factory=list, max_length=3)  # 넘치면 INVALID_REQUEST(400)
 
 
+def diagnostic_pages(model: dict) -> list[int]:
+    """models.json 한 모델의 diagnostic_refs("manual:34")를 쪽 번호로."""
+    return [int(ref.split(":")[1]) for ref in model.get("diagnostic_refs", [])]
+
+
 def get_deps() -> Deps:
     models = {m["id"]: m for m in load_models()}
     timings: dict[str, int] = {}
@@ -50,7 +55,7 @@ def get_deps() -> Deps:
             return search_vector(conn, model_id, query_vec, k)
 
     def diagnostic(model_id: str):
-        pages = [int(ref.split(":")[1]) for ref in models[model_id].get("diagnostic_refs", [])]
+        pages = diagnostic_pages(models[model_id])
         if not pages:
             return []
         with get_conn() as conn:
