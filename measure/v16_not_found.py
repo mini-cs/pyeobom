@@ -167,6 +167,30 @@ def stage3_judgments(items: list[dict]) -> dict:
             "④": rule(dropped, [cls for cls in dropped if any(c["alone_ok"] for c in cls["citations"])], 0.5)}
 
 
+BULLETS = "•·-"
+
+
+def _bare(text: str) -> str:
+    return "".join(ch for ch in text if not ch.isspace() and ch not in BULLETS)
+
+
+def expected_hit(expected_ref: str, chunks: list[dict]) -> str:
+    """기대 근거(manual:쪽·guide:문서·chunk:번호) 중 하나라도 검색 조각(ref·id)과 맞으면 검색됨."""
+    refs = [r for r in expected_ref.split("|") if r]
+    have = {c["ref"] for c in chunks} | {f"chunk:{c['id']}" for c in chunks}
+    if any(r in have for r in refs):
+        return "검색됨"
+    if not refs or any(r.split(":")[0] not in ("manual", "guide", "chunk") for r in refs):
+        return "판단 불가"
+    return "검색 안 됨"
+
+
+def quote_places(quote: str, chunks: list) -> dict:
+    """인용 글이 그대로 있는 조각 번호: ㉠ check.py와 같은 공백 정리, ㉡ 공백·줄바꿈·글머리 기호를 모두 지움."""
+    return {"㉠": [c.id for c in chunks if _squash(quote) in _squash(c.content)],
+            "㉡": [c.id for c in chunks if _bare(quote) in _bare(c.content)]}
+
+
 # ── 실행(로컬): python -m measure.v16_not_found stage1|stage2|stage4|stage3 ──
 # stage1은 DB 조회(SELECT)만, 나머지는 AI를 부른다(장부 check_budget을 먼저 통과한 뒤 실행). 결과는 OUT에만 쓴다.
 
@@ -354,10 +378,67 @@ def stage3() -> None:
     _save("stage3", {"run": _settings_record(settings), "items": items})
 
 
+def _previous_runs(set_name: str, case: dict) -> list[dict]:
+    """evaluation/results/에서 같은 번호·같은 질문 글이 있는 실행의 찾음 여부(이어지는 질문 결과는 번호 체계가 달라 해당 없음)."""
+    runs = []
+    for path in sorted((ROOT / "evaluation" / "results").glob("*.csv")):
+        with path.open(encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                if row.get("id") == case["id"] and row.get("question") == case["question"]:
+                    runs.append({"file": path.name, "method": row.get("method", ""),
+                                 "found": row.get("got_found", row.get("found", ""))})
+    return runs
+
+
+def stage5() -> None:
+    """3단계 결과의 찾지 못함 11건 나누기와 인용 대조(AI 호출 없음, DB는 SELECT만)."""
+    from app.core.db import get_conn
+    stage3_path = sorted(OUT.glob("stage3-2*.json"))[-1]
+    items = json.loads(stage3_path.read_text(encoding="utf-8"))["items"]
+    with get_conn() as conn:
+        by_id = {c.id: c for c in _all_chunks(conn)}
+    cases = {(name, c.get("id") or f"{c['dialog_id']}-{c['turn']}"): c for name, cs in _open_sets().items() for c in cs}
+    rows, quotes, md = [], [], ["# 5단계 채팅 Claude 대조용 (설명서 본문 포함, git 제외)", "", f"원본: {stage3_path.name}", ""]
+    for it in items:
+        if not (it["answerable"] and not it["error"] and it["found"] is False):
+            continue
+        case, top = cases[(it["set"], it["id"])], it["chunks"][:5]
+        hit = expected_hit(case["expected_ref"], top)
+        rows.append({"set": it["set"], "id": it["id"], "model_id": it["model_id"], "question": it["question"],
+                     "rewritten": it["resp"].get("rewritten_question"), "expected_ref": case["expected_ref"], "chunks": top,
+                     "extra_chunks": len(it["chunks"]) - len(top), "reasons": [c["reason"] for c in it["classes"]],
+                     "hit": hit, "previous": _previous_runs(it["set"], case)})
+        if hit == "검색됨":
+            md += [f"## {it['id']} ({it['set']}, {it['model_id']})", f"- 질문: {it['question']}",
+                   f"- 바꾼 질문: {it['resp'].get('rewritten_question') or '없음'}", f"- 기대 근거: {case['expected_ref']}", ""]
+            for c in top:
+                md += [f"### 조각 {c['id']} ({c['ref']}, 쪽 표시 {'있음' if c['page_marker'] else '없음'})", "", "```",
+                       by_id[c["id"]].content, "```", ""]
+    md += ["# 인용 대조 (\"인용이 조각에 없음\" 출력)", ""]
+    for it in items:
+        top = [by_id[c["id"]] for c in it["chunks"][:5]]
+        for n, (raw, cls) in enumerate(zip(it["outputs"], it["classes"]), 1):
+            if cls["reason"] != NOT_IN_CHUNK:
+                continue
+            md += [f"## {it['id']} 출력 {n}", ""]
+            for k, item in enumerate(json.loads(raw)["citations"], 1):
+                places = quote_places(item["quote"], top)
+                quotes.append({"id": it["id"], "output": n, "cite": k, "chunk_id": item["chunk_id"],
+                               "quote_len": len(item["quote"]), "alone": cls["citations"][k - 1]["alone_reason"]} | places)
+                cited = by_id.get(item["chunk_id"])
+                md += [f"### 인용 {k}: chunk_id {item['chunk_id']} (㉠ {places['㉠']} ㉡ {places['㉡']})", "", "인용 글:", "```",
+                       item["quote"], "```", f"조각 {item['chunk_id']} 본문:", "```",
+                       cited.content if cited else "(DB에 없는 번호)", "```", ""]
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "stage5-대조용.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    print(json.dumps({"rows": rows, "quotes": quotes}, ensure_ascii=False, indent=1))
+    _save("stage5", {"stage3": stage3_path.name, "rows": rows, "quotes": quotes})
+
+
 def main() -> None:
     from ingest.__main__ import load_env
     load_env()
-    {"stage1": stage1, "stage2": stage2, "stage4": stage4, "stage3": stage3}[sys.argv[1]]()
+    {"stage1": stage1, "stage2": stage2, "stage4": stage4, "stage3": stage3, "stage5": stage5}[sys.argv[1]]()
 
 
 if __name__ == "__main__":
