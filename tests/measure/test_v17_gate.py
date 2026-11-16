@@ -3,7 +3,7 @@ import json
 import pytest
 
 from measure.v17_gate import (BROKEN_CHARS, broken_lines, char_ratio, count_leftovers, decimal_ok, heading_hit_rate,
-                              page_alignment, page_count_ok, run_gate, run_leftover, table_rows_ok)
+                              page_alignment, page_count_ok, run_gate, run_leftover, table_rows_ok, STOP_KEYS)
 
 BASE = [(1, "첫째 쪽에만 있는 긴 문장입니다 하나\n짧음"), (2, "둘째 쪽에만 있는 긴 문장입니다 둘\n짧음"),
         (3, "셋째 쪽에만 있는 긴 문장입니다 셋\n짧음")]
@@ -81,11 +81,15 @@ def test_heading_hit_rate_contain_rule():
 
 
 def test_count_leftovers():
-    c = count_leftovers("a\\*b\n<br>x<BR/>y</div>\n[a](b)\n*강조* 와 _밑줄_\n")
-    assert c["backslash_escape"] == 1 and c["html:br"] == 2 and c["html:div"] == 1 and c["md_link"] == 1
+    c = count_leftovers("a\\*b\n<br>x<BR/>y</div>\n[a](b)\n![i](u)\n~~취소~~\n*강조* 와 _밑줄_\n")
+    assert c["backslash_punct"] == 1 and c["html_tag"] == 3 and c["md_link"] == 1 and c["strike"] == 1
     assert c["star_wrapped"] == 1 and c["underscore_wrapped"] == 1
-    clean = count_leftovers("WD90H25AH*/WD90H25BH* a_b_c **굵게** __x__ 2 * 3 * 4")
-    assert not any(clean.values())
+    assert "backslash_escape" not in c and not any(k.startswith("html:") for k in c)
+    clean = count_leftovers("WD90H25AH*/WD90H25BH* a_b_c **굵게** __x__ 2 * 3 * 4 <보기> a < b")
+    assert not any(v for k, v in clean.items() if k in STOP_KEYS)
+    rec = count_leftovers("\\alpha <i | our")
+    assert rec["backslash_latex"] == 1 and rec["unclosed_lt"] == 1
+    assert not any(rec[k] for k in STOP_KEYS)
 
 
 def _w(root, tool, doc, pages):
@@ -169,7 +173,15 @@ def test_run_gate_applies_clean_text(tmp_path):
 def test_run_leftover(tmp_path, capsys):
     _setup(tmp_path)
     assert run_leftover(tmp_path) is False
-    _w(tmp_path, "good", AIR, [(1, "x <br> y")])
+    _w(tmp_path, "good", AIR, [(1, r"x \\* y")])
     assert run_leftover(tmp_path) is True
     out = capsys.readouterr().out
-    assert "html:br" in out and "x <br>" not in out
+    assert "backslash_punct" in out and "x " not in out and "멈춤: 남은 기호 있음" in out
+
+
+def test_run_leftover_record_only(tmp_path, capsys):
+    _setup(tmp_path)
+    _w(tmp_path, "good", AIR, [(1, r"\alpha <i | our")])
+    assert run_leftover(tmp_path) is False
+    out = capsys.readouterr().out
+    assert "backslash_latex" in out and "unclosed_lt" in out and "멈춤" not in out
