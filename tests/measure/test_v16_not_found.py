@@ -8,7 +8,7 @@ from app.core.config import Settings
 from app.retrieval.search import Chunk
 from measure.v16_not_found import (
     BAD_QUOTE, EMPTY, FOUND_FALSE, JSON_ERROR, NOT_IN_CHUNK, PASS, UNRETRIEVED,
-    ask_fixed, capture_deps, classify, marker_shape, page_marker, strip_page_marker,
+    ask_fixed, capture_deps, classify, marker_shape, page_marker, stage3_judgments, strip_page_marker, verdict,
 )
 
 S = Settings(openai_api_key="", database_url="", openai_embed_model="m", openai_chat_model="m", embed_dim=3)
@@ -135,6 +135,45 @@ def test_ask_fixed_uses_given_chunk_page_in_tag():
     from dataclasses import replace
     ask_fixed("q", [replace(P55, page=None)], lambda m: seen.append(m) or out(found=False), "v1")
     assert 'chunk_id="83"' in seen[0][1]["content"] and 'page=""' in seen[0][1]["content"]
+
+
+# ── 3단계 판정 ①~④ ──
+
+def _cls(reason, cites=()):
+    return {"reason": reason, "citations": [dict(c) for c in cites]}
+
+
+BAD55 = {"chunk_id": 55, "alone_ok": False, "alone_reason": UNRETRIEVED, "page_with_marker": True}
+BAD9 = {"chunk_id": 9, "alone_ok": False, "alone_reason": UNRETRIEVED, "page_with_marker": False}
+OK = {"chunk_id": 105, "alone_ok": True, "alone_reason": PASS}
+
+
+def _item(classes, found, answerable=True, error=""):
+    return {"answerable": answerable, "found": found, "error": error, "classes": classes}
+
+
+def test_verdict_thresholds():
+    assert verdict(2, 2, 0.5) == "판단 불가"
+    assert verdict(4, 2, 0.5) == "지지됨"
+    assert verdict(4, 1, 0.5) == "지지 안 됨"
+    assert verdict(3, 2, 2 / 3) == "지지됨"
+    assert verdict(5, 4, 0.8) == "지지됨" and verdict(5, 3, 0.8) == "지지 안 됨"
+
+
+def test_stage3_judgments_count_each_rule():
+    items = [
+        _item([_cls(UNRETRIEVED, [BAD55, OK]), _cls(UNRETRIEVED, [BAD55])], False),     # 검증 2번 실패 + 검색 안 된 번호
+        _item([_cls(UNRETRIEVED, [BAD9]), _cls(NOT_IN_CHUNK, [OK])], False),            # 두 번째는 다른 검사
+        _item([_cls(FOUND_FALSE)], False),                                              # AI가 found false
+        _item([_cls(NOT_IN_CHUNK, [OK]), _cls(PASS, [OK])], True),                      # 재요청에서 통과
+        _item([_cls(FOUND_FALSE)], False, answerable=False),                            # 함정: ①에서 뺌
+        _item([], None, error="AI_TIMEOUT"),                                            # 오류: ①에서 뺌
+    ]
+    j = stage3_judgments(items)
+    assert (j["①"]["n"], j["①"]["k"], j["①"]["verdict"]) == (3, 2, "지지됨")
+    assert (j["②"]["n"], j["②"]["k"], j["②"]["verdict"]) == (3, 2, "지지 안 됨")
+    assert (j["③"]["n"], j["③"]["k"], j["③"]["verdict"]) == (3, 1, "지지 안 됨")
+    assert (j["④"]["n"], j["④"]["k"], j["④"]["verdict"]) == (5, 3, "지지됨")
 
 
 # ── 서비스 흐름 감싸기 ──
