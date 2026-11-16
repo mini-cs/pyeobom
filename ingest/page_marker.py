@@ -7,7 +7,7 @@ _BREAK = r"(?:\r\n|[ \n])"  # 지울 공백·줄바꿈 하나(\r\n은 하나)
 
 def _pattern(page: int, *, attached_only: bool = False) -> re.Pattern:
     n = rf"(?<!\d){page}(?!\d)"
-    alts = [rf"한국어\s+{n}", rf"{n}\s+한국어"] + ([] if attached_only else [n])
+    alts = [rf"한국어\s+{n}", rf"{n}[ \t]+한국어"] + ([] if attached_only else [n])
     return re.compile(rf"(?<!\S)(?:{'|'.join(alts)})(?!\S)")
 
 
