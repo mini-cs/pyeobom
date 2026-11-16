@@ -69,7 +69,8 @@ def test_test_set_path_is_refused():
 
 def test_sections_bundle_uses_docling_and_chunk_sections(tmp_path):  # Task 8: 순서는 Docling 800자와 같고 자르기만 소제목
     from ingest.section_chunk import chunk_sections
-    md = "## 첫 제목\n" + "가" * 150 + "\n## 둘째 제목\n" + "나" * 150
+    # 같은 글자만 되풀이한 줄은 clean_text가 지우므로 보통 문장을 쓴다
+    md = "## 첫 제목\n" + "세탁 코스 설명 문장입니다. " * 10 + "\n## 둘째 제목\n" + "건조 코스 설명 문장입니다. " * 10
     for d in s1.DOCS:
         write(tmp_path, "docling", d, [{"page": 1, "markdown": md}])
     pages = s1.manual_pages("docling_sections", tmp_path)
