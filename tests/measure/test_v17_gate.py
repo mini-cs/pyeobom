@@ -3,7 +3,7 @@ import json
 import pytest
 
 from measure.v17_gate import (BROKEN_CHARS, broken_lines, char_ratio, count_leftovers, decimal_ok, heading_hit_rate,
-                              page_alignment, page_count_ok, run_gate, run_leftover, table_rows_ok, STOP_KEYS)
+                              page_alignment, page_count_ok, page_shift, run_gate, run_leftover, table_rows_ok, STOP_KEYS)
 
 BASE = [(1, "첫째 쪽에만 있는 긴 문장입니다 하나\n짧음"), (2, "둘째 쪽에만 있는 긴 문장입니다 둘\n짧음"),
         (3, "셋째 쪽에만 있는 긴 문장입니다 셋\n짧음")]
@@ -27,6 +27,25 @@ def test_page_alignment_ignores_whitespace_and_repeated_lines():
 def test_page_alignment_detects_shift():
     tool = [(1, BASE[0][1]), (2, ""), (3, BASE[1][1]), (4, BASE[2][1])]
     assert page_alignment(tool, BASE) < 0.9
+
+
+def test_page_shift_bullet_and_table_symbols():
+    assert page_shift([(1, "- 사용 설명서에는 품질 보증서가")], [(1, "• 사용 설명서에는 품질 보증서가")]) ==         {"picked": 1, "found": 1, "same": 1, "not_found": 0, "ratio": 1.0}
+    base = [(1, "180 ~ 210 °C 로 다림질할 수 있음 180~210 °C")]
+    tool = [(1, "· 180 ~ 210 °C 로 다림질할 수 있음 | 180~210 °C﻿")]
+    assert page_shift(tool, base)["same"] == 1
+
+
+def test_page_shift_other_page():
+    base = [(1, "첫째 쪽 고유한 긴 문장입니다 하나"), (2, "둘째 쪽 고유한 긴 문장입니다 둘")]
+    r = page_shift([(1, ""), (2, ""), (3, "둘째 쪽 고유한 긴 문장입니다 둘")], base)
+    assert (r["found"], r["same"], r["not_found"], r["ratio"]) == (1, 0, 1, 0.0)
+
+
+def test_page_shift_not_found_excluded_from_ratio():
+    base = [(1, "첫째 쪽 고유한 긴 문장입니다 하나"), (2, "둘째 쪽 고유한 긴 문장입니다 둘")]
+    r = page_shift([(1, base[0][1]), (2, "전혀 다른 글")], base)
+    assert (r["picked"], r["found"], r["not_found"], r["ratio"]) == (2, 1, 1, 1.0)
 
 
 def test_decimal_ok():
@@ -103,7 +122,7 @@ SAM, DRUM, AIR = "manual-samsung-wd90h25", "manual-lg-fx25", "manual-lg-sq06fa1w
 
 
 def _base_pages(doc):
-    n = {SAM: 38, DRUM: 16, AIR: 3}[doc]
+    n = {SAM: 38, DRUM: 16, AIR: 10}[doc]
     pages = {p: f"{doc} 쪽 {p} 에만 있는 고유한 긴 문장입니다 abc" for p in range(1, n + 1)}
     if doc == SAM:
         pages[38] += "\n최대 4.0 kg"
@@ -134,6 +153,15 @@ def test_run_gate(tmp_path):
     assert 2 in r["shift"]["eliminated"]
     assert "partial" in r["not_run"] and "pypdfium2" not in r
     assert json.loads((tmp_path / "gate.json").read_text(encoding="utf-8"))["good"]["eliminated"] == []
+
+
+def test_run_gate_page_shift_undecidable(tmp_path):
+    _setup(tmp_path)
+    for t in ("pypdfium2", "good"):
+        _w(tmp_path, t, AIR, [(p, m) for p, m in _base_pages(AIR)[:3]])  # 찾은 줄 10개 미만
+    r = run_gate(tmp_path, tmp_path / "toc.json", tmp_path / "g.json")["good"]
+    assert r["manuals"][AIR]["page_shift_undecidable"] is True and 2 in r["eliminated"]
+    assert r["manuals"][SAM]["page_shift_undecidable"] is False
 
 
 def test_heading_tool_rule(tmp_path):
