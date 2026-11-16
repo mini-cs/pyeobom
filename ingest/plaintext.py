@@ -13,6 +13,8 @@ headings는 (최종 text 안 제목 시작 위치, 제목 글자).
 import re
 from dataclasses import dataclass
 
+from ingest.clean import clean_text
+
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _HEADING = re.compile(r"^#{1,6}\s+(.*)$")
@@ -53,3 +55,28 @@ def markdown_to_plain(md: str) -> PlainPage:
         lines.append(line)
         pos += len(line) + 1
     return PlainPage("\n".join(lines), headings)
+
+
+def clean_plain_page(pp: PlainPage) -> PlainPage:
+    """운영과 같은 clean_text를 줄 단위로 적용하고 제목 위치를 맞춘다 (R22).
+    clean_text가 줄마다 따로 처리하므로 결과 text는 clean_text(pp.text)와 같다.
+    지워진 줄의 제목은 버리고, 남은 줄은 새 위치로 옮기며, 깨끗해진 줄이 제목 글자로 시작하지 않으면 버린다."""
+    by_start: dict[int, str] = {}
+    for pos, h in pp.headings:
+        by_start.setdefault(pos, h)
+    kept: list[str] = []
+    headings: list[tuple[int, str]] = []
+    old = new = 0
+    for raw in pp.text.splitlines(keepends=True):
+        line = raw.rstrip("\r\n")
+        cleaned = clean_text(line)
+        if line.strip() and not cleaned.strip():
+            old += len(raw)
+            continue  # 지워진 줄
+        h = by_start.get(old)
+        if h is not None and cleaned.startswith(h):
+            headings.append((new, h))
+        kept.append(cleaned)
+        new += len(cleaned) + 1
+        old += len(raw)
+    return PlainPage("\n".join(kept), headings)
