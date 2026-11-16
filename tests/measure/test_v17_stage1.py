@@ -65,3 +65,24 @@ def test_test_set_path_is_refused():
     with pytest.raises(SystemExit):
         s1.guard_cases_path("evaluation/paraphrase_test.csv")
     s1.guard_cases_path("evaluation/paraphrase_dev.csv")
+
+
+def test_sections_bundle_uses_docling_and_chunk_sections(tmp_path):  # Task 8: 순서는 Docling 800자와 같고 자르기만 소제목
+    from ingest.section_chunk import chunk_sections
+    md = "## 첫 제목\n" + "가" * 150 + "\n## 둘째 제목\n" + "나" * 150
+    for d in s1.DOCS:
+        write(tmp_path, "docling", d, [{"page": 1, "markdown": md}])
+    pages = s1.manual_pages("docling_sections", tmp_path)
+    assert pages == s1.manual_pages("docling_800", tmp_path)
+    assert s1.BUNDLES["docling_sections"][2] is chunk_sections
+    assert s1.BUNDLES["docling_800"][2] is s1.chunk_plain_800
+    got = s1.BUNDLES["docling_sections"][2](pages[s1.DOCS[0]])
+    assert [t[:5] for _, t in got] == ["첫 제목\n", "둘째 제목"[:5]]
+
+
+def test_measure_args_select_bundles_and_out():
+    assert s1.parse_measure_args([]) == (None, "stage1")
+    assert s1.parse_measure_args(["--out", "stage2", "strip_800", "docling_sections"]) == (
+        ["strip_800", "docling_sections"], "stage2")
+    with pytest.raises(SystemExit):
+        s1.parse_measure_args(["nope"])
