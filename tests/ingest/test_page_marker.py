@@ -1,4 +1,5 @@
-from ingest.page_marker import count_remaining_markers, strip_page_marker
+from ingest.page_marker import count_remaining_markers, strip_page_marker, strip_plain_page
+from ingest.plaintext import PlainPage
 
 
 def test_samsung_odd(): assert strip_page_marker("한국어 55\n5. 부드러운 솔", 55) == ("5. 부드러운 솔", ["한국어 55\n"])
@@ -23,3 +24,49 @@ def test_tail_removes_one_break_only():
 def test_attached_korean_stays_on_same_line():
     assert strip_page_marker("55\n한국어 설명서 본문", 55) == ("한국어 설명서 본문", ["55\n"])
     assert count_remaining_markers("55\n한국어 설명", 55) == 1
+
+
+def test_tail_only_when_front_removed_nothing():
+    assert strip_page_marker("12\n본문 끝\n12", 12, check_tail=True) == ("본문 끝\n12", ["12\n"])
+
+
+def _assert_headings_aligned(pp):
+    for pos, title in pp.headings:
+        assert pp.text[pos:].startswith(title)
+
+
+def test_plain_front_marker_shifts_headings():
+    text = "한국어 5\n서론\n본문\n제목B\n끝"
+    pp = PlainPage(text, [(text.index("서론"), "서론"), (text.index("제목B"), "제목B")])
+    out, removed = strip_plain_page(pp, 5)
+    assert removed == ["한국어 5\n"] and out.text == "서론\n본문\n제목B\n끝"
+    assert [t for _, t in out.headings] == ["서론", "제목B"]
+    _assert_headings_aligned(out)
+
+
+def test_plain_heading_starting_in_removed_span_dropped():
+    text = "12\n사용 전에\n본문"
+    pp = PlainPage(text, [(0, "12"), (text.index("사용"), "사용 전에")])
+    out, _ = strip_plain_page(pp, 12)
+    assert out.headings == [(0, "사용 전에")]
+    _assert_headings_aligned(out)
+
+
+def test_plain_heading_overlapping_removed_span_dropped():
+    text = "12 사용 전에\n본문"  # 제목이 지운 "12 "와 겹침
+    pp = PlainPage(text, [(0, "12 사용 전에")])
+    out, removed = strip_plain_page(pp, 12)
+    assert removed == ["12 "] and out.headings == []
+
+
+def test_plain_tail_removal_keeps_earlier_headings():
+    text = "제목\n본문 끝\n55"
+    pp = PlainPage(text, [(0, "제목")])
+    out, removed = strip_plain_page(pp, 55, check_tail=True)
+    assert removed == ["\n55"] and out.text == "제목\n본문 끝" and out.headings == [(0, "제목")]
+    _assert_headings_aligned(out)
+
+
+def test_plain_nothing_removed_same_page():
+    pp = PlainPage("• 36 °C 이상\n제목", [(10, "제목")])
+    assert strip_plain_page(pp, 4) == (pp, [])
