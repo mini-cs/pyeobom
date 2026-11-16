@@ -41,3 +41,22 @@ def test_crlf_normalized():
 def test_empty_table_cells_dropped():
     assert markdown_to_plain("| a | | c |").text == "a c"
     assert markdown_to_plain("| a | ![](x.png) | c |").text == "a c"
+
+
+def test_clean_plain_page():
+    from ingest.clean import clean_text
+    from ingest.plaintext import PlainPage, clean_plain_page
+
+    text = "머리말\n(cid:12)\n## 쾌속 (cid:3)\n본문\nUntitled-1 12\n## 바닥\n끝"
+    pp = markdown_to_plain(text)
+    out = clean_plain_page(pp)
+    assert out.text == clean_text(pp.text) == "머리말\n쾌속\n본문\n바닥\n끝"
+    assert [h for _, h in out.headings] == ["바닥"] or all(out.text[i:].startswith(h) for i, h in out.headings)
+    assert all(out.text[i:].startswith(h) for i, h in out.headings)
+    assert ("바닥" in [h for _, h in out.headings])  # 뒤 제목은 앞 줄이 지워져도 남고 위치가 당겨진다
+    assert out.text.index("바닥") == dict((h, i) for i, h in out.headings)["바닥"]
+    # 지워진 줄에 걸린 제목은 버린다
+    pp2 = PlainPage("a\n(cid:12)\nb", [(2, "(cid:12)")])
+    assert clean_plain_page(pp2).headings == []
+    pp3 = PlainPage("Untitled-1 12\n본문", [(0, "Untitled-1 12")])
+    assert clean_plain_page(pp3) == PlainPage("본문", [])
