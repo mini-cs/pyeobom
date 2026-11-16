@@ -46,7 +46,7 @@
   - `route`: `app.js` `parseRoute` 결과 `{ screen: "landing"|"category"|"model"|"chat", appliance?, modelId?, conversationId? }`
   - `models`: `/api/models` 목록(항목마다 `id`, `appliance`)
 
-- [ ] **Step 1: 실패하는 테스트 작성** (`tests/web/js/nav.test.mjs`, 기존 `history.test.mjs`와 같은 `node:test`·`node:assert/strict` 방식)
+- [x] **Step 1: 실패하는 테스트 작성** (`tests/web/js/nav.test.mjs`, 기존 `history.test.mjs`와 같은 `node:test`·`node:assert/strict` 방식)
 
 ```js
 const models = [{ id: "washer-lg-fx25", appliance: "washer" }, { id: "aircon-lg-sq06fa1wds", appliance: "aircon" }];
@@ -64,10 +64,10 @@ test("모르는 모델·빈 목록이면 가전 고르기", () => {
 });
 ```
 
-- [ ] **Step 2: Run** `node --test tests/web/js/` → nav 테스트 FAIL(모듈 없음) → **Commit(테스트)**
-- [ ] **Step 3: 구현** `export function parentHash(route, models)` in `public/js/nav.js`. 가전 값은 `encodeURIComponent`로 넣는다.
-- [ ] **Step 4: Run** `node --test tests/web/js/` → 모두 PASS
-- [ ] **Step 5: Commit(구현)**
+- [x] **Step 2: Run** `node --test tests/web/js/` → nav 테스트 FAIL(모듈 없음) → **Commit(테스트)**
+- [x] **Step 3: 구현** `export function parentHash(route, models)` in `public/js/nav.js`. 가전 값은 `encodeURIComponent`로 넣는다.
+- [x] **Step 4: Run** `node --test tests/web/js/` → 모두 PASS
+- [x] **Step 5: Commit(구현)**
 
 ### Task 2: 서랍 맨 윗줄 [←][⌂] … [✕]
 
@@ -82,7 +82,7 @@ test("모르는 모델·빈 목록이면 가전 고르기", () => {
 - Consumes: `parentHash(route, models)` (Task 1)
 - Produces: `#drawer-back`(a), `#drawer-home`(a, `href="#"`), `#drawer-close`(button, 기존 id 유지), 아이콘 클래스 `icon-arrow-left`·`icon-home`·`icon-x`
 
-- [ ] **Step 1: 실패하는 화면 테스트 작성**
+- [x] **Step 1: 실패하는 화면 테스트 작성**
   - `test_drawer_back_from_chat`: 채팅에서 ☰ → ← → 서랍 닫힘, 주소 `#model/<그 가전>`, 포커스가 모델 고르기 h1
   - `test_drawer_back_from_model`: 모델 고르기에서 ☰ → ← → 주소 `#category`, 포커스가 가전 고르기 h1
   - `test_drawer_back_hidden_on_category`: 가전 고르기에서 ☰ → `#drawer-back` 안 보임, `#drawer-home` 보임
@@ -93,14 +93,14 @@ test("모르는 모델·빈 목록이면 가전 고르기", () => {
   - `test_drawer_back_while_waiting`: `/api/ask` 응답을 늦춤 → 질문 보냄 → ☰ → ← → 모델 고르기 화면에 답 없음, 응답 뒤 그 대화를 다시 열면 답이 저장돼 있음
   - `test_drawer_back_rechecked_on_open`: 채팅에서 서랍 열고 닫기 → 브라우저 뒤로(모델 고르기) → 다시 열기 → ← 주소 `#category`
   - `test_drawer_back_models_failed`: `/api/models` 500 → 모델 고르기 화면 → ☰ → ← → 가전 고르기, 페이지 오류 없음
-- [ ] **Step 2: Run** `pytest -m ui tests/web/test_ui_flow.py -k drawer` → 새 테스트 FAIL → **Commit(테스트)**
-- [ ] **Step 3: 구현**
+- [x] **Step 2: Run** `pytest -m ui tests/web/test_ui_flow.py -k drawer` → 새 테스트 FAIL → **Commit(테스트)**
+- [x] **Step 3: 구현**
   - index.html: `.drawer-head`를 `<a id="drawer-back" class="icon-button" aria-label="뒤로">`, `<a id="drawer-home" class="icon-button" href="#" aria-label="처음으로">`, `<button type="button" id="drawer-close" class="icon-button" aria-label="닫기">`(각 안에 `<span class="icon icon-…" aria-hidden="true">`)로 바꾸고 `<h2 id="drawer-title" tabindex="-1">지난 대화</h2>`는 그 아래로 옮긴다.
   - app.js: 서랍을 열 때(`renderDrawer()` 옆) `parentHash(parseRoute(location.hash), drawerModels)`로 ←의 `href`를 넣고, null이면 `hidden`.
   - styles.css: 아이콘 클래스 3개. 서랍 머리에서는 첫 버튼만 왼쪽 음수 여백, ✕는 오른쪽 끝(`margin-left: auto`) + 오른쪽 음수 여백. `<a>` 아이콘 버튼은 밑줄 없음. → 2026-11-13 변경(사용자 결정): 기본값 3 참고, [✕][←][⌂] 셋 다 왼쪽
-- [ ] **Step 4: Run** `pytest -m "not integration"` + `node --test tests/web/js/` → PASS
-- [ ] **Step 5: 캡처** `measure/out/drawer-nav/`(git 제외)에 360px·1280px × 가전 고르기·모델 고르기·채팅의 서랍 열린 화면 6장. 겹침·잘림이 없는지 보고에 적는다.
-- [ ] **Step 6: Commit(구현)**
+- [x] **Step 4: Run** `pytest -m "not integration"` + `node --test tests/web/js/` → PASS
+- [x] **Step 5: 캡처** `measure/out/drawer-nav/`(git 제외)에 360px·1280px × 가전 고르기·모델 고르기·채팅의 서랍 열린 화면 6장. 겹침·잘림이 없는지 보고에 적는다.
+- [x] **Step 6: Commit(구현)**
 
 ### Task 3: 기록과 PR
 
@@ -109,7 +109,7 @@ test("모르는 모델·빈 목록이면 가전 고르기", () => {
 - Modify: `docs/결정기록/021-채팅형-개편.md` 53행 아래에 "2026-11-13 재검토 → 결정기록 030" 한 줄
 - Modify: `docs/개발일지/2026-11-13.md`: PR #64 병합(0586795)과 이번 작업
 
-- [ ] **Step 1: 위 기록 작성**
-- [ ] **Step 2: Run** `pytest -m "not integration"` + `node --test tests/web/js/` → PASS
-- [ ] **Step 3: push → PR**(본문에 설계·계획 경로, 테스트 결과, 캡처 6장 경로) → 멈춰 보고
-- [ ] **Step 4: (사용자가 병합한 뒤)** https://pyeobom.vercel.app 에서 360px로 세 화면의 서랍을 확인하고 개발일지에 한 줄
+- [x] **Step 1: 위 기록 작성**
+- [x] **Step 2: Run** `pytest -m "not integration"` + `node --test tests/web/js/` → PASS
+- [x] **Step 3: push → PR**(본문에 설계·계획 경로, 테스트 결과, 캡처 6장 경로) → 멈춰 보고
+- [x] **Step 4: (사용자가 병합한 뒤)** https://pyeobom.vercel.app 에서 360px로 세 화면의 서랍을 확인하고 개발일지에 한 줄 → 2026-11-13 운영 확인 9가지 통과(개발일지 2026-11-13)
