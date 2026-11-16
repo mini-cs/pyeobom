@@ -26,17 +26,43 @@ def page_count_ok(tool: Pages, base: Pages) -> bool:
     return len(tool) == len(base)
 
 
-def page_alignment(tool: Pages, base: Pages) -> float:
+def _picks(base: Pages) -> list[tuple[int, str]]:
+    """쪽마다 그 설명서에 한 번만 나오는 15자 이상 줄 중 첫 번째."""
     lines = Counter(s for _, t in base for s in (x.strip() for x in t.splitlines()))
-    tool_text = {p: _squash(t) for p, t in tool}
-    hit = total = 0
+    out = []
     for p, t in base:
         pick = next((s for s in (x.strip() for x in t.splitlines()) if len(s) >= 15 and lines[s] == 1), None)
-        if pick is None:
-            continue
-        total += 1
-        hit += _squash(pick) in tool_text.get(p, "")
-    return hit / total if total else 0.0
+        if pick is not None:
+            out.append((p, pick))
+    return out
+
+
+def page_alignment(tool: Pages, base: Pages) -> float:
+    tool_text = {p: _squash(t) for p, t in tool}
+    picks = _picks(base)
+    hit = sum(_squash(s) in tool_text.get(p, "") for p, s in picks)
+    return hit / len(picks) if picks else 0.0
+
+
+_NORM = re.compile(r"[\s•·◦▪●■□\-*|\ufeff\u200b]")
+
+
+def _norm(s: str) -> str:
+    return _NORM.sub("", s)
+
+
+def page_shift(tool: Pages, base: Pages) -> dict:
+    """고른 줄을 도구 글 어디서든 찾고, 같은 쪽에서도 찾은 비율을 낸다 (⑫). 못 찾은 줄은 비율에서 뺀다."""
+    tool_text = {p: _norm(t) for p, t in tool}
+    picks = _picks(base)
+    found = same = 0
+    for p, s in picks:
+        n = _norm(s)
+        if any(n in t for t in tool_text.values()):
+            found += 1
+            same += n in tool_text.get(p, "")
+    return {"picked": len(picks), "found": found, "same": same, "not_found": len(picks) - found,
+            "ratio": same / found if found else 0.0}
 
 
 def _has_in_order(text: str, patterns: list[str]) -> bool:
@@ -171,7 +197,9 @@ def run_gate(root: Path = EXTRACT, toc_path: Path = ROOT / "measure" / "v17_toc.
             heads = {p: [h for _, h in pp.headings] for p, pp in plain[d]}
             t = [(p, x) for p, x in toc.get(d, [])]
             m[d] = {"page_count_ok": page_count_ok(pages[d], base[d]),
-                    "page_alignment": page_alignment(pages[d], base[d]),
+                    "page_alignment": page_alignment(pages[d], base[d]),  # 기록용
+                    "page_shift": (ps := page_shift(pages[d], base[d])),
+                    "page_shift_undecidable": ps["found"] < 10,
                     "char_ratio": char_ratio(pages[d], base[d]),
                     "broken_lines": broken_lines(pages[d]), "base_broken_lines": broken_lines(base[d]),
                     "heading_hit_rate": heading_hit_rate(heads, t) if t else None}
@@ -181,7 +209,8 @@ def run_gate(root: Path = EXTRACT, toc_path: Path = ROOT / "measure" / "v17_toc.
         secs = secs.values() if isinstance(secs, dict) else [secs]
         eliminated = [n for n, bad in (
             (1, bool(run.get("excluded")) or any(s > 1800 for s in secs)),
-            (2, any(not x["page_count_ok"] or x["page_alignment"] < 0.9 for x in m.values())),
+            (2, any(not x["page_count_ok"] or x["page_shift_undecidable"] or x["page_shift"]["ratio"] < 0.9
+                    for x in m.values())),
             (3, not decimal_ok(pages[SAMSUNG])),
             (4, not table_rows_ok(pages[DRUM])),
             (5, any(x["broken_lines"] > x["base_broken_lines"] for x in m.values())),
@@ -216,6 +245,8 @@ def main() -> None:
             for d, x in v["manuals"].items():
                 hr = x["heading_hit_rate"]
                 print(f"  {d}: 쪽수 {x['page_count_ok']} 정렬 {x['page_alignment']:.3f} 글자비 {x['char_ratio']:.3f} "
+                      f"쪽밀림 {x['page_shift']['same']}/{x['page_shift']['found']} 못찾음 {x['page_shift']['not_found']}"
+                      f"{' 판단불가' if x['page_shift_undecidable'] else ''} "
                       f"깨진줄 {x['broken_lines']}/기준 {x['base_broken_lines']} 제목적중 "
                       f"{'목차 없음, 뺌' if hr is None else format(hr, '.3f')}")
 
