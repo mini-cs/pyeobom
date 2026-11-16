@@ -18,3 +18,8 @@ def test_count_ignores_other_numbers(): assert count_remaining_markers("55 ml\n1
 def test_tail_removes_one_break_only():
     assert strip_page_marker("본문\n\n55", 55, check_tail=True) == ("본문\n", ["\n55"])
     assert strip_page_marker("본문 \n55", 55, check_tail=True) == ("본문 ", ["\n55"])
+
+
+def test_attached_korean_stays_on_same_line():
+    assert strip_page_marker("55\n한국어 설명서 본문", 55) == ("한국어 설명서 본문", ["55\n"])
+    assert count_remaining_markers("55\n한국어 설명", 55) == 1

@@ -31,3 +31,13 @@ def test_list_kept():
 def test_heading_offsets_after_table():  # 표 줄이 바뀐 뒤에도 제목 위치가 평문 기준인지
     p = markdown_to_plain("| a | b |\n|---|---|\n# 미세플라스틱저감\n본문")
     assert p.text[p.headings[0][0]:].startswith("미세플라스틱저감")
+
+
+def test_crlf_normalized():
+    p = markdown_to_plain("| a | b |\r\n|---|---|\r\n# 제목\r\n본문")
+    assert p.text == "a b\n제목\n본문" and p.headings == [(4, "제목")]
+
+
+def test_empty_table_cells_dropped():
+    assert markdown_to_plain("| a | | c |").text == "a c"
+    assert markdown_to_plain("| a | ![](x.png) | c |").text == "a c"
