@@ -8,8 +8,10 @@ from app.core.config import Settings
 from app.retrieval.search import Chunk
 from measure.v16_not_found import (
     BAD_QUOTE, EMPTY, FOUND_FALSE, JSON_ERROR, NOT_IN_CHUNK, PASS, UNRETRIEVED,
-    ask_fixed, capture_deps, classify, marker_shape, page_marker, stage3_judgments, strip_page_marker, verdict,
+    ask_fixed, capture_deps, classify, expected_hit, marker_shape, page_marker, quote_places, stage3_judgments,
+    strip_page_marker, verdict,
 )
+from dataclasses import replace
 
 S = Settings(openai_api_key="", database_url="", openai_embed_model="m", openai_chat_model="m", embed_dim=3)
 P55 = Chunk(83, "manual-x", "manual", "설명서", "https://example.com/m.pdf", 55, "한국어 55\n배수 필터를 청소하세요. 물이 나올 수 있습니다.", 0.1)
@@ -174,6 +176,31 @@ def test_stage3_judgments_count_each_rule():
     assert (j["②"]["n"], j["②"]["k"], j["②"]["verdict"]) == (3, 2, "지지 안 됨")
     assert (j["③"]["n"], j["③"]["k"], j["③"]["verdict"]) == (3, 1, "지지 안 됨")
     assert (j["④"]["n"], j["④"]["k"], j["④"]["verdict"]) == (5, 3, "지지됨")
+
+
+# ── 5단계: 찾지 못함 나누기·인용 대조 ──
+
+INFO = [{"id": 83, "ref": "manual:55"}, {"id": 333, "ref": "guide:guide-5c"}, {"id": 105, "ref": "manual:72"}]
+
+
+@pytest.mark.parametrize("expected,result", [
+    ("manual:55|manual:54", "검색됨"),         # 문서·쪽 단위
+    ("guide:guide-5c", "검색됨"),              # 가이드 문서 단위
+    ("chunk:333", "검색됨"),                   # 조각 단위
+    ("manual:54|chunk:334", "검색 안 됨"),
+    ("", "판단 불가"),
+    ("page:54", "판단 불가"),                  # 맞출 수 없는 단위
+])
+def test_expected_hit(expected, result):
+    assert expected_hit(expected, INFO) == result
+
+
+def test_quote_places_two_ways():
+    chunks = [replace(P55, content="배수 필터를\n  • 청소하세요."), P72]
+    assert quote_places("배수 필터를 청소하세요.", chunks) == {"㉠": [], "㉡": [83]}
+    assert quote_places("배수 필터를 • 청소하세요.", chunks) == {"㉠": [83], "㉡": [83]}
+    assert quote_places("세탁물을 고르게-펴세요.", chunks) == {"㉠": [], "㉡": [105]}
+    assert quote_places("없는 문장", chunks) == {"㉠": [], "㉡": []}
 
 
 # ── 서비스 흐름 감싸기 ──
