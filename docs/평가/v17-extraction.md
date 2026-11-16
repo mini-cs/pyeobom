@@ -64,6 +64,8 @@
 
 - 새 응답 구분 기준(Claude Code 판단): 구글 폼 응답 시각이 `2026-11-10 13:04:04`(지난 내보내기 파일 `measure/out/p-set-responses.csv`의 저장 시각, 11/10 P 세트를 이 파일로 만듦)보다 늦고 동의한 응답만 센다. 카드 번호는 열 이름에서 첫 "." 앞 숫자. 개발용·확인용 카드 번호는 `evaluation/paraphrase_split.json`에서 읽는다(확인용 파일 본문은 열지 않음). 도구: `python -m measure.v17_count`(숫자만 출력, 테스트 `tests/measure/test_v17_count.py`)
 - 새 응답 수: 현재 파일은 지난 내보내기 그대로라 전체 2·새 응답 0·동의한 새 응답 0, 개발용 0·확인용 0·기타 0·빈칸 0. **사용자 내보내기 뒤 채움**
+  - (2026-11-16 덧붙임) 사용자가 응답 시트 "가전 질문 문장 모으기 (응답)"에서 파일 → 다운로드 → CSV로 다시 받은 파일(15:42 저장)로 셈. 받기 전 지난 파일은 `measure/out/p-set-responses-2026-11-10.csv`로 백업. 열 이름 25개와 앞 2행(지난 응답)이 백업과 같음을 내용 출력 없이 확인, 응답 시각 형식도 같음
+  - 결과: 전체 응답 5, 새 응답 3(모두 동의). **개발용 36 · 확인용 30 · 기타 0 · 빈칸 0**(3명 × 22카드 = 66칸). 문장 내용은 출력하지 않음
 - 지난 확인용 봉인: `tests/evaluation/test_paraphrase_set.py` 4 passed(`evaluation/paraphrase_test.csv` 해시가 `evaluation/paraphrase_split.json`과 같음). 본문은 열지 않음
 - v1.6 OpenAI 사용량 대조 덧붙임: `docs/평가/v16-not-found.md` 장부 아래
 
