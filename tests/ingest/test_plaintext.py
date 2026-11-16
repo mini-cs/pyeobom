@@ -97,3 +97,16 @@ def test_link_and_img_tag():
 def test_noise_kept():
     t = "_<| 4 FR) Su | <i | our"
     assert markdown_to_plain(t).text == t
+
+
+def test_invisible_chars_removed():  # 결정 ⑭: U+FEFF·U+200B는 str.split()이 공백으로 치지 않아 인용 확인을 깬다
+    assert markdown_to_plain("세탁﻿코스와 건​조").text == "세탁코스와 건조"
+    assert markdown_to_plain("| ﻿ 설정 | 30 |").text == "설정 30"
+    assert markdown_to_plain("위\n﻿\n​ ﻿\n아래").text == "위\n아래"
+
+
+def test_invisible_chars_only_those():
+    t = "4.0 kg · 1/2 • WD90H25AH*/WD90H25BH* 220 V/60 Hz\n\n빈 줄 위"
+    assert markdown_to_plain(t).text == t
+    p = markdown_to_plain("﻿\n## 제목﻿ 하나\n본문")
+    assert p.text == "제목 하나\n본문" and p.headings == [(0, "제목 하나")]

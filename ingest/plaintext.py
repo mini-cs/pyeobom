@@ -1,7 +1,7 @@
 """마크다운 → 평문 (v1.7 1단계, 규칙은 Task 6 측정 전 고정, 설계 6절, 결정 ⑨). v1.7 측정 전용.
 
 규칙 (이 순서, 표준 라이브러리 re만):
-0. 줄바꿈 CRLF·CR은 LF로 통일한다.
+0. 줄바꿈 CRLF·CR은 LF로 통일한다. 보이지 않는 글자 U+FEFF·U+200B를 지우고, 지운 뒤 빈 줄만 남으면 줄째 버린다(결정 ⑭).
 1. HTML 주석 `<!-- … -->`(여러 줄 포함)을 지운다.
 2. `<img …>` 태그를 통째로 지운다(base64 포함).
 3. `<br>`·`<br/>`·`<br />`은 공백 한 칸으로 바꾼다.
@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from ingest.clean import clean_text
 
+_INVISIBLE = re.compile("[\ufeff\u200b]")
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _IMG_TAG = re.compile(r"<img\b[^<>\n]*>", re.I)
 _BR = re.compile(r"<br\s*/?>", re.I)
@@ -56,6 +57,9 @@ def _table(m: re.Match) -> str:
 
 def markdown_to_plain(md: str) -> PlainPage:
     md = md.replace("\r\n", "\n").replace("\r", "\n")
+    if _INVISIBLE.search(md):  # 지운 뒤 빈 줄만 남은 줄은 버리고, 원래 빈 줄은 둔다
+        md = "\n".join(_INVISIBLE.sub("", x) for x in md.split("\n")
+                       if not (_INVISIBLE.search(x) and not _INVISIBLE.sub("", x).strip()))
     md = _COMMENT.sub("\x00", md)  # 지운 자리를 표시해 두었다가 줄 단위로 공백 정리
     md = _IMG_TAG.sub("\x00", md)
     md = _BR.sub(" ", md)

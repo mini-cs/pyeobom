@@ -51,9 +51,19 @@ LIMIT %(k)s
 """
 
 
-def search_vector(conn, model_id: str, query_vec: list[float], k: int, variant: str | None = None) -> list[Chunk]:
+# v1.7 실험 조각 한 벌(measure/bundle_chunks.sql). 운영 SQL과 같은 모양에서 읽는 표와 한 벌 조건만 다르다
+BUNDLE_SQL = SQL.replace("FROM chunks c", "FROM bundle_chunks c").replace(
+    "WHERE dm.model_id", "WHERE c.bundle = %(bundle)s AND dm.model_id")
+
+
+def search_vector(conn, model_id: str, query_vec: list[float], k: int, variant: str | None = None,
+                  bundle: str | None = None) -> list[Chunk]:
     # 모델 필터는 SQL에서 한다(프롬프트에 맡기지 않음). list는 double precision[]로 넘어가므로 ::vector로 형을 정한다
     params = {"q": query_vec, "model_id": model_id, "k": k}
+    if variant is not None and bundle is not None:
+        raise ValueError("실험 색인(variant)과 실험 조각(bundle)은 같이 쓸 수 없다")
+    if bundle is not None:
+        return [Chunk(*row) for row in conn.execute(BUNDLE_SQL, params | {"bundle": bundle}).fetchall()]
     if variant is None:  # 운영
         return [Chunk(*row) for row in conn.execute(SQL, params).fetchall()]
     if variant not in VARIANTS:
@@ -98,15 +108,21 @@ def needs_diagnostic(question: str, chunks: list) -> bool:
     return bool(tokens) and not all(any(contains_code(code, c.content) for c in chunks) for code in tokens)
 
 
-def fetch_manual_pages(conn, model_id: str, pages: list[int]) -> list[Chunk]:
-    """그 모델 설명서의 지정한 쪽 조각(진단 안내 쪽 덧붙이기용)."""
+MANUAL_PAGES_SQL = """SELECT c.id, c.doc_id, d.doc_type, d.title, d.source_url, c.page, c.content, 0.0
+           FROM chunks c JOIN document_models dm ON dm.doc_id = c.doc_id JOIN documents d ON d.id = c.doc_id
+           WHERE dm.model_id = %s AND d.doc_type = 'manual' AND c.page = ANY(%s) ORDER BY c.page, c.id"""
+BUNDLE_MANUAL_PAGES_SQL = MANUAL_PAGES_SQL.replace("FROM chunks c", "FROM bundle_chunks c").replace(
+    "WHERE dm.model_id", "WHERE c.bundle = %s AND dm.model_id")
+
+
+def fetch_manual_pages(conn, model_id: str, pages: list[int], bundle: str | None = None) -> list[Chunk]:
+    """그 모델 설명서의 지정한 쪽 조각(진단 안내 쪽 덧붙이기용). bundle을 주면 그 실험 조각 한 벌에서 찾는다."""
     if not pages:
         return []
-    rows = conn.execute(
-        """SELECT c.id, c.doc_id, d.doc_type, d.title, d.source_url, c.page, c.content, 0.0
-           FROM chunks c JOIN document_models dm ON dm.doc_id = c.doc_id JOIN documents d ON d.id = c.doc_id
-           WHERE dm.model_id = %s AND d.doc_type = 'manual' AND c.page = ANY(%s) ORDER BY c.page, c.id""",
-        (model_id, pages)).fetchall()
+    if bundle is not None:
+        rows = conn.execute(BUNDLE_MANUAL_PAGES_SQL, (bundle, model_id, pages)).fetchall()
+    else:
+        rows = conn.execute(MANUAL_PAGES_SQL, (model_id, pages)).fetchall()
     return [Chunk(*row) for row in rows]
 
 
