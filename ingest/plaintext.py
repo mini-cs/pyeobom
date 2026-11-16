@@ -1,13 +1,21 @@
-"""마크다운 → 평문 (v1.7 1단계, 규칙은 Task 6 측정 전 고정, 설계 6절).
+"""마크다운 → 평문 (v1.7 1단계, 규칙은 Task 6 측정 전 고정, 설계 6절, 결정 ⑨). v1.7 측정 전용.
 
 규칙 (이 순서, 표준 라이브러리 re만):
 0. 줄바꿈 CRLF·CR은 LF로 통일한다.
-1. HTML 주석 `<!-- … -->`(여러 줄 포함)과 이미지 `![alt](url)`를 지운다.
-   지운 줄은 연속 공백을 한 칸으로 줄이고 앞뒤 공백을 자른다(지운 줄만). 글자 없이 비면 줄째 버린다.
-2. 줄 단위로: 제목 `#`~`######` + 공백은 기호만 지우고 글자는 남긴다.
+1. HTML 주석 `<!-- … -->`(여러 줄 포함)을 지운다.
+2. `<img …>` 태그를 통째로 지운다(base64 포함).
+3. `<br>`·`<br/>`·`<br />`은 공백 한 칸으로 바꾼다.
+4. HTML 표 `<table>…</table>`: `<tr>`마다 한 줄, `<td>`·`<th>` 칸의 글(칸 안 태그 제거, 공백 정리)을
+   비지 않은 것만 공백 한 칸으로 잇는다. 빈 행은 버린다.
+5. 그 밖의 HTML 태그(`<` 바로 뒤가 영문자 또는 `/`+영문자이고 같은 줄에서 `>`로 닫힘)는 태그만 지우고 글자는 남긴다.
+   (1·2·4·5에서 지운 줄은 연속 공백을 한 칸으로 줄이고 앞뒤 공백을 자른다. 글자 없이 비면 줄째 버린다.)
+6. 줄 단위로: 마크다운 이미지 `![alt](url)`를 지운다(지운 줄은 위와 같이 정리).
+   제목 `#`~`######` + 공백은 기호만 지우고 글자는 남긴다.
    표 구분줄(`|---|:--:|`)은 줄째 버린다. 표 줄(`|`로 시작·끝)은 칸 글자를 strip하고 빈 칸은 버린 뒤 공백 한 칸으로 잇는다.
-3. 굵게는 짝이 맞는 `**…**`만 지운다. 홑 `*`·`_`는 모델명에 쓰이므로 그대로 둔다.
+7. 굵게는 짝이 맞는 `**…**`만 지운다. 홑 `*`·`_`는 모델명에 쓰이므로 그대로 둔다.
+   링크 `[글](주소)`는 글만 남기고, 취소선 `~~글~~`은 글만 남긴다.
    목록 기호 `-`·`•`와 숫자는 건드리지 않는다.
+8. 백슬래시 escape: 백슬래시 뒤가 ASCII 문장부호면 백슬래시만 지운다(줄의 맨 마지막). 뒤가 영문자(LaTeX)면 그대로 둔다.
 headings는 (최종 text 안 제목 시작 위치, 제목 글자).
 """
 import re
@@ -16,10 +24,19 @@ from dataclasses import dataclass
 from ingest.clean import clean_text
 
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
+_IMG_TAG = re.compile(r"<img\b[^<>\n]*>", re.I)
+_BR = re.compile(r"<br\s*/?>", re.I)
+_TABLE = re.compile(r"<table\b.*?</table>", re.S | re.I)
+_ROW = re.compile(r"<tr\b.*?</tr\s*>", re.S | re.I)
+_CELL = re.compile(r"<t[dh]\b[^>]*>(.*?)</t[dh]\s*>", re.S | re.I)
+_TAG = re.compile(r"</?[A-Za-z][^<>\n]*>")
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _HEADING = re.compile(r"^#{1,6}\s+(.*)$")
 _SEPARATOR = re.compile(r"^\s*\|?(\s*:?-+:?\s*\|)+(\s*:?-+:?\s*)?$")
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
+_LINK = re.compile(r"(?<!!)\[([^\]\n]*)\]\(([^)\n]*)\)")
+_STRIKE = re.compile(r"~~(.+?)~~")
+_ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 
 
 @dataclass(frozen=True)
@@ -28,9 +45,22 @@ class PlainPage:
     headings: list[tuple[int, str]]
 
 
+def _table(m: re.Match) -> str:
+    rows = []
+    for row in _ROW.findall(m.group(0)):
+        cells = (" ".join(_TAG.sub("", c).split()) for c in _CELL.findall(row))
+        if line := " ".join(c for c in cells if c):
+            rows.append(line)
+    return "\x00\n" + "\n".join(rows) + "\n\x00"
+
+
 def markdown_to_plain(md: str) -> PlainPage:
     md = md.replace("\r\n", "\n").replace("\r", "\n")
     md = _COMMENT.sub("\x00", md)  # 지운 자리를 표시해 두었다가 줄 단위로 공백 정리
+    md = _IMG_TAG.sub("\x00", md)
+    md = _BR.sub(" ", md)
+    md = _TABLE.sub(_table, md)
+    md = _TAG.sub("\x00", md)
     lines: list[str] = []
     headings: list[tuple[int, str]] = []
     pos = 0
@@ -49,7 +79,7 @@ def markdown_to_plain(md: str) -> PlainPage:
         heading = _HEADING.match(line)
         if heading:
             line = heading.group(1)
-        line = _BOLD.sub(r"\1", line)
+        line = _ESCAPE.sub(r"\1", _STRIKE.sub(r"\1", _LINK.sub(r"\1", _BOLD.sub(r"\1", line))))
         if heading:
             headings.append((pos, line))
         lines.append(line)

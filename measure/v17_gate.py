@@ -88,19 +88,22 @@ def heading_hit_rate(headings: dict[int, list[str]], toc: list[tuple[int, str]])
 
 
 _LEFTOVER = {
-    "backslash_escape": re.compile(r"\\[^\w\s]"),
-    "md_link": re.compile(r"\]\("),
+    "html_tag": re.compile(r"</?[A-Za-z][^<>\n]*>"),
+    "backslash_punct": re.compile(r"\\[!-/:-@\[-`{-~]"),
+    "md_link": re.compile(r"(?<!!)\[[^\]\n]*\]\([^)\n]*\)"),
+    "strike": re.compile(r"~~.+?~~"),
+    # 아래는 기록만 한다 (멈춤에 넣지 않음)
     "star_wrapped": re.compile(r"(?<![\w*])\*(?![\s*])[^*\n]+?(?<![\s*])\*(?![\w*])"),
     "underscore_wrapped": re.compile(r"(?<!\w)_(?![\s_])[^_\n]+?(?<![\s_])_(?!\w)"),
+    "backslash_latex": re.compile(r"\\[A-Za-z]"),
+    "unclosed_lt": re.compile(r"</?[A-Za-z](?![^<>\n]*>)"),
 }
+STOP_KEYS = ("html_tag", "backslash_punct", "md_link", "strike")
 
 
 def count_leftovers(text: str) -> dict[str, int]:
-    """markdown_to_plain 뒤에도 남은 기호를 종류별 개수로만 센다 (R21)."""
-    out = {k: len(rx.findall(text)) for k, rx in _LEFTOVER.items()}
-    for tag, n in Counter(m.lower() for m in re.findall(r"</?([A-Za-z][\w-]*)", text)).items():
-        out[f"html:{tag}"] = n
-    return out
+    """markdown_to_plain 뒤에도 남은 기호를 종류별 개수로만 센다 (R21, ⑨)."""
+    return {k: len(rx.findall(text)) for k, rx in _LEFTOVER.items()}
 
 
 # ---- 실행 (설계 6절 0단계 / 계획 Task 4 Step 7) ----
@@ -136,7 +139,7 @@ def baseline(root: Path = EXTRACT) -> dict:
 
 
 def run_leftover(root: Path = EXTRACT) -> bool:
-    """도구 x 설명서별 남은 기호 개수(0 아닌 것만, 글자는 내지 않는다). 하나라도 있으면 True."""
+    """도구 x 설명서별 남은 기호 개수(0 아닌 것만, 글자는 내지 않는다). STOP_KEYS가 하나라도 있으면 True."""
     tools, _ = _complete_tools(root)
     found = False
     for tool in tools:
@@ -148,7 +151,7 @@ def run_leftover(root: Path = EXTRACT) -> bool:
             print(f"{tool} / {doc}: {dict(c) or 0}")
             total.update(c)
         print(f"{tool} 합계: {dict(total) or 0}")
-        found |= bool(total)
+        found |= any(total[k] for k in STOP_KEYS)
     if found:
         print("멈춤: 남은 기호 있음")
     return found
