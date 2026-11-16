@@ -104,3 +104,53 @@ def test_rank_changes_compares_per_question():
     m0 = [{"id": "a", "rank": 3}, {"id": "b", "rank": None}, {"id": "c", "rank": 2}]
     m1 = [{"id": "a", "rank": 1}, {"id": "b", "rank": None}, {"id": "c", "rank": 7}]
     assert rank_changes(m0, m1) == {"a": "better", "b": "same", "c": "worse"}
+
+
+class BundleConn:
+    """bundle_chunks를 읽으면 그 한 벌 번호(1,000,000대) 조각을 돌려주는 가짜 연결."""
+    def __init__(self, stored=("v17-a",)):
+        self.calls, self.stored = [], stored
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def execute(self, sql, params):
+        self.calls.append((sql, params))
+        if "SELECT 1" in sql:
+            self._rows = [(1,)] if params[0] in self.stored else []
+            return self
+        self._rows = [(1000005, "manual-lg-sq06fa1wds", "manual", "t", "https://x", 34, "진단 안내", 0.0)] \
+            if "bundle_chunks" in sql else [(7, "manual-lg-sq06fa1wds", "manual", "t", "https://x", 34, "운영", 0.0)]
+        return self
+
+    def fetchall(self):
+        return self._rows
+
+
+def test_bundle_diagnostic_uses_that_bundles_ids():
+    from measure.search_eval import bundle_fns
+    conn = BundleConn()
+    models = {"aircon-lg-sq06fa1wds": {"id": "aircon-lg-sq06fa1wds", "diagnostic_refs": ["manual:34"]}}
+    search, diagnostic = bundle_fns("v17-a", models, lambda: conn)
+    fake = Fake([C("manual:9", "필터 청소")])
+    row = run_eval([case(q="CH10이 떴어요", ref="manual:34", model="aircon-lg-sq06fa1wds")],
+                   fake.embed, fake.search, diagnostic)[0]
+    assert row["diag"] == "manual:34" and row["diag_ids"] == "1000005"
+    assert conn.calls[-1][1] == ("v17-a", "aircon-lg-sq06fa1wds", [34])
+    search("aircon-lg-sq06fa1wds", [0.1], "질문", 20)
+    sql, params = conn.calls[-1]
+    assert "bundle_chunks" in sql and params["bundle"] == "v17-a" and params["k"] == 20
+
+
+@pytest.mark.parametrize("name", ["v17-typo", "", "  "])
+def test_bundle_fns_stops_on_unstored_or_empty_name(name):
+    # 저장되지 않은 이름이면 검색·진단이 모두 []라 적중률 0인 CSV를 쓰게 되므로 시작 전에 멈춘다
+    from measure.search_eval import bundle_fns
+    with pytest.raises(SystemExit):
+        bundle_fns(name, {}, lambda: BundleConn())

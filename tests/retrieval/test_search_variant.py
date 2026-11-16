@@ -49,3 +49,29 @@ def test_variant_query_runs_and_keeps_model_filter(conn, docs_of, variant):
     for c in chunks:
         assert conn.execute("SELECT content FROM chunks WHERE id = %s", (c.id,)).fetchone()[0] == c.content
     assert [c.score for c in chunks] == sorted(c.score for c in chunks)
+
+
+# ── v1.7 실험 조각 한 벌(bundle_chunks) ──
+def test_bundle_reads_bundle_chunks_with_same_shape():
+    conn = FakeConn()
+    search_vector(conn, "washer-lg-fx25", [0.1], 5, bundle="v17-a")
+    sql, params = conn.calls[0]
+    assert "FROM bundle_chunks c" in sql and "c.bundle = %(bundle)s" in sql and "FROM chunks" not in sql
+    assert sql.replace("FROM bundle_chunks c", "FROM chunks c").replace("c.bundle = %(bundle)s AND ", "") == S.SQL
+    assert params == {"q": [0.1], "model_id": "washer-lg-fx25", "k": 5, "bundle": "v17-a"}
+
+
+def test_variant_and_bundle_together_is_rejected():
+    with pytest.raises(ValueError):
+        search_vector(FakeConn(), "washer-lg-fx25", [0.1], 5, variant="m1_title", bundle="v17-a")
+
+
+def test_fetch_manual_pages_default_sql_unchanged_and_bundle_reads_bundle_chunks():
+    conn = FakeConn()
+    S.fetch_manual_pages(conn, "aircon-lg-sq06fa1wds", [34, 49])
+    S.fetch_manual_pages(conn, "aircon-lg-sq06fa1wds", [34, 49], bundle="v17-a")
+    (sql0, p0), (sql1, p1) = conn.calls
+    assert "FROM chunks c" in sql0 and "bundle" not in sql0 and p0 == ("aircon-lg-sq06fa1wds", [34, 49])
+    assert "FROM bundle_chunks c" in sql1 and "c.bundle = %s" in sql1 and "FROM chunks" not in sql1
+    assert p1 == ("v17-a", "aircon-lg-sq06fa1wds", [34, 49])
+    assert sql1.replace("FROM bundle_chunks c", "FROM chunks c").replace("c.bundle = %s AND ", "") == sql0
