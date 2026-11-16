@@ -69,6 +69,17 @@
 - 지난 확인용 봉인: `tests/evaluation/test_paraphrase_set.py` 4 passed(`evaluation/paraphrase_test.csv` 해시가 `evaluation/paraphrase_split.json`과 같음). 본문은 열지 않음
 - v1.6 OpenAI 사용량 대조 덧붙임: `docs/평가/v16-not-found.md` 장부 아래
 
+## 쪽 표시 지우기 확인 (Task 2, 2026-11-16, AI 호출 없음, 비용 0)
+
+- 방법: 설명서 3종을 지금 운영과 같은 흐름(`extract_pages` + `clean_text`)으로 쪽 글을 만들고 `strip_page_marker`(앞 20자 안만, 끝 검사 끔)를 돌림. 운영 적재 코드에는 연결하지 않음. 도구: `python -m measure.v17_page_marker`(테스트 `tests/measure/test_v17_page_marker.py`)
+- 설명서별 지운 쪽 수 / 전체 쪽 수, 지운 글자 모양(N = 쪽 번호)
+  - 삼성 WD90H25: 78 / 80, "한국어 N" 39 · "N 한국어" 39
+  - LG FX25: 62 / 65, "N" 62
+  - LG SQ06FA1WDS: 54 / 58, "N" 54
+- v1.6 셈법(`measure/v16_not_found.py`의 `page_marker`: 조각 앞 20자에 자기 쪽 번호)으로 다시 셈(조각은 `chunk_pages` 800·100): 조각 합계 297개 중 지우기 전 194개 -> 지운 뒤 0개(삼성 78->0, LG FX25 62->0, LG SQ06 54->0). 조각 수는 지우기 전후 같음(118·101·78)
+- 지운 글자 전체 목록: `measure/out/v17/page_marker/<문서 id>.json`(git 밖). 리포트에는 본문 글자를 적지 않음
+- 확인하지 못한 것: 지우지 못한 쪽(삼성 2, LG FX25 3, LG SQ06 4쪽)이 왜 남았는지는 보지 않음. 위 셈법상 그 쪽에는 앞 20자 쪽 표시가 없다
+
 ## 0단계: 도구 거르기
 
 (측정 후 채움)
