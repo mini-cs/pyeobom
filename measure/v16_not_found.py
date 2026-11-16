@@ -138,6 +138,35 @@ def capture_deps(deps, rec: dict):
     return replace(deps, search=search, diagnostic=diagnostic, complete=complete, rewrite=rewrite)
 
 
+def verdict(n: int, k: int, ratio: float) -> str:
+    """실행 전 확정 문턱: 3건 미만이면 판단 불가, k/n이 ratio 이상이면 지지됨."""
+    if n < 3:
+        return "판단 불가"
+    return "지지됨" if k / n >= ratio else "지지 안 됨"
+
+
+def _failed(cls: dict) -> bool:  # parse_and_verify가 None인 출력(found false는 떨어짐이 아님)
+    return cls["reason"] not in (PASS, FOUND_FALSE)
+
+
+def stage3_judgments(items: list[dict]) -> dict:
+    """3단계 판정 ①~④(docs/평가/v16-not-found.md "1~4단계 판단 기준")."""
+    def rule(n_list, k_list, ratio):
+        return {"n": len(n_list), "k": len(k_list), "verdict": verdict(len(n_list), len(k_list), ratio)}
+
+    has_unretrieved = lambda cls: any(c["alone_reason"] == UNRETRIEVED for c in cls["citations"])
+    nf = [i for i in items if i["answerable"] and not i["error"] and i["found"] is False]
+    twice = [i for i in nf if len(i["classes"]) == 2 and all(map(_failed, i["classes"])) and any(map(has_unretrieved, i["classes"]))]
+    cites = [c for i in items for cls in i["classes"] for c in cls["citations"] if c["alone_reason"] == UNRETRIEVED]
+    first = [i for i in items if i["classes"] and _failed(i["classes"][0])]
+    same = [i for i in first if len(i["classes"]) == 2 and i["classes"][1]["reason"] == i["classes"][0]["reason"]]
+    dropped = [cls for i in items for cls in i["classes"] if _failed(cls)]
+    return {"①": rule(nf, twice, 0.5),
+            "②": rule(cites, [c for c in cites if c["page_with_marker"]], 0.8),
+            "③": rule(first, same, 2 / 3),
+            "④": rule(dropped, [cls for cls in dropped if any(c["alone_ok"] for c in cls["citations"])], 0.5)}
+
+
 # ── 실행(로컬): python -m measure.v16_not_found stage1|stage2|stage4|stage3 ──
 # stage1은 DB 조회(SELECT)만, 나머지는 AI를 부른다(장부 check_budget을 먼저 통과한 뒤 실행). 결과는 OUT에만 쓴다.
 
