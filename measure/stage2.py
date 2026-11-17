@@ -89,10 +89,11 @@ def blind_sheet(rows: list[dict], rng) -> tuple[list[dict], list[dict]]:
         answers = [{"no": next(numbers), "text": t} for t in texts]
         no_of |= {(i, a["text"]): a["no"] for a in answers}
         sheet.append({"id": i, "answers": answers})
-    return sheet, [{"id": r["id"], "method": r["method"], "no": no_of[(r["id"], r["answer"])]} for r in rows]
+    return sheet, [{"id": r["id"], "method": r["method"], "no": no_of[(r["id"], r["answer"])]}
+                   | ({"run": r["run"]} if "run" in r else {}) for r in rows]
 
 
-BLIND_HEADER = """# 2단계 사람 판정지 (방법 이름 가림, 2026-11-10)
+BLIND_HEADER = """# 사람 판정지 ({label}, 방법 이름 가림)
 
 판정 기준(측정 전 확정, 2026-11-10):
 - 근거에 없는 조치가 섞이면 **환각**
@@ -100,21 +101,27 @@ BLIND_HEADER = """# 2단계 사람 판정지 (방법 이름 가림, 2026-11-10)
 - 핵심 조치 일부만 있으면 **정답**
 - "설명서에 없다"고 했는데 실제로 있으면 **오답**
 - 함정에 찾지 못함이면 **정답**(B 기준)
+- 핵심 답이 원문과 맞는데 원문에 없는 이유·설명이 덧붙으면: 질문이 묻지 않은 부가 설명은 원문과 모순되지 않고 새 사실(숫자·절차·원인)을 만들지 않았을 때 **정답**, 질문이 직접 묻는 내용('왜' 등)이면 원문과 다른 이유는 **오답**, 어느 경우든 새 사실을 만들면 **환각**(평가 규칙, 2026-11-10 사용자 결정)
+- 판정이 갈릴 수 있으면 **경계 판정**으로 표시(평가 규칙)
 
 답 번호는 무작위이고 문장마다 순서를 섞었다. 글자까지 같은 답은 한 번만 적었다(같은 번호가 여러 방법의 답).
 "찾지 못함" = "설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요."
 """
 
 
-def write_blind(result_csv: Path, notes: dict[str, str]) -> Path:
+def write_blind(result_csvs: Path | list[Path], notes: dict[str, str], label: str = "stage2") -> Path:
+    """결과 CSV 여러 개(회차)를 한 장으로 섞는다. 대응표의 run = 그 CSV 이름(v1.7 3단계)"""
     import json
     import random
 
-    with open(result_csv, encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
+    paths = [result_csvs] if isinstance(result_csvs, Path) else list(result_csvs)
+    rows = []
+    for path in paths:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            rows += [r | ({"run": path.stem} if len(paths) > 1 else {}) for r in csv.DictReader(f)]
     sheet, key = blind_sheet(rows, random.SystemRandom())
     first = {r["id"]: r for r in rows}
-    lines = [BLIND_HEADER]
+    lines = [BLIND_HEADER.replace("{label}", label)]
     for s in sheet:
         r = first[s["id"]]
         refs = r["expected_ref"].replace("manual:", "").replace("|", "·") or "-"
@@ -123,22 +130,25 @@ def write_blind(result_csv: Path, notes: dict[str, str]) -> Path:
             lines.append(f"- 원문 확인(사실): {notes[s['id']]}")
         lines += [f"- **답 {a['no']}**: {a['text'].replace(chr(10), ' ')}  → 판정: " for a in s["answers"]] + [""]
     out = ROOT / "measure" / "out"
-    (out / "stage2-blind-sheet.md").write_text("\n".join(lines), encoding="utf-8")
-    (out / "stage2-blind-key.json").write_text(json.dumps(key, ensure_ascii=False, indent=1), encoding="utf-8")  # 판정 후 공개
-    return out / "stage2-blind-sheet.md"
+    (out / f"{label}-blind-sheet.md").write_text("\n".join(lines), encoding="utf-8")
+    (out / f"{label}-blind-key.json").write_text(json.dumps(key, ensure_ascii=False, indent=1), encoding="utf-8")  # 판정 후 공개
+    return out / f"{label}-blind-sheet.md"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cases")
+    ap.add_argument("cases", nargs="+", help="--blind면 결과 CSV 여러 개(회차)를 한 장으로")
     ap.add_argument("--methods", nargs="+", default=["m0", "m2", "m12"], help="m0 등 또는 저장된 v1.7 실험 조각 한 벌 이름")
     ap.add_argument("--label")
     ap.add_argument("--blind", action="store_true", help="cases 자리에 2단계 결과 CSV를 주면 방법 이름을 가린 판정지를 만든다")
     args = ap.parse_args()
     if args.blind:
-        return print(write_blind(Path(args.cases), BLIND_NOTES))
+        return print(write_blind([Path(c) for c in args.cases], BLIND_NOTES, args.label or "stage2"))
     if not args.label:
         raise SystemExit("--label이 필요하다")
+    if len(args.cases) != 1:
+        raise SystemExit("질문 CSV는 하나만 받는다(--blind만 여러 개)")
+    args.cases = args.cases[0]
     if "test" in Path(args.cases).name:
         raise SystemExit("확인용 P 세트는 3단계 전까지 열지 않는다")
 
