@@ -17,9 +17,9 @@ def _runs():
 def test_sheet_sections_and_grouping():
     q30, fu = _runs()
     text, key = build_sheet(q30, fu, random.Random(3), label="v17-s4")
-    assert "## 30문항" in text and "## 이어지는 질문" in text
-    assert text.count("**답 ") == 2 + 2 + 2  # q01 묶음 1 + q02 2 / d01-1 2 / d01-2는 앞 대화가 달라 2
-    assert "### q02 (함정)" in text and "- 기대 근거:" in text
+    assert "# 30문항 절" in text and "# 이어지는 질문 절" in text
+    assert text.count("**답 ") == 1 + 2 + 2 + 2  # q01 묶음 1 + q02 2 / d01-1 2 / d01-2는 앞 대화가 달라 2
+    assert "## q02 (함정)" in text and "## d01-2 (대화 d01, 2턴)" in text and "- 기대 근거:" in text
     assert "m0" not in text and "strip" not in text and "r1" not in text
     assert "함정이 아닌 문항의 '찾지 못함'은 오답" in text
 
