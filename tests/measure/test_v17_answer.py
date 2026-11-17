@@ -129,3 +129,109 @@ def test_diagnostic_pages_from_bundle():
     assert conn.calls[-1][1] == ("v17-a", MODEL, [34])
     assert DIAG_TEXT in rec.prompt() and "운영 진단" not in rec.prompt()
     assert body["found"]
+
+
+# ── 측정 실행기 measure.stage2 main: 한 벌 경로(가짜 get_deps·bundle_fns·연결, AI·DB 없음) ──
+import csv as _csv  # noqa: E402
+import sys  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+class StoredConn(BundleConn):
+    def __init__(self, stored):
+        super().__init__()
+        self.stored = stored
+
+    def execute(self, sql, params):
+        self.calls.append((sql, params))
+        self._rows = [(1,)] if "SELECT 1" in sql and params[0] in self.stored else []
+        return self
+
+
+def run_stage2(monkeypatch, tmp_path, methods, stored=("v17-a",), rec=None):
+    import app.ask.routes
+    import app.core.config
+    import app.core.db
+    import evaluation.run_config
+    import ingest.__main__
+    import measure.stage2 as stage2
+    import measure.v17_answer
+
+    (tmp_path / "evaluation" / "results").mkdir(parents=True)
+    (tmp_path / "measure").mkdir(exist_ok=True)
+    cases = tmp_path / "cases.csv"
+    cases.write_text("id,card,type,model_id,question,expected_ref\nq1,1,paraphrase,%s,필터 청소는?,manual:20\n" % MODEL,
+                     encoding="utf-8")
+    rec, bundle_calls = rec or Recorder('{"found": false}'), []
+    bundle_search = lambda m, v, q, k: [Chunk(1000007, "manual-lg-sq06fa1wds", "manual", "t", "https://x", 20, BUNDLE_TEXT, 0.1)]
+
+    def fake_bundle_fns(name, models, get_conn):
+        bundle_calls.append(name)
+        return bundle_search, lambda m: []
+
+    monkeypatch.setattr(ingest.__main__, "load_env", lambda: None)
+    monkeypatch.setattr(app.ask.routes, "get_deps", rec.deps)
+    monkeypatch.setattr(app.core.config, "get_settings", lambda: S)
+    monkeypatch.setattr(app.core.db, "get_conn", lambda: StoredConn(stored))
+    monkeypatch.setattr(evaluation.run_config, "warn_if_different", lambda s: [])
+    monkeypatch.setattr(measure.v17_answer, "bundle_fns", fake_bundle_fns)
+    monkeypatch.setattr(stage2, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["stage2", str(cases), "--methods", *methods, "--label", "lab"])
+    stage2.main()
+    return rec, bundle_calls
+
+
+def test_stage2_bundle_path_uses_bundle_deps_and_records_bundles(monkeypatch, tmp_path):
+    import json as _json
+    rec, bundle_calls = run_stage2(monkeypatch, tmp_path, ["m0", "v17-a"])
+    assert bundle_calls and set(bundle_calls) == {"v17-a"}
+    out = next((tmp_path / "evaluation" / "results").glob("lab-*.csv"))
+    with out.open(encoding="utf-8-sig", newline="") as f:
+        rows = {r["method"]: r for r in _csv.DictReader(f)}
+    assert rows["m0"]["retrieved_chunk_ids"] == "7" and rows["v17-a"]["retrieved_chunk_ids"] == "1000007"
+    exp = _json.loads(out.with_suffix(".settings.json").read_text(encoding="utf-8"))["experiment"]
+    assert exp["bundles"] == ["v17-a"] and exp["search_methods"]["m0"] == "운영 검색"
+
+
+def test_stage2_stops_when_stored_bundle_name_is_a_method_name(monkeypatch, tmp_path):
+    # 저장된 한 벌 이름이 m0 같은 방법 이름이면 그 이름을 줘도 운영 검색이 조용히 돈다 → AI를 부르기 전에 멈춤
+    rec = None
+    with pytest.raises(SystemExit):
+        rec, _ = run_stage2(monkeypatch, tmp_path, ["m0"], stored=("m0",))
+    assert rec is None and not list((tmp_path / "evaluation" / "results").glob("*.csv"))
+
+
+class TwoStep(Recorder):
+    """deps마다 답변 AI가 처음엔 JSON이 아닌 글, 다시 물으면 찾지 못함을 돌려준다(원래 출력 두 개)"""
+    def deps(self):
+        import dataclasses
+        d, it = super().deps(), iter(["JSON 아님", '{"found": false}'])
+
+        def complete(messages):
+            self.messages.append(messages)
+            return next(it)
+        return dataclasses.replace(d, complete=complete)
+
+
+def raw_path(tmp_path):
+    import datetime
+    return tmp_path / "measure" / "out" / f"lab-{datetime.date.today().isoformat()}-raw.jsonl"
+
+
+def test_stage2_writes_raw_outputs_in_call_order_for_every_method(monkeypatch, tmp_path):
+    import json as _json
+    run_stage2(monkeypatch, tmp_path, ["m0", "v17-a"], rec=TwoStep())
+    lines = [_json.loads(x) for x in raw_path(tmp_path).read_text(encoding="utf-8").splitlines()]
+    assert lines == [{"id": "q1", "method": m, "raw_outputs": ["JSON 아님", '{"found": false}']} for m in ("m0", "v17-a")]
+    out = next((tmp_path / "evaluation" / "results").glob("lab-*.csv"))
+    assert "raw_outputs" not in out.read_text(encoding="utf-8-sig").splitlines()[0]  # 결과 CSV 열은 그대로
+
+
+def test_stage2_stops_when_raw_file_exists(monkeypatch, tmp_path):
+    raw_path(tmp_path).parent.mkdir(parents=True)
+    raw_path(tmp_path).write_text("keep", encoding="utf-8")
+    rec = TwoStep()
+    with pytest.raises(SystemExit):
+        run_stage2(monkeypatch, tmp_path, ["m0"], rec=rec)
+    assert raw_path(tmp_path).read_text(encoding="utf-8") == "keep" and rec.messages == []
