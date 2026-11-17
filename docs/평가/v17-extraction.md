@@ -490,7 +490,32 @@ $ git diff --stat 80be5fc f7cb77b -- app measure/v17_answer.py measure/search_ev
 
 ## 4단계(또는 회귀)
 
-(측정 후 채움)
+### 갈래 나: 쪽 표시 지우기 회귀 (Task 11, ⑱, 확인용 세트는 봉인 그대로)
+
+- **대상**: 운영 그대로와 쪽 표시만 지운 것(`strip_800`)
+- **실행**: 차례마다 30문항과 이어지는 질문을 함께 돌렸다. 순서는 운영 1회차 → 쪽 표시 1회차 → 쪽 표시 2회차 → 운영 2회차다.
+  - 30문항: `python -m evaluation --label v17-s4-<벌>-<회차>`, 쪽 표시만 지운 것은 `--bundle strip_800`을 붙였다.
+  - 이어지는 질문: `python -m evaluation --followups --label v17-s4fu-<벌>-<회차>`, 쪽 표시만 지운 것은 `--bundle strip_800`을 붙였다.
+- **실행 수**: 30문항 30 × 4 = 120회, 이어지는 질문 31턴 × 4 = 124회, 합계 244회. 질문 바꾸기는 이어지는 질문 실행마다 17회(18턴 중)로, 68회다.
+- **오류**: 0. 8개 실행 모두 운영 기본값과 다른 설정이 없고(`differences: []`), 쪽 표시만 지운 것의 설정 파일에는 `bundle: strip_800`이 적혔다.
+  - 쪽 표시만 지운 것의 설명서 조각 번호는 모두 실험 조각 번호이고, 운영 그대로에는 실험 조각 번호가 없다.
+- 실행이 모두 끝날 때까지 측정 코드를 고치지 않았다.
+- **비용**: 예상 약 0.094~0.183달러. evaluation 결과에는 토큰 열이 없어 실제 비용을 토큰으로 세지 못했다. 답변을 1회씩 했다면 약 0.094달러(답변 244회 × 0.0365센트 + 바꾸기 68회 × 0.007센트)이고, 다시 부른 수는 알 수 없다(확인하지 못함).
+- **한계**: evaluation 경로는 답변 AI의 원래 출력을 남기지 않는다(stage2만 `-raw.jsonl`을 씀). 그대로 진행했다.
+- **판정 전 기록**: 결과 CSV는 방법 이름이 들어 있어 판정이 끝날 때까지 커밋하지 않는다.
+  - evaluation이 함께 만든 30문항 리포트 4개(`docs/평가/2026-11-17-v17-s4-*.md`)도 같은 이유로 판정 뒤에 커밋한다.
+  - 결과 CSV 8개의 SHA-256(LF 기준)은 아래와 같다. 대응표 해시는 판정지를 만든 뒤 따로 커밋한다.
+
+| 결과 CSV | SHA-256 |
+|---|---|
+| `evaluation/results/v17-s4-m0-r1-2026-11-17.csv` | `cc3a57352316509742c279c3cf1467631916282bef35502b20489bc3af530949` |
+| `evaluation/results/v17-s4-m0-r2-2026-11-17.csv` | `349052c22125c6cd48ccdfaade34c462c77b50b207b5a76616759a8d5aaed309` |
+| `evaluation/results/v17-s4-strip-r1-2026-11-17.csv` | `1843a5c5d5c7773f781df52ed5fba064d5d4d0109ba9d2b7b1cd334e71d16147` |
+| `evaluation/results/v17-s4-strip-r2-2026-11-17.csv` | `1d5c5e657c5fc0d316c7c6707bfeae64e8afd51b8e3d961f36ee31e9172d2adb` |
+| `evaluation/results/v17-s4fu-m0-r1-2026-11-17.csv` | `0a52f91448f807147bb2460210ed99f1ea9be3990ff0765528cdbed7639aed74` |
+| `evaluation/results/v17-s4fu-m0-r2-2026-11-17.csv` | `1d2091ebb39197f164fc9fb327659d3d1507ef71ae630ba49239d3d4aea44324` |
+| `evaluation/results/v17-s4fu-strip-r1-2026-11-17.csv` | `5ddf1e0813006ecdb20a72818c50fcbddf16ee21408a6eadc0349997b5ad0684` |
+| `evaluation/results/v17-s4fu-strip-r2-2026-11-17.csv` | `73985b8c5e333f8b1ae84920b673ac015a6d9e5b4d6633ce3b7071f652f2a22d` |
 
 ## 한계: 확인용 세트를 본 일 (2026-11-16)
 
