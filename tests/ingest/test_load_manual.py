@@ -20,3 +20,10 @@ def test_manual_chunks_keep_page_number_outside_front_window(monkeypatch):
     _fake_pages(monkeypatch, [(5, body)])
     chunks, _ = build_chunks(MANUAL)
     assert chunks == [(5, body)]  # 끝 검사는 하지 않는다(측정한 strip_800과 같음)
+
+
+def test_manual_chunks_strip_after_clean_text(monkeypatch):
+    # "(cid:1)"는 clean_text가 지운다. 쪽 표시는 그 뒤에 지워야 한다(측정한 strip_800 순서)
+    _fake_pages(monkeypatch, [(3, "(cid:1)3\n세탁조 청소는 한 달에 한 번 하세요.")])
+    chunks, _ = build_chunks(MANUAL)
+    assert chunks == [(3, "세탁조 청소는 한 달에 한 번 하세요.")]
