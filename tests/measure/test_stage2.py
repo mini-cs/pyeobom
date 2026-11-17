@@ -75,3 +75,43 @@ def test_result_row_keeps_chunk_ids():
     r = result_row(case, "m2", resp, "", {"input_tokens": 100, "output_tokens": 10})
     assert r["retrieved_chunk_ids"] == "180|317" and r["retrieved_refs"] == "manual:42|guide:g"
     assert set(r) == set(COLUMNS)
+
+
+from measure.stage2 import write_blind  # noqa: E402
+
+
+def _csv(path, rows):
+    import csv as _csv_mod
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        w = _csv_mod.DictWriter(f, fieldnames=["id", "method", "type", "question", "expected_ref", "answer"])
+        w.writeheader()
+        w.writerows(rows)
+
+
+def test_write_blind_merges_runs_into_one_sheet(tmp_path, monkeypatch):  # v1.7 3단계: 두 회차를 한 장에, 같은 답은 묶음
+    import json
+    import measure.stage2 as s2
+    monkeypatch.setattr(s2, "ROOT", tmp_path)
+    (tmp_path / "measure" / "out").mkdir(parents=True)
+    base = {"type": "paraphrase", "question": "질문", "expected_ref": "manual:1"}
+    r1, r2 = tmp_path / "v17-s3-r1-2026-11-17.csv", tmp_path / "v17-s3-r2-2026-11-17.csv"
+    _csv(r1, [base | {"id": "p01-1", "method": "m0", "answer": "A"}, base | {"id": "p01-1", "method": "strip_800", "answer": "B"}])
+    _csv(r2, [base | {"id": "p01-1", "method": "m0", "answer": "A"}, base | {"id": "p01-1", "method": "strip_800", "answer": "C"}])
+    sheet = write_blind([r1, r2], {}, label="v17-s3")
+    assert sheet.name == "v17-s3-blind-sheet.md"
+    text = sheet.read_text(encoding="utf-8")
+    assert text.count("**답 ") == 3  # A는 두 회차가 같아 한 번만
+    assert "m0" not in text and "strip_800" not in text and "r1" not in text
+    key = json.loads((tmp_path / "measure" / "out" / "v17-s3-blind-key.json").read_text(encoding="utf-8"))
+    assert {(k["method"], k["run"]) for k in key} == {("m0", r1.stem), ("strip_800", r1.stem), ("m0", r2.stem), ("strip_800", r2.stem)}
+    no = {(k["method"], k["run"]): k["no"] for k in key}
+    assert no[("m0", r1.stem)] == no[("m0", r2.stem)] != no[("strip_800", r1.stem)]
+
+
+def test_write_blind_single_csv_keeps_old_names(tmp_path, monkeypatch):
+    import measure.stage2 as s2
+    monkeypatch.setattr(s2, "ROOT", tmp_path)
+    (tmp_path / "measure" / "out").mkdir(parents=True)
+    r = tmp_path / "stage2-pdev-2026-11-10.csv"
+    _csv(r, [{"id": "p01-1", "method": "m0", "type": "paraphrase", "question": "q", "expected_ref": "", "answer": "A"}])
+    assert write_blind(r, {}).name == "stage2-blind-sheet.md"
