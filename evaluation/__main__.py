@@ -27,8 +27,10 @@ def _mark(v) -> str:
 def write_report(path: Path, label: str, args, summary: dict, rows: list[dict], diffs: list[str] | None = None) -> None:
     lines = [
         f"# 평가 리포트 {label} ({datetime.date.today()})", "",
-        f"- 실행: `python -m evaluation --label {args.label} --prompt {args.prompt} --search {args.search}`",
+        f"- 실행: `python -m evaluation --label {args.label} --prompt {args.prompt} --search {args.search}"
+        + (f" --bundle {args.bundle}`" if args.bundle is not None else "`"),
         "- 문항: `evaluation/questions.csv` 30개 (2026-10-28 고정)",
+        *([f"- v1.7 실험 조각 한 벌: {args.bundle}"] if args.bundle is not None else []),
         f"- 실행 설정: 결과 CSV 옆 `.settings.json`. " + ("**⚠ 운영 기본값과 다름: " + ", ".join(diffs) + "**" if diffs else "운영 기본값과 같음"), "",
         "## 요약", "",
         "| 정답률 | 근거 적중률 | 환각률 | 오류율 | 응답 시간 평균 | 최대 | 실패: 검색 | 실패: 답변 |",
