@@ -27,8 +27,10 @@ def _mark(v) -> str:
 def write_report(path: Path, label: str, args, summary: dict, rows: list[dict], diffs: list[str] | None = None) -> None:
     lines = [
         f"# 평가 리포트 {label} ({datetime.date.today()})", "",
-        f"- 실행: `python -m evaluation --label {args.label} --prompt {args.prompt} --search {args.search}`",
+        f"- 실행: `python -m evaluation --label {args.label} --prompt {args.prompt} --search {args.search}"
+        + (f" --bundle {args.bundle}`" if args.bundle is not None else "`"),
         "- 문항: `evaluation/questions.csv` 30개 (2026-10-28 고정)",
+        *([f"- v1.7 실험 조각 한 벌: {args.bundle}"] if args.bundle is not None else []),
         f"- 실행 설정: 결과 CSV 옆 `.settings.json`. " + ("**⚠ 운영 기본값과 다름: " + ", ".join(diffs) + "**" if diffs else "운영 기본값과 같음"), "",
         "## 요약", "",
         "| 정답률 | 근거 적중률 | 환각률 | 오류율 | 응답 시간 평균 | 최대 | 실패: 검색 | 실패: 답변 |",
@@ -47,14 +49,14 @@ def write_report(path: Path, label: str, args, summary: dict, rows: list[dict], 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _run_followups(args, settings, get_deps, answer_question, AppError, write_settings) -> None:
+def _run_followups(args, settings, get_deps, answer_question, AppError, write_settings, bundle_deps) -> None:
     from evaluation.followups import RESULT_COLUMNS, load_followups, run_all, summarize_followups
 
     from evaluation.contexts import capture_contexts
     captured: list[list[str]] = []  # 턴 순서대로(run_all이 대화·턴 순서로 부름)
 
     def client(model_id, question, history):
-        deps = get_deps()
+        deps = bundle_deps(get_deps())
         if args.save_contexts:
             captured.append([])
             deps = capture_contexts(deps, captured[-1])
@@ -69,7 +71,7 @@ def _run_followups(args, settings, get_deps, answer_question, AppError, write_se
         writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
         writer.writeheader()
         writer.writerows(rows)
-    write_settings(out_csv, settings, args.label)
+    write_settings(out_csv, settings, args.label, experiment={"bundle": args.bundle} if args.bundle is not None else None)
     if args.save_contexts:  # DeepEval용 근거 본문(설명서 원문, 커밋 금지: .gitignore *-contexts.json)
         contexts = {f"{r['dialog_id']}-{r['turn']}": c for r, c in zip(rows, captured)}
         (out_csv.parent / f"{args.label}-contexts.json").write_text(json.dumps(contexts, ensure_ascii=False), encoding="utf-8")
@@ -85,6 +87,7 @@ def main() -> None:
     parser.add_argument("--save-contexts", action="store_true",
                         help="AI에 넘긴 조각 본문을 evaluation/results/<label>-contexts.json에 저장(DeepEval용, 커밋 금지)")
     parser.add_argument("--followups", action="store_true", help="이어지는 질문 세트(evaluation/followups.csv)를 대화별로 실행")
+    parser.add_argument("--bundle", help="v1.7 실험 조각 한 벌 이름(measure/bundle_chunks.sql). 검색·진단 안내 쪽을 그 한 벌에서")
     args = parser.parse_args()
 
     load_env()
@@ -99,14 +102,23 @@ def main() -> None:
     settings = replace(get_settings(), prompt_version=args.prompt, search_mode=args.search)
     from evaluation.run_config import warn_if_different, write_settings
     diffs = warn_if_different(settings)  # 로컬 .env 실험 설정이 섞이면 시작할 때 알린다
+    bundle_deps = lambda deps: deps
+    if args.bundle is not None:  # 빈 이름("")·저장 안 된 이름은 bundle_fns에서 멈춘다
+        if args.search != "vector":
+            raise SystemExit("--bundle은 벡터 검색(--search vector)에서만 써서 멈춤")
+        from app.catalog.registry import load_models
+        from app.core.db import get_conn
+        from measure.v17_answer import bundle_deps as _bundle_deps
+        models = {m["id"]: m for m in load_models()}
+        bundle_deps = lambda deps: _bundle_deps(deps, args.bundle, models, get_conn)
     if args.followups:
-        return _run_followups(args, settings, get_deps, answer_question, AppError, write_settings)
+        return _run_followups(args, settings, get_deps, answer_question, AppError, write_settings, bundle_deps)
     with (ROOT / "evaluation" / "questions.csv").open(encoding="utf-8-sig", newline="") as f:
         cases = list(csv.DictReader(f))
 
     rows, scores, contexts = [], [], {}
     for case in cases:
-        deps = get_deps()
+        deps = bundle_deps(get_deps())
         if args.save_contexts:
             contexts[case["id"]] = []
             deps = capture_contexts(deps, contexts[case["id"]])
@@ -131,7 +143,7 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
-    write_settings(out_csv, settings, args.label)
+    write_settings(out_csv, settings, args.label, experiment={"bundle": args.bundle} if args.bundle is not None else None)
     if args.save_contexts:
         (out_csv.parent / f"{args.label}-contexts.json").write_text(json.dumps(contexts, ensure_ascii=False), encoding="utf-8")
     summary = summarize(scores)

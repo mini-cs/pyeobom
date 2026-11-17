@@ -11,6 +11,7 @@ import argparse
 import csv
 import dataclasses
 import datetime
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -130,7 +131,7 @@ def write_blind(result_csv: Path, notes: dict[str, str]) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("cases")
-    ap.add_argument("--methods", nargs="+", default=["m0", "m2", "m12"])
+    ap.add_argument("--methods", nargs="+", default=["m0", "m2", "m12"], help="m0 등 또는 저장된 v1.7 실험 조각 한 벌 이름")
     ap.add_argument("--label")
     ap.add_argument("--blind", action="store_true", help="cases 자리에 2단계 결과 CSV를 주면 방법 이름을 가린 판정지를 만든다")
     args = ap.parse_args()
@@ -160,29 +161,53 @@ def main() -> None:
         with get_conn() as conn:  # 운영 검색처럼 호출마다 접속(시간 비교를 같게)
             return search_vector(conn, model_id, vec, k, variant=variant)
 
+    from measure.v17_bundle import bundle_exists
+    with get_conn() as conn:  # 방법 이름과 같은 한 벌이 저장돼 있으면 그 이름으로 운영 검색이 조용히 돈다
+        if clash := [m for m in args.methods if m in METHODS and bundle_exists(conn, m)]:
+            raise SystemExit(f"방법 이름과 같은 실험 조각 한 벌이 저장돼 있어 멈춤: {clash}")
+    bundles = [m for m in args.methods if m not in METHODS]
+    if bundles:
+        from app.catalog.registry import load_models
+        from measure.v17_answer import bundle_deps
+        if settings.search_mode != "vector":
+            raise SystemExit("실험 조각 한 벌은 벡터 검색(search_mode=vector)에서만 써서 멈춤")
+        models = {m["id"]: m for m in load_models()}
+        for b in bundles:  # 방법 이름도 저장된 한 벌도 아니면 AI를 부르기 전에 멈춤(bundle_fns)
+            bundle_deps(get_deps(), b, models, get_conn)
+
+    today = datetime.date.today().isoformat()
+    raw_out = ROOT / "measure" / "out" / f"{args.label}-{today}-raw.jsonl"  # 원래 출력은 측정 원자료라 git 밖에만(R36)
+    if raw_out.exists():
+        raise SystemExit(f"원래 출력 파일이 이미 있어 멈춤: {raw_out.name}")
     cases = read_cases(args.cases)
-    rows = []
+    rows, raws = [], []
     for i, case in enumerate(cases):
         for m in method_order(args.methods, i):
             deps = get_deps()
-            search, _ = method_fns(m, deps.search, variant_search, {})
-            deps = with_search(deps, search)
+            if m in METHODS:
+                search, _ = method_fns(m, deps.search, variant_search, {})
+                deps = with_search(deps, search)
+            else:
+                deps = bundle_deps(deps, m, models, get_conn)
+            raw, complete = [], deps.complete
+            deps = dataclasses.replace(deps, complete=lambda msgs, raw=raw, complete=complete: raw.append(complete(msgs)) or raw[-1])
             try:
                 resp, err = answer_question(case["model_id"], case["question"], deps, settings, debug=True), ""
             except AppError as e:
                 resp, err = {}, e.code
             rows.append(result_row(case, m, resp, err, deps.timings))
+            raws.append({"id": case["id"], "method": m, "raw_outputs": raw})
             print(case["id"], m, resp.get("found"), resp.get("latency_ms"), "|".join(resp.get("cited_refs", [])), err, flush=True)
 
-    today = datetime.date.today().isoformat()
     out = ROOT / "evaluation" / "results" / f"{args.label}-{today}.csv"
     with out.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS, lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
     summary = summarize_methods(rows)
-    write_settings(out, settings, args.label, experiment={"search_methods": {m: METHODS[m] for m in args.methods},
-                                                          "same_run": True, "summary": summary})
+    write_settings(out, settings, args.label, experiment={"search_methods": {m: METHODS.get(m, "v1.7 실험 조각 한 벌") for m in args.methods},
+                                                          "same_run": True, "summary": summary}
+                                                         | ({"bundles": bundles} if bundles else {}))
     lines = [f"# 2단계 사람 판정 목록 ({args.label}, {today})", "",
              "같은 문장의 답이 앞 방법과 글자까지 같으면 '같음'으로 표시(판정을 이어받음). 함정은 B 기준(지어내지 않고 없다고 밝히면 정답).", "",
              "| id | 질문 | " + " | ".join(args.methods) + " |", "|---|---|" + "---|" * len(args.methods)]
@@ -195,6 +220,8 @@ def main() -> None:
         trap = " (함정)" if by_id[j["id"]]["type"] == "trap" else ""
         lines.append(f"| {j['id']}{trap} | {by_id[j['id']]['question']} | " + " | ".join(cells) + " |")
     (ROOT / "measure" / "out").mkdir(exist_ok=True)
+    with raw_out.open("x", encoding="utf-8") as f:  # "x": 그사이 생긴 파일도 덮어쓰지 않음
+        f.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in raws)
     (ROOT / "measure" / "out" / f"{args.label}-judgment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(summary, "csv:", out.name)
 
