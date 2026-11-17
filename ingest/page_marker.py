@@ -1,4 +1,4 @@
-"""쪽 표시 지우기(v1.7 설계 6절). 운영 적재(ingest/clean.py)에는 연결하지 않는다."""
+"""쪽 표시 지우기(v1.7 설계 6절). 운영 적재는 설명서 경로에서 strip_page_marker를 쓴다(ingest/load.py, 결정기록 032)."""
 import re
 
 from ingest.plaintext import PlainPage
