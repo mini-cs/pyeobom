@@ -4,6 +4,7 @@ from pathlib import Path
 from ingest.chunk import chunk_pages
 from ingest.clean import clean_text, drop_out_of_scope
 from ingest.html import extract_html
+from ingest.page_marker import strip_page_marker
 from ingest.pdf import extract_pages
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +18,8 @@ def build_chunks(doc: dict) -> tuple[list[tuple[int | None, str]], int]:
     """(쪽 번호 또는 None, 조각 글자) 목록과 적용 범위 밖이라 뺀 문단 수."""
     path = str(ROOT / doc["file"])
     if doc["doc_type"] == "manual":
-        return chunk_pages([(page, clean_text(text)) for page, text in extract_pages(path)]), 0
+        # 쪽 표시(앞 20자 안 쪽 번호)를 지운다: v1.7 결정기록 032, 측정한 strip_800과 같은 흐름(끝 검사 끔)
+        return chunk_pages([(page, strip_page_marker(clean_text(text), page)[0]) for page, text in extract_pages(path)]), 0
     text = extract_html(path, doc["content_selector"], doc["title"])
     text, dropped = drop_out_of_scope(text, doc.get("exclude_keywords", []))
     return [(None, t) for _, t in chunk_pages([(0, text)])], dropped  # 가이드는 쪽이 없어 page = NULL
