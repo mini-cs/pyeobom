@@ -25,6 +25,7 @@ class Settings:
     rewrite_timeout_s: float = 5
     rewrite_max_output_tokens: int = 300  # 추론 토큰 포함. 실제 사용분만 과금되므로 여유 있게
     rewrite_reasoning_effort: str = "none"  # 계획 2 Task 6 채택(B): 같은 정확도에서 추론 토큰을 쓰지 않음(결정기록 023)
+    openai_embed_dimensions: int | None = None  # 비면 임베딩 요청에 dimensions를 넣지 않는다(v1.9, 지금 운영 그대로)
 
 
 @lru_cache
@@ -36,6 +37,7 @@ def get_settings() -> Settings:
         openai_embed_model=env("OPENAI_EMBED_MODEL", ""),
         openai_chat_model=env("OPENAI_CHAT_MODEL", ""),
         embed_dim=int(env("EMBED_DIM") or 0),
+        openai_embed_dimensions=int(env("OPENAI_EMBED_DIMENSIONS") or 0) or None,
         top_k=int(env("TOP_K") or 5),
         max_question_len=int(env("MAX_QUESTION_LEN") or 500),
         # .env.example은 OpenAI 쪽 이름(OPENAI_MAX_OUTPUT_TOKENS)을 쓴다

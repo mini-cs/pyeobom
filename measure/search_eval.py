@@ -33,7 +33,7 @@ def metrics(ranks: list[int | None]) -> dict:
 
 
 def run_eval(cases: list[dict], embed: Callable, search: Callable, diagnostic: Callable,
-             transform: Callable[[str, str], str] | None = None, top_k: int = TOP_K) -> list[dict]:
+             transform: Callable[[str, str], str] | None = None, top_k: int = TOP_K, depth: int = DEPTH) -> list[dict]:
     """transform(가린 질문, model_id) → 검색에 쓸 질문. 검색 개선 실험(M3 등)이 끼울 자리"""
     rows = []
     for c in cases:
@@ -43,11 +43,11 @@ def run_eval(cases: list[dict], embed: Callable, search: Callable, diagnostic: C
         query = mask_pii(c["question"])[0]
         if transform:
             query = transform(query, c["model_id"])
-        chunks = search(c["model_id"], embed(query), query, DEPTH)
+        chunks = search(c["model_id"], embed(query), query, depth)
         top = chunks[:top_k]
         extra = [d for d in diagnostic(c["model_id"]) if d.id not in {x.id for x in top}] if needs_diagnostic(query, top) else []
         diag, diag_ids = [d.ref for d in extra], [str(d.id) for d in extra]
-        rank = expected_rank(chunks, refs)
+        rank = expected_rank(chunks, refs, depth)
         rows.append({"id": c["id"], "model_id": c["model_id"], "expected_ref": c["expected_ref"], "rank": rank,
                      "top5": "|".join(x.ref for x in top), "diag": "|".join(diag),
                      "top5_ids": "|".join(str(x.id) for x in top), "diag_ids": "|".join(diag_ids),

@@ -14,8 +14,10 @@ PRODUCTION = {
     "rewrite_model": "gpt-6-luna",
     "rewrite_reasoning_effort": "none",
     "rewrite_max_output_tokens": 300,
+    "openai_embed_model": "text-embedding-3-small",  # 임베딩 모델 바꾸기(v1.9): 반영 전까지 지금 운영 그대로
+    "openai_embed_dimensions": None,
 }
-RECORDED = list(PRODUCTION) + ["openai_embed_model", "max_output_tokens", "rewrite_timeout_s", "max_question_len"]
+RECORDED = list(PRODUCTION) + ["max_output_tokens", "rewrite_timeout_s", "max_question_len"]
 
 
 def run_settings(settings) -> dict:

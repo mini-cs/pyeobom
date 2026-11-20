@@ -21,3 +21,16 @@ def test_settings_defaults(monkeypatch):
     assert (s.top_k, s.max_question_len, s.max_output_tokens, s.prompt_version, s.search_mode, s.force_fail) == (5, 500, 600, "v1", "vector", False)
     assert s.reasoning_effort == "low"   # 결정기록 017: v1은 low
     get_settings.cache_clear()
+
+
+def test_settings_dimensions_from_env(monkeypatch):  # 임베딩 모델 바꾸기(v1.9) Task 1: "" → None, "1536" → 1536
+    monkeypatch.setenv("OPENAI_EMBED_DIMENSIONS", "")
+    get_settings.cache_clear()
+    assert get_settings().openai_embed_dimensions is None
+    monkeypatch.delenv("OPENAI_EMBED_DIMENSIONS")
+    get_settings.cache_clear()
+    assert get_settings().openai_embed_dimensions is None
+    monkeypatch.setenv("OPENAI_EMBED_DIMENSIONS", "1536")
+    get_settings.cache_clear()
+    assert get_settings().openai_embed_dimensions == 1536
+    get_settings.cache_clear()
