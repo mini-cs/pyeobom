@@ -17,7 +17,8 @@ from functools import partial
 from pathlib import Path
 
 from ingest.describe import (CANDIDATE_CONTEXT, DESC_PATH, MAX_DESC_LEN, MAX_OUTPUT_TOKENS, ContextItem, ContextSpec,
-                             build_prompt, context_items, describe_all, embedding_input, prompt_sha256, record_key)
+                             MissingDescriptions, build_prompt, context_items, describe_all, describe_chunk,
+                             embedding_input, prompt_sha256, record_key, stored_key)
 from ingest.load import ROOT
 from measure.emb_large import EmbedSpec, production_chunks, store_reembedded, text_mismatches
 from measure.stage2 import PRICE_IN, PRICE_OUT
@@ -28,7 +29,7 @@ SMALL = EmbedSpec("text-embedding-3-small", None)  # 운영과 같은 모델, di
 OUT = ROOT / "measure" / "out" / "chunk-context"
 SAMPLE_SEED = 20261121  # 결정기록 037
 PRICE_SMALL_PER_CHAR = 2e-8  # 0.02달러/100만 토큰, 글자 = 토큰 가정
-USAGE = ("사용법: python -m measure.chunk_context estimate | describe | sample | store | verify | measure [--out 폴더]"
+USAGE = ("사용법: python -m measure.chunk_context estimate | describe [--limit N] | sample | store | verify | measure [--out 폴더]"
          " | latency <r1 CSV> <r2 CSV> | check-ingest")
 
 
@@ -84,26 +85,41 @@ def store_contextual(conn, pairs: list[tuple[BundleChunk, ContextItem]], descrip
                             inputs=[embedding_input(d, c.content) for d, c in zip(descriptions, chunks)])
 
 
-def _records(items: list[ContextItem], spec: ContextSpec) -> list[dict]:
-    """items 순서대로 설명 파일의 기록(같은 키 첫 기록)."""
-    psha, found = prompt_sha256(), {}
-    for line in DESC_PATH.read_text(encoding="utf-8").splitlines():
+def describe_report(items: list[ContextItem], path: Path = DESC_PATH) -> dict:
+    """설명 파일에서 items의 모든 기록(실패 줄 포함)을 모아 수·토큰·실제 비용·길이·해시를 센다. 설명 글은 넣지 않는다."""
+    psha = prompt_sha256()
+    keys = list(dict.fromkeys(record_key(i, CANDIDATE_CONTEXT, psha) for i in items))
+    recs: dict[tuple, list[dict]] = defaultdict(list)
+    for line in path.read_text(encoding="utf-8").splitlines() if path.exists() else []:
         r = json.loads(line)
-        found.setdefault((r["doc_id"], r["page"], r["content_sha256"], r["model"], r["effort"], r["prompt_sha256"]), r)
-    return [found[record_key(i, spec, psha)] for i in items]
+        recs[stored_key(r)].append(r)
+    ok = {k: next(r["description"] for r in recs[k] if r["description"]) for k in keys if any(r["description"] for r in recs[k])}
+    descs = [(ok[k], i) for i in items if (k := record_key(i, CANDIDATE_CONTEXT, psha)) in ok]
+    mine = [r for k in keys for r in recs[k]]  # 이 조각들의 모든 시도(두 번 실패한 줄 포함)
+    tin, tout = sum(r["input_tokens"] for r in mine), sum(r["output_tokens"] for r in mine)
+    lens = [len(d) for d, _ in descs]
+    return {"items": len(items), "described": len(descs), "failed": len(items) - len(descs),
+            "calls": sum(r["attempts"] for r in mine), "retried": sum(sum(r["attempts"] for r in recs[k]) > 1 for k in keys),
+            "empty": sum(not d for d, _ in descs), "over_150": sum(n > MAX_DESC_LEN for n in lens),
+            "input_tokens": tin, "output_tokens": tout, "cost_usd": (tin * PRICE_IN + tout * PRICE_OUT) / 1e6,
+            "len_min": min(lens, default=None), "len_avg": round(sum(lens) / len(lens), 1) if lens else None,
+            "len_max": max(lens, default=None),
+            "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None,
+            "flagged": sum(bool(unsupported_tokens(d, i)) for d, i in descs)}
 
 
-def describe_report(pairs, descs: list[str]) -> dict:
-    items = [i for _, i in pairs]
-    recs = _records(items, CANDIDATE_CONTEXT)
-    lens = [len(d) for d in descs]
-    tin, tout = sum(r["input_tokens"] for r in recs), sum(r["output_tokens"] for r in recs)
-    return {"items": len(items), "empty": sum(not d for d in descs), "over_150": sum(n > MAX_DESC_LEN for n in lens),
-            "retried": sum(r["attempts"] > 1 for r in recs), "input_tokens": tin, "output_tokens": tout,
-            "cost_usd": round((tin * PRICE_IN + tout * PRICE_OUT) / 1e6, 6),
-            "len_min": min(lens), "len_avg": round(sum(lens) / len(lens), 1), "len_max": max(lens),
-            "file_sha256": hashlib.sha256(DESC_PATH.read_bytes()).hexdigest(),
-            "flagged": sum(bool(unsupported_tokens(d, i)) for d, i in zip(descs, items))}
+def run_describe(pairs, *, limit: int | None = None, path: Path = DESC_PATH, call=describe_chunk, report=print) -> dict:
+    """운영 조각 id 순 앞 limit개(없으면 전부)의 설명을 쓰고 출력한다. 이미 쓴 조각은 부르지 않는다.
+    빠진 조각이 있으면 출력(실패 수·실패 시도 포함 토큰·실제 비용)을 먼저 내고 멈춘다."""
+    items = [i for _, i in pairs][:limit]
+    try:
+        describe_all(items, CANDIDATE_CONTEXT, path=path, call=call)
+    except MissingDescriptions:
+        report(describe_report(items, path))
+        raise
+    got = describe_report(items, path)
+    report(got)
+    return got
 
 
 def write_sample(pairs, descs: list[str]) -> dict:
@@ -126,11 +142,17 @@ def write_sample(pairs, descs: list[str]) -> dict:
 
 def latency_report(paths: list[Path]) -> dict:
     from measure.stage2 import paired_latency, parse_result_row, summarize_methods
+    if len({p.stem for p in paths}) != len(paths):  # 회차(run)를 파일 이름으로 가르므로 같으면 회차가 합쳐진다(검토 M3)
+        raise SystemExit("회차 CSV 이름이 같아 멈춤(파일 이름이 회차 이름)")
     rows = []
     for p in paths:
         with open(p, encoding="utf-8-sig", newline="") as f:
             rows += [parse_result_row(r) | {"run": p.stem} for r in csv.DictReader(f)]
-    return {"summary": summarize_methods(rows), "latency": paired_latency(rows, "m0", BUNDLE)}
+    def per_q(method):
+        costs = [r["cost_usd"] for r in rows if r["method"] == method]
+        return sum(costs) / len(costs)
+    return {"summary": summarize_methods(rows), "latency": paired_latency(rows, "m0", BUNDLE),
+            "cost_ratio": per_q(BUNDLE) / per_q("m0")}  # 후보 ÷ 운영, 두 회차 합친 질문당 비용(검토 M5)
 
 
 def check_ingest(conn, docs: list[dict], models: dict[str, dict], settings) -> dict:
@@ -162,7 +184,10 @@ def main() -> None:
         if out is None:
             raise SystemExit(USAGE)
         from measure.emb_large import measure
-        return measure(out, bundle=BUNDLE)
+        return measure(out, bundle=BUNDLE, out_root=OUT, label_prefix="ctx")  # measure/out/chunk-context/<out>/, 라벨 ctx-
+    limit = None
+    if cmd == "describe" and len(args) == 3 and args[1] == "--limit" and args[2].isdigit() and int(args[2]) > 0:
+        limit, args = int(args[2]), args[:1]  # 조각 id 순 앞 N개만(Task 3: --limit 1로 기록 형식·토큰 먼저 확인)
     if len(args) != 1 or cmd not in ("estimate", "describe", "sample", "store", "verify", "check-ingest"):
         raise SystemExit(USAGE)
 
@@ -189,8 +214,8 @@ def main() -> None:
             return print({"chunks": len(pairs), "content_chars": chars, "describe": estimate_describe(items),
                           "embed_cost_usd": round(embed, 6)})
         if cmd == "describe":
-            descs = describe_all(items, CANDIDATE_CONTEXT)  # 빠지면 MissingDescriptions(멈춤)
-            return print(describe_report(pairs, descs))
+            run_describe(pairs, limit=limit)  # 빠지면 출력 뒤 MissingDescriptions(멈춤)
+            return
         descs = describe_all(items, CANDIDATE_CONTEXT, allow_new=False)  # 아래는 설명을 새로 쓰지 않는다
         if cmd == "sample":
             return print(write_sample(pairs, descs))

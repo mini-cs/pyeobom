@@ -118,14 +118,20 @@ def record_key(item: ContextItem, spec: ContextSpec, prompt_sha: str) -> tuple:
     return (item.doc_id, item.page, _content_sha(item.content), spec.model, spec.effort, prompt_sha)
 
 
+def stored_key(r: dict) -> tuple:
+    """설명 파일 한 줄의 찾는 키(record_key와 같은 순서)."""
+    return (r["doc_id"], r["page"], r["content_sha256"], r["model"], r["effort"], r["prompt_sha256"])
+
+
 def _stored(path: Path) -> dict[tuple, str]:
+    """키 → 설명. 두 번 다 실패한 조각의 줄(description null)은 "설명 있음"으로 세지 않는다(줄 순서와 상관없이 성공 줄)."""
     if not path.exists():
         return {}
     found = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         r = json.loads(line)
-        key = (r["doc_id"], r["page"], r["content_sha256"], r["model"], r["effort"], r["prompt_sha256"])
-        found.setdefault(key, r["description"])
+        if r["description"]:
+            found.setdefault(stored_key(r), r["description"])
     return found
 
 
@@ -138,8 +144,9 @@ def _client():
 
 def describe_all(items: list[ContextItem], spec: ContextSpec, *, path: Path = DESC_PATH, client=None,
                  call=describe_chunk, allow_new: bool = True) -> list[str]:
-    """파일에 같은 키의 설명이 있으면 그대로 쓰고(부르지 않음), 없으면 최대 2회 불러 성공하는 즉시 파일에 덧붙인다.
-    끝까지 빠진 조각이 있으면 모두 돈 뒤 MissingDescriptions. allow_new=False면 부르지 않고 바로 낸다."""
+    """파일에 같은 키의 설명이 있으면 그대로 쓰고(부르지 않음), 없으면 최대 2회 불러 결과를 파일에 한 줄 덧붙인다
+    (두 번 다 실패하면 description null). 끝까지 빠진 조각이 있으면 모두 돈 뒤 MissingDescriptions.
+    allow_new=False면 부르지 않고 바로 낸다."""
     psha = prompt_sha256()
     stored = _stored(path)
     keys = [record_key(item, spec, psha) for item in items]
@@ -159,16 +166,17 @@ def describe_all(items: list[ContextItem], spec: ContextSpec, *, path: Path = DE
             tokens = {k: tokens[k] + usage.get(k, 0) for k in tokens}
             if desc:
                 break
-        if not desc:
-            failed += 1
-            out.append("")
-            continue
+        # 두 번 다 실패해도 키·시도 횟수·토큰을 description null로 남긴다(다시 돌린 수와 실제 비용을 세기 위해, 검토 M1)
         record = {"doc_id": item.doc_id, "page": item.page, "content_sha256": key[2], "model": spec.model,
-                  "effort": spec.effort, "prompt_sha256": psha, "chunk_id": item.chunk_id, "description": desc,
+                  "effort": spec.effort, "prompt_sha256": psha, "chunk_id": item.chunk_id, "description": desc or None,
                   "attempts": attempt, **tokens, "created": datetime.datetime.now().isoformat(timespec="seconds")}
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        if not desc:
+            failed += 1
+            out.append("")
+            continue
         stored[key] = desc
         out.append(desc)
     if failed:
