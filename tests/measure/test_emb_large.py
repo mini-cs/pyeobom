@@ -188,3 +188,58 @@ def test_search_eval_bundle_uses_embed_for(monkeypatch):  # M1: search_eval --bu
         with pytest.raises(Stop):
             se.main()
         assert seen[0] is expect, extra
+
+
+# 조각 설명 붙이기(v1.95) Task 2
+def test_embed_for_ctx_bundle_is_production():
+    base = lambda q: [0.0]
+    assert el.embed_for("ctx_small", base) is base  # 질문 임베딩은 운영 그대로(small)
+
+
+def test_store_reembedded_embeds_inputs_but_stores_content(monkeypatch):
+    monkeypatch.setattr(el, "bundle_exists", lambda conn, name: False)
+    calls, conn = [], FakeConn()
+
+    def embed(texts, *, model, dimensions):
+        calls.append((list(texts), model, dimensions))
+        return [[float(i)] for i in range(len(texts))]
+
+    small = el.EmbedSpec("text-embedding-3-small", None)
+    inputs = ["설명 가\n가이드 본문", "설명 나\n설명서 본문"]
+    n = el.store_reembedded("ctx_small", CHUNKS, small, conn=conn, embed=embed, inputs=inputs)
+    assert calls == [(inputs, "text-embedding-3-small", None)]
+    (sql, rows), = conn.inserted
+    assert rows == [("ctx_small", 299, "guide-a", None, "가이드 본문", [0.0]), ("ctx_small", 336, "manual-x", 3, "설명서 본문", [1.0])]
+    assert n == 2
+
+
+def test_store_reembedded_refuses_inputs_length_mismatch(monkeypatch):
+    monkeypatch.setattr(el, "bundle_exists", lambda conn, name: False)
+    conn = FakeConn()
+    with pytest.raises(SystemExit):
+        el.store_reembedded("ctx_small", CHUNKS, el.CANDIDATE, conn=conn, inputs=["하나만"],
+                            embed=lambda *a, **k: pytest.fail("임베딩 전에 멈춰야 함"))
+    assert conn.inserted == []
+
+
+# 검토 M2(사용자 결정 2026-11-20): 저장 폴더·라벨을 인자로, emb_large 기본은 그대로
+def test_emb_large_measure_defaults_unchanged():
+    import inspect
+    params = inspect.signature(el.measure).parameters
+    assert params["out_root"].default == el.OUT == el.ROOT / "measure" / "out" / "v17"
+    assert params["label_prefix"].default == "emb" and params["bundle"].default == "emb_large"
+
+
+def test_write_outputs_paths_and_labels(tmp_path):
+    import json
+    from app.core.config import Settings
+    settings = Settings(openai_api_key="", database_url="", openai_embed_model="text-embedding-3-small",
+                        openai_chat_model="gpt-6-luna", embed_dim=1536)
+    rows = {("dev", None): [{"id": "a", "rank": 1}], ("dev", "ctx_small"): [{"id": "a", "rank": 3}]}
+    out = el.write_outputs(tmp_path / "ctx-stage1", "ctx", "ctx-stage1", rows, {"s": 1}, settings)
+    assert out == tmp_path / "ctx-stage1"
+    assert {p.name for p in out.iterdir()} == {"dev-production.csv", "dev-production.settings.json", "dev-ctx_small.csv",
+                                               "dev-ctx_small.settings.json", "summary.json", "buckets.json"}
+    label = json.loads((out / "dev-ctx_small.settings.json").read_text(encoding="utf-8"))["label"]
+    assert label == "ctx-ctx-stage1-dev"
+    assert json.loads((out / "buckets.json").read_text(encoding="utf-8"))["dev"]["ctx_small"]["1-5"] == 1

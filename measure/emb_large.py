@@ -49,12 +49,17 @@ def production_chunks(conn) -> list[BundleChunk]:
     return [BundleChunk(*r) for r in rows]
 
 
-def store_reembedded(name: str, chunks: list[BundleChunk], spec: EmbedSpec, *, conn, embed=None) -> int:
-    """본문 그대로 spec으로 모두 임베딩한 뒤 한 트랜잭션으로 같은 id·doc_id·page·content로 넣는다. 넣은 행 수."""
+def store_reembedded(name: str, chunks: list[BundleChunk], spec: EmbedSpec, *, conn, embed=None,
+                     inputs: list[str] | None = None) -> int:
+    """본문 그대로(inputs가 있으면 그 글을) spec으로 모두 임베딩한 뒤 한 트랜잭션으로 같은 id·doc_id·page·content로 넣는다.
+    저장 본문은 언제나 원문(c.content)이다(v1.95: 설명은 임베딩 입력에만). 넣은 행 수."""
+    if inputs is not None and len(inputs) != len(chunks):
+        raise SystemExit(f"임베딩 입력 수({len(inputs)})가 조각 수({len(chunks)})와 달라 멈춤")
     if bundle_exists(conn, name):
         raise SystemExit(f"이미 저장된 실험 조각 한 벌이라 멈춤: {name} (지우기는 사용자 확인 뒤)")
     conn.commit()  # 위 SELECT가 연 암묵 트랜잭션을 닫아, 임베딩 동안 트랜잭션이 열린 채 남지 않게
-    vectors = (embed or embed_texts)([c.content for c in chunks], model=spec.model, dimensions=spec.dimensions)
+    texts = inputs if inputs is not None else [c.content for c in chunks]
+    vectors = (embed or embed_texts)(texts, model=spec.model, dimensions=spec.dimensions)
     rows = [(name, c.id, c.doc_id, c.page, c.content, v) for c, v in zip(chunks, vectors, strict=True)]
     with conn.transaction(), conn.cursor() as cur:  # 임베딩을 다 받은 뒤에만 넣는다(일부만 들어간 한 벌 방지)
         cur.executemany(INSERT_SQL, rows)
@@ -94,14 +99,36 @@ def _production_rank_mismatches(rows: dict) -> list[tuple]:
     return out
 
 
-def measure(out_name: str = "emb-stage1") -> None:
+def write_outputs(out: Path, label_prefix: str, out_name: str, rows: dict, summary: dict, settings) -> Path:
+    """벌·세트마다 순위 CSV와 settings, summary.json·buckets.json을 out 폴더에. settings 라벨은 "<앞머리>-<out_name>-<세트>"."""
+    from evaluation.run_config import write_settings
+    out.mkdir(parents=True, exist_ok=True)
+    buckets: dict[str, dict] = {}
+    for (set_name, b), r in rows.items():
+        path = out / f"{set_name}-{b or 'production'}.csv"
+        with path.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(r[0]))
+            w.writeheader()
+            w.writerows(r)
+        spec = BUNDLE_EMBED.get(b)
+        write_settings(path, settings, f"{label_prefix}-{out_name}-{set_name}",
+                       experiment={"bundle": b, "set": set_name, "depth": 100,
+                                   "query_embed": {"model": spec.model, "dimensions": spec.dimensions} if spec else "운영 설정"})
+        buckets.setdefault(set_name, {})[b or "production"] = rank_buckets([x["rank"] for x in r])
+    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
+    (out / "buckets.json").write_text(json.dumps(buckets, ensure_ascii=False, indent=1), encoding="utf-8")
+    return out
+
+
+def measure(out_name: str = "emb-stage1", bundle: str = BUNDLE, out_root: Path = OUT, label_prefix: str = "emb") -> None:
+    """운영과 한 벌(bundle)을 한 실행 안에서 잰다. v1.95는 bundle·저장 폴더·라벨 앞머리만 바꿔 씀(검토 M2)."""
     from ingest.__main__ import load_env
     load_env()
     from app.ask.routes import get_deps
     from app.catalog.registry import load_models
     from app.core.config import get_settings
     from app.core.db import get_conn
-    from evaluation.run_config import warn_if_different, write_settings
+    from evaluation.run_config import warn_if_different
     from measure.search_eval import bundle_fns, read_cases
     from measure.v17_stage1 import SETS, guard_cases_path, measure_sets
 
@@ -116,25 +143,12 @@ def measure(out_name: str = "emb-stage1") -> None:
     deps = get_deps()
     fns = lambda b: (deps.search, deps.diagnostic) if b is None else bundle_fns(b, models, get_conn)
     cases = {k: read_cases(ROOT / p) for k, p in SETS.items()}
-    summary, rows = measure_sets(cases, [None, BUNDLE], deps.embed_query, fns, top_k=settings.top_k,
+    summary, rows = measure_sets(cases, [None, bundle], deps.embed_query, fns, top_k=settings.top_k,
                                  embed_for=embed_for, depth=100)
     if bad := _production_rank_mismatches(rows):
         raise SystemExit(f"운영 벌 1~20위가 2026-11-20 1단계와 달라 멈춤: {bad}")
-    out = OUT / out_name
-    out.mkdir(parents=True, exist_ok=True)
-    for (set_name, b), r in rows.items():
-        path = out / f"{set_name}-{b or 'production'}.csv"
-        with path.open("w", encoding="utf-8-sig", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(r[0]))
-            w.writeheader()
-            w.writerows(r)
-        spec = BUNDLE_EMBED.get(b)
-        write_settings(path, settings, f"emb-{out_name}-{set_name}",
-                       experiment={"bundle": b, "set": set_name, "depth": 100,
-                                   "query_embed": {"model": spec.model, "dimensions": spec.dimensions} if spec else "운영 설정"})
-    buckets = {s: {b or "production": rank_buckets([x["rank"] for x in rows[(s, b)]]) for b in (None, BUNDLE)} for s in cases}
-    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
-    (out / "buckets.json").write_text(json.dumps(buckets, ensure_ascii=False, indent=1), encoding="utf-8")
+    out = write_outputs(out_root / out_name, label_prefix, out_name, rows, summary, settings)
+    buckets = json.loads((out / "buckets.json").read_text(encoding="utf-8"))
     print(json.dumps({"summary": summary, "buckets": buckets}, ensure_ascii=False))
 
 

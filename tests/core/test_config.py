@@ -34,3 +34,17 @@ def test_settings_dimensions_from_env(monkeypatch):  # 임베딩 모델 바꾸�
     get_settings.cache_clear()
     assert get_settings().openai_embed_dimensions == 1536
     get_settings.cache_clear()
+
+
+def test_chunk_context_settings_from_env(monkeypatch):  # 조각 설명 붙이기(v1.95) Task 1: 없으면 꺼짐("")·추론 low
+    monkeypatch.delenv("CHUNK_CONTEXT_MODEL", raising=False)
+    monkeypatch.delenv("CHUNK_CONTEXT_REASONING_EFFORT", raising=False)
+    get_settings.cache_clear()
+    s = get_settings()
+    assert (s.chunk_context_model, s.chunk_context_reasoning_effort) == ("", "low")
+    monkeypatch.setenv("CHUNK_CONTEXT_MODEL", "gpt-6-luna")
+    monkeypatch.setenv("CHUNK_CONTEXT_REASONING_EFFORT", "medium")
+    get_settings.cache_clear()
+    s = get_settings()
+    assert (s.chunk_context_model, s.chunk_context_reasoning_effort) == ("gpt-6-luna", "medium")
+    get_settings.cache_clear()

@@ -14,15 +14,24 @@ def load_documents(path: str = "data/documents.json") -> list[dict]:
     return json.loads((ROOT / path).read_text(encoding="utf-8"))
 
 
-def build_chunks(doc: dict) -> tuple[list[tuple[int | None, str]], int]:
-    """(쪽 번호 또는 None, 조각 글자) 목록과 적용 범위 밖이라 뺀 문단 수."""
+def chunks_with_sources(doc: dict) -> tuple[list[tuple[int | None, str, str]], int]:
+    """(쪽 번호 또는 None, 조각 글자, 그 조각이 잘려 나온 글) 목록과 적용 범위 밖이라 뺀 문단 수.
+    잘려 나온 글은 조각 설명(v1.95)을 쓸 때 AI에게 주는 글이다: 설명서는 그 쪽 글, 가이드는 가이드 글 전체."""
     path = str(ROOT / doc["file"])
     if doc["doc_type"] == "manual":
         # 쪽 표시(앞 20자 안 쪽 번호)를 지운다: v1.7 결정기록 032, 측정한 strip_800과 같은 흐름(끝 검사 끔)
-        return chunk_pages([(page, strip_page_marker(clean_text(text), page)[0]) for page, text in extract_pages(path)]), 0
+        pages = [(page, strip_page_marker(clean_text(text), page)[0]) for page, text in extract_pages(path)]
+        source = dict(pages)
+        return [(page, t, source[page]) for page, t in chunk_pages(pages)], 0  # 조각은 쪽을 넘지 않는다
     text = extract_html(path, doc["content_selector"], doc["title"])
     text, dropped = drop_out_of_scope(text, doc.get("exclude_keywords", []))
-    return [(None, t) for _, t in chunk_pages([(0, text)])], dropped  # 가이드는 쪽이 없어 page = NULL
+    return [(None, t, text) for _, t in chunk_pages([(0, text)])], dropped  # 가이드는 쪽이 없어 page = NULL
+
+
+def build_chunks(doc: dict) -> tuple[list[tuple[int | None, str]], int]:
+    """(쪽 번호 또는 None, 조각 글자) 목록과 적용 범위 밖이라 뺀 문단 수."""
+    items, dropped = chunks_with_sources(doc)
+    return [(page, t) for page, t, _ in items], dropped
 
 
 def save(conn, doc: dict, chunks: list[tuple[int | None, str]], embeddings: list[list[float]]) -> None:

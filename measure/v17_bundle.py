@@ -12,6 +12,8 @@ from ingest.page_marker import strip_page_marker, strip_plain_page
 from ingest.plaintext import PlainPage, clean_plain_page, markdown_to_plain
 
 MANUAL_ID_BASE = 1_000_000  # 운영 chunks.id(2026-11-16 최대 335)와 겹치지 않게
+# 운영과 번호·글·쪽·문서가 같고 임베딩만 다른 벌(v1.9 임베딩 large, v1.95 조각 설명). 번호가 MANUAL_ID_BASE보다 작다
+SAME_TEXT_BUNDLES = frozenset({"emb_large", "ctx_small"})
 
 
 @dataclass
