@@ -97,6 +97,7 @@
   - 확인하지 못함: 문법 제약(`root ::= .*`)이 있는데 모델 출력에 깨진 바이트가 나오는 이유(네이티브 코드 안), `classify()`가 글자가 있는 PDF를 ocr로 고른 이유
   - v1.7 MinerU(GPU) 삼성·SQ06 출력도 ocr 모드(VLM이 옮겨 적은 글)였다.
 - **고치기**: 실행 옵션 `ocr_mode=txt`(계획 Task 3 Step 2의 허용 범위). 쪽을 나눠 돌리는 우회는 6쪽이 든 창이 ocr로 분류되면 같은 실패라 쓰지 않았다.
+  - (덧붙임 2026-11-20) `ocr_mode=txt`는 Claude Code가 계획 Task 3 Step 2 허용 범위에서 먼저 진행했고, 사용자가 진행 중에 승인함(2026-11-20). 기본 설정(auto)은 실행 오류로, txt는 조건 5로 탈락해 어느 쪽이든 결론은 같다.
   - 실행 스크립트: `experiments/v17_extract/run_mineru.py`에 넷째 인자 `ocr_mode`만 더한 사본(`measure/out/fable/run_mineru_ocrmode.py`, git 밖)
   - (덧붙임, 사용자 결정 2026-11-20: `ocr_mode=txt`로 계속) 같은 변경(넷째 인자 `ocr_mode`, 기본 `auto`)을 `experiments/v17_extract/run_mineru.py`에 커밋했다. 실행에 쓴 사본과 줄 끝을 빼면 내용이 같다(LF 기준 SHA-256 `218d2ba0…`). 재현 명령: `MINERU_MODEL_ONNX_DEVICE=gpu python experiments/v17_extract/run_mineru.py <PDF> measure/out/v17/extract/mineru-gpu/<doc_id>.json standard txt`
 - **v1.7과 방식이 다름**: v1.7 MinerU(GPU) 삼성·SQ06은 `ocr_mode=auto` → ocr 모드(VLM이 옮겨 적은 글)였고, 이번은 txt 모드(PDF 글자 층 + 레이아웃, VLM은 일부 블록만)다.
