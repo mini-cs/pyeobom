@@ -117,11 +117,27 @@ def test_write_lines_meta_has_counts_only(tmp_path, monkeypatch):
     assert (tmp_path / f"{DOCS[0]}-lines.txt").read_bytes().count(b"\r") == 0
 
 
-def test_fable_pages_stops_when_eliminated(tmp_path, monkeypatch):
+RAW = {d: [(1, "세탁 코스 설명 문장입니다.\n건조 코스 설명 문장입니다.")] for d in DOCS}
+
+
+def _cuts_file(tmp_path, monkeypatch, **over):
     monkeypatch.setattr(fs, "FABLE", tmp_path)
-    raw = {d: [(1, "세탁 코스 설명 문장입니다.\n건조 코스 설명 문장입니다.")] for d in DOCS}
     (tmp_path / "cuts").mkdir()
-    cuts = {"cuts": {d: {"1": [15]} for d in DOCS}, "stats": {}, "eliminated": False, "text_hash": {}}
+    hashes = {d: fs.text_hash(p) for d, p in fs.manual_pages_from_pypdfium2(RAW).items()}
+    cuts = {"cuts": {d: {"1": [15]} for d in DOCS}, "stats": {}, "eliminated": False, "text_hash": hashes} | over
+    (tmp_path / "cuts" / "fable_lines.json").write_text(json.dumps(cuts), encoding="utf-8")
+    return cuts
+
+
+def test_fable_pages_stops_when_text_hash_differs(tmp_path, monkeypatch):  # 사용자 결정 2026-11-20
+    _cuts_file(tmp_path, monkeypatch, text_hash={d: "0" * 64 for d in DOCS})
+    with pytest.raises(SystemExit):
+        fs.fable_pages("fable_lines")(RAW)
+
+
+def test_fable_pages_stops_when_eliminated(tmp_path, monkeypatch):
+    raw = RAW
+    cuts = _cuts_file(tmp_path, monkeypatch)
     (tmp_path / "cuts" / "fable_lines.json").write_text(json.dumps(cuts), encoding="utf-8")
     got = fs.fable_pages("fable_lines")(raw)
     assert got[DOCS[0]][0][1].headings == [(15, "")]
