@@ -182,8 +182,12 @@ def fable_pages(bundle: str) -> Callable[[dict], dict]:
         data = json.loads((FABLE / "cuts" / f"{bundle}.json").read_text(encoding="utf-8"))
         if data["eliminated"]:
             raise SystemExit(f"{bundle}은 탈락이라 멈춤: {data['stats']}")
+        manual = manual_pages_from_pypdfium2(raw)
+        changed = [d for d, pages in manual.items() if data["text_hash"].get(d) != text_hash(pages)]
+        if changed:
+            raise SystemExit(f"자를 위치를 계산한 글과 지금 글이 달라 멈춤: {changed}")
         return {d: with_cuts(pages, {int(p): offs for p, offs in data["cuts"].get(d, {}).items()})
-                for d, pages in manual_pages_from_pypdfium2(raw).items()}
+                for d, pages in manual.items()}
     return make
 
 
