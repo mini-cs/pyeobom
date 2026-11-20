@@ -102,7 +102,7 @@ def test_describe_all_retries_once_then_reports_missing(tmp_path):
         describe_all([a, b], CANDIDATE_CONTEXT, path=path, call=call)
     assert e.value.count == 1 and issubclass(MissingDescriptions, SystemExit)
     assert calls.count("doc-A") == 1 and calls.count("doc-B") == 2
-    (rec,) = _records(path)
+    rec = _records(path)[0]
     assert rec["doc_id"] == "doc-A" and rec["attempts"] == 1 and rec["description"] == "설명 A"
 
 
@@ -212,3 +212,69 @@ def test_ingest_main_embeds_inputs_but_saves_original_text(monkeypatch):
     monkeypatch.setattr(config, "get_settings", lambda: SETTINGS)
     main_mod.main()
     assert seen["embedded"] == ["본문 1", "본문 2"] and seen["saved"] == [(3, "본문 1"), (4, "본문 2")]
+
+
+# 검토 지적 처리(사용자 결정 2026-11-20): I1 적재 설정 경고, M1 실패한 조각 기록
+def test_ingest_main_warns_but_does_not_stop(monkeypatch, capsys):
+    from contextlib import contextmanager
+    from dataclasses import replace
+
+    import app.catalog.registry as registry
+    import app.core.config as config
+    import app.core.db as db
+    import app.retrieval.embeddings as embeddings
+    import ingest.__main__ as main_mod
+
+    seen = {}
+
+    @contextmanager
+    def fake_conn():
+        yield "conn"
+    monkeypatch.setattr(main_mod, "load_documents", lambda: [MANUAL_DOC])
+    monkeypatch.setattr(main_mod, "load_env", lambda: None)
+    monkeypatch.setattr(main_mod, "chunks_with_sources", lambda doc: ([(3, "본문", "쪽 글")], 0))
+    monkeypatch.setattr(main_mod, "save", lambda conn, doc, chunks, embs: seen.update(saved=chunks))
+    monkeypatch.setattr(db, "get_conn", fake_conn)
+    monkeypatch.setattr(embeddings, "embed_texts", lambda texts: [[0.0]] * len(texts))
+    monkeypatch.setattr(registry, "load_models", lambda: [{"id": "m1", "display_name": "모델1"}])
+    monkeypatch.setattr("sys.argv", ["ingest", "--doc-id", "manual-x"])
+    monkeypatch.setattr(config, "get_settings", lambda: replace(SETTINGS, top_k=7))  # 운영(5)과 다름
+    main_mod.main()
+    out = capsys.readouterr().out
+    assert "운영 기본값과 다른 설정" in out and "top_k=7" in out
+    assert seen["saved"] == [(3, "본문")]  # 경고만 하고 멈추지 않는다
+
+
+def test_describe_all_records_failed_chunk_as_null(tmp_path):
+    from ingest.describe import CANDIDATE_CONTEXT, MissingDescriptions, describe_all
+    a, b = _item("A"), _item("B")
+    call = lambda item, spec, client: ("설명 A" if item is a else None, {"input_tokens": 10, "output_tokens": 5, "error": None})
+    path = tmp_path / "d.jsonl"
+    with pytest.raises(MissingDescriptions):
+        describe_all([a, b], CANDIDATE_CONTEXT, path=path, call=call)
+    ok, failed = _records(path)
+    assert ok["doc_id"] == "doc-A" and ok["description"] == "설명 A"
+    assert failed["doc_id"] == "doc-B" and failed["description"] is None and failed["attempts"] == 2
+    assert (failed["input_tokens"], failed["output_tokens"]) == (20, 10)  # 두 번 시도한 토큰 합
+    assert {k: failed[k] for k in ("page", "model", "effort")} == {"page": 3, "model": "gpt-6-luna", "effort": "low"}
+    assert failed["content_sha256"] and failed["prompt_sha256"]
+
+
+def test_describe_all_reruns_only_null_and_prefers_success(tmp_path):
+    from ingest.describe import CANDIDATE_CONTEXT, MissingDescriptions, describe_all
+    a, b = _item("A"), _item("B")
+    path = tmp_path / "d.jsonl"
+    with pytest.raises(MissingDescriptions):
+        describe_all([a, b], CANDIDATE_CONTEXT, path=path,
+                     call=lambda item, spec, client: ("설명 A" if item is a else None, {"input_tokens": 1, "output_tokens": 1, "error": None}))
+    calls = []
+
+    def call(item, spec, client):
+        calls.append(item.doc_id)
+        return "설명 B", {"input_tokens": 1, "output_tokens": 1, "error": None}
+    assert describe_all([a, b], CANDIDATE_CONTEXT, path=path, call=call) == ["설명 A", "설명 B"]
+    assert calls == ["doc-B"]  # null 줄은 "설명 있음"이 아니라 그 조각만 다시 부른다
+    null_b = next(r for r in _records(path) if r["description"] is None)
+    with path.open("a", encoding="utf-8") as f:  # 성공 줄 뒤에 null 줄이 또 있어도 성공 줄을 쓴다
+        f.write(json.dumps(null_b, ensure_ascii=False) + "\n")
+    assert describe_all([a, b], CANDIDATE_CONTEXT, path=path, call=lambda *x: pytest.fail("부르면 안 됨")) == ["설명 A", "설명 B"]
