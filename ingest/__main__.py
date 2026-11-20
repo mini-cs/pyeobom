@@ -2,7 +2,7 @@
 import argparse
 import os
 
-from ingest.load import ROOT, build_chunks, load_documents, save
+from ingest.load import ROOT, chunks_with_sources, load_documents, save
 
 
 def load_env() -> None:
@@ -25,11 +25,16 @@ def main() -> None:
     doc = docs[args.doc_id]
 
     load_env()
+    from app.catalog.registry import load_models
+    from app.core.config import get_settings
     from app.core.db import get_conn  # load_env 뒤에 설정을 읽게 한다
     from app.retrieval.embeddings import embed_texts
+    from ingest.describe import ingest_texts
 
-    chunks, dropped = build_chunks(doc)
-    embeddings = embed_texts([text for _, text in chunks])
+    chunks_src, dropped = chunks_with_sources(doc)
+    chunks = [(page, text) for page, text, _ in chunks_src]  # 저장 본문은 원문 그대로(설명은 임베딩 입력에만)
+    models = {m["id"]: m for m in load_models()}
+    embeddings = embed_texts(ingest_texts(doc, chunks_src, get_settings(), models))
     with get_conn() as conn:
         save(conn, doc, chunks, embeddings)
     print(f"{doc['id']}: 조각 {len(chunks)}개, 적용 범위 밖이라 뺀 문단 {dropped}개, 연결 모델 {', '.join(doc['model_ids'])}")

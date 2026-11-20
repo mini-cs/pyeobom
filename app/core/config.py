@@ -26,6 +26,8 @@ class Settings:
     rewrite_max_output_tokens: int = 300  # 추론 토큰 포함. 실제 사용분만 과금되므로 여유 있게
     rewrite_reasoning_effort: str = "none"  # 계획 2 Task 6 채택(B): 같은 정확도에서 추론 토큰을 쓰지 않음(결정기록 023)
     openai_embed_dimensions: int | None = None  # 비면 임베딩 요청에 dimensions를 넣지 않는다(v1.9, 지금 운영 그대로)
+    chunk_context_model: str = ""  # 조각 설명(v1.95)을 쓰는 모델. 비면 적재 때 설명을 붙이지 않는다(지금 운영). 답변 모델과 따로 고정
+    chunk_context_reasoning_effort: str = "low"
 
 
 @lru_cache
@@ -50,4 +52,6 @@ def get_settings() -> Settings:
         rewrite_timeout_s=float(env("REWRITE_TIMEOUT_S") or 5),
         rewrite_max_output_tokens=int(env("REWRITE_MAX_OUTPUT_TOKENS") or 300),
         rewrite_reasoning_effort=env("REWRITE_REASONING_EFFORT") or "none",
+        chunk_context_model=env("CHUNK_CONTEXT_MODEL", ""),
+        chunk_context_reasoning_effort=env("CHUNK_CONTEXT_REASONING_EFFORT") or "low",
     )

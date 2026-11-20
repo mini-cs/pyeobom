@@ -162,3 +162,53 @@ def test_ingest_texts_prepend_when_on():
     assert texts == ["설명\n본문"]
     assert seen["spec"] == ContextSpec("gpt-6-luna", "low")
     assert seen["items"] == [ContextItem("manual-x", "manual", 3, "본문", "글", "샘플 설명서 — 모델1")]
+
+
+def test_build_prompt_keeps_braces_and_backslashes_in_source():
+    from ingest.describe import ContextItem, build_prompt
+    source = "쪽 글 {chunk} \1 \g<0> {doc_label} 끝"
+    item = ContextItem("doc-a", "manual", 3, "조각 본문 \1", source, "문서 — 모델")
+    prompt = build_prompt(item)
+    assert source in prompt  # 쪽 글의 "{chunk}"·역슬래시가 글자 그대로
+    assert prompt.count("조각 본문 \1") == 1 and "<조각>\n조각 본문 \1\n</조각>" in prompt
+    assert prompt.count("문서 — 모델") == 1
+
+
+def test_ingest_main_embeds_inputs_but_saves_original_text(monkeypatch):
+    from contextlib import contextmanager
+    from dataclasses import replace
+    from functools import partial
+
+    import app.catalog.registry as registry
+    import app.core.config as config
+    import app.core.db as db
+    import app.retrieval.embeddings as embeddings
+    import ingest.__main__ as main_mod
+    import ingest.describe as describe_mod
+
+    src = [(3, "본문 1", "쪽 글 3"), (4, "본문 2", "쪽 글 4")]
+    seen = {}
+
+    @contextmanager
+    def fake_conn():
+        yield "conn"
+    monkeypatch.setattr(main_mod, "load_documents", lambda: [MANUAL_DOC])
+    monkeypatch.setattr(main_mod, "load_env", lambda: None)  # 로컬 .env를 읽지 않는다
+    monkeypatch.setattr(main_mod, "chunks_with_sources", lambda doc: (src, 0))
+    monkeypatch.setattr(main_mod, "save", lambda conn, doc, chunks, embs: seen.update(saved=chunks, embs=embs))
+    monkeypatch.setattr(db, "get_conn", fake_conn)
+    monkeypatch.setattr(embeddings, "embed_texts", lambda texts: seen.update(embedded=texts) or [[0.0]] * len(texts))
+    monkeypatch.setattr(registry, "load_models", lambda: [{"id": "m1", "display_name": "모델1"}])
+    monkeypatch.setattr(describe_mod, "ingest_texts",
+                        partial(describe_mod.ingest_texts, describe=lambda items, spec: [f"설명 {i.page}" for i in items]))
+    monkeypatch.setattr("sys.argv", ["ingest", "--doc-id", "manual-x"])
+
+    monkeypatch.setattr(config, "get_settings", lambda: replace(SETTINGS, chunk_context_model="gpt-6-luna"))
+    main_mod.main()
+    assert seen["embedded"] == ["설명 3\n본문 1", "설명 4\n본문 2"]
+    assert seen["saved"] == [(3, "본문 1"), (4, "본문 2")] and len(seen["embs"]) == 2
+
+    seen.clear()
+    monkeypatch.setattr(config, "get_settings", lambda: SETTINGS)
+    main_mod.main()
+    assert seen["embedded"] == ["본문 1", "본문 2"] and seen["saved"] == [(3, "본문 1"), (4, "본문 2")]
