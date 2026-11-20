@@ -56,3 +56,8 @@ def test_production_defaults_include_embedding(settings_large_1536):
 def test_recorded_has_no_duplicates():
     from evaluation.run_config import RECORDED
     assert len(RECORDED) == len(set(RECORDED)) and "openai_embed_dimensions" in RECORDED
+
+
+def test_production_has_chunk_context_off():  # 조각 설명 붙이기(v1.95) Task 1: 반영 전에는 꺼짐
+    assert PRODUCTION["chunk_context_model"] == "" and PRODUCTION["chunk_context_reasoning_effort"] == "low"
+    assert any(d.startswith("chunk_context_model=") for d in differences(replace(PROD, chunk_context_model="gpt-6-luna")))
