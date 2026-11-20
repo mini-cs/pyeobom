@@ -191,6 +191,21 @@ def fable_pages(bundle: str) -> Callable[[dict], dict]:
     return make
 
 
+def b1_pass(summary: dict, name: str) -> bool:
+    """B-1(설계 6절): 개발용 P 5위 안 +3 이상(분모 20) 그리고 30문항 5위 안이 1문항 넘게 떨어지지 않음."""
+    dev, q30 = summary["dev"], summary["q30"]
+    return dev[name]["hit5"] - dev["production"]["hit5"] >= 3 and q30["production"]["hit5"] - q30[name]["hit5"] <= 1
+
+
+def pick_final(summary: dict, names: list[str], order: tuple[str, ...] = ("fable_lines", "fable_pdf", "mineru_800")) -> str | None:
+    """B-1 통과 중 개발용 5위 안 최고값에서 1문장 이내인 것을 order 순으로 하나."""
+    passed = [n for n in names if b1_pass(summary, n)]
+    if not passed:
+        return None
+    best = max(summary["dev"][n]["hit5"] for n in passed)
+    return next(n for n in order if n in passed and summary["dev"][n]["hit5"] >= best - 1)
+
+
 def main() -> None:
     args = sys.argv[1:]
     if args == ["lines"]:
@@ -198,8 +213,15 @@ def main() -> None:
     elif len(args) == 2 and args[0] == "cuts":
         r = build_cuts(args[1])
         print(json.dumps({"stats": r["stats"], "eliminated": r["eliminated"]}, ensure_ascii=False, indent=1))
+    elif len(args) >= 3 and args[0] == "pick":
+        summary = json.loads(Path(args[1]).read_text(encoding="utf-8"))
+        names = args[2:]
+        for n in names:
+            print(n, {s: summary[s][n]["hit5"] for s in ("dev", "q30")}, "B-1", "통과" if b1_pass(summary, n) else "실패")
+        print("production", {s: summary[s]["production"]["hit5"] for s in ("dev", "q30")})
+        print("최종 후보:", pick_final(summary, names))
     else:
-        raise SystemExit("사용법: python -m measure.fable_split lines | cuts <fable_lines|fable_pdf>")
+        raise SystemExit("사용법: python -m measure.fable_split lines | cuts <fable_lines|fable_pdf> | pick <summary.json> <한 벌 ...>")
 
 
 if __name__ == "__main__":

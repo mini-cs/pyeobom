@@ -144,3 +144,26 @@ def test_fable_pages_stops_when_eliminated(tmp_path, monkeypatch):
     (tmp_path / "cuts" / "fable_lines.json").write_text(json.dumps(cuts | {"eliminated": True}), encoding="utf-8")
     with pytest.raises(SystemExit):
         fs.fable_pages("fable_lines")(raw)
+
+
+# --- Task 6: B-1 판정과 최종 후보 (측정 전에 커밋) ---
+from measure.fable_split import b1_pass, pick_final
+
+
+def _s(dev, q30):
+    return {"dev": {k: {"hit5": v} for k, v in dev.items()}, "q30": {k: {"hit5": v} for k, v in q30.items()}}
+
+
+def test_b1_needs_plus3_dev_and_q30_not_down_more_than_1():
+    s = _s({"production": 8, "a": 11, "b": 10, "c": 11}, {"production": 20, "a": 19, "b": 20, "c": 18})
+    assert b1_pass(s, "a") and not b1_pass(s, "b") and not b1_pass(s, "c")
+
+
+def test_pick_final_takes_order_within_1_of_best():
+    s = _s({"production": 8, "fable_lines": 12, "fable_pdf": 13, "mineru_800": 14}, {"production": 20, "fable_lines": 20, "fable_pdf": 20, "mineru_800": 20})
+    assert pick_final(s, ["fable_lines", "fable_pdf", "mineru_800"]) == "fable_pdf"
+
+
+def test_pick_final_none_when_nobody_passes():
+    s = _s({"production": 8, "fable_lines": 10}, {"production": 20, "fable_lines": 20})
+    assert pick_final(s, ["fable_lines"]) is None
