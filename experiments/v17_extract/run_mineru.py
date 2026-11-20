@@ -9,8 +9,9 @@ from mineru.types import MiddleJson
 def main():
     pdf, out = sys.argv[1], sys.argv[2]
     tier = sys.argv[3] if len(sys.argv) > 3 else "standard"
+    ocr_mode = sys.argv[4] if len(sys.argv) > 4 else "auto"
     t = time.time()
-    result = parse(pdf, tier=tier)  # 기본: ocr_mode=auto, image_analysis=True, 전체 쪽
+    result = parse(pdf, tier=tier, ocr_mode=ocr_mode)  # Fable 계획 Task 3: ocr_mode만 인자로, 나머지 기본, image_analysis=True, 전체 쪽
     sec = time.time() - t
     d = result.to_dict()
     pages = d["pages"]

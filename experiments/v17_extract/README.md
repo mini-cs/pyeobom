@@ -21,7 +21,7 @@ measure/out/v17/venv/<도구>/Scripts/python experiments/v17_extract/run_<도구
 | `run_opendataloader-pdf.py` | `opendataloader-pdf pypdfium2` (Java 필요) | 도구 옵션 `markdown_page_separator` | 이름에 `-`가 있어 직접 실행만 된다 |
 | `run_docling.py` | `docling` | 문서의 쪽 번호(`page_no`) | 셋째 인자 `cpu`/`cuda` |
 | `run_marker.py` | `marker-pdf` (파이썬 3.12) | 도구 옵션 `paginate_output=True`(0부터 → +1) | `PYTHONUTF8=1`, 셋째 인자 `cpu`/`cuda` |
-| `run_mineru.py` | `mineru pypdfium2` | `page_idx`(0부터 → +1) | 셋째 인자 tier(기본 `standard`), 장치는 환경변수 `MINERU_MODEL_ONNX_DEVICE=cpu`/`gpu` |
+| `run_mineru.py` | `mineru pypdfium2` | `page_idx`(0부터 → +1) | 셋째 인자 tier(기본 `standard`), 넷째 인자 ocr_mode(기본 `auto`, Fable 계획 Task 3은 `txt`), 장치는 환경변수 `MINERU_MODEL_ONNX_DEVICE=cpu`/`gpu` |
 | `run_unstructured.py` | `"unstructured[pdf]"` + tesseract(conda-forge로 `measure/out/v17/tess`에 받아 실행 프로세스에만 `PATH`·`TESSDATA_PREFIX`) | 요소의 `metadata.page_number` | `strategy="hi_res"`, Title 요소 → `# ` 제목, 나머지 요소 글은 한 줄씩 |
 
 - 판정 기준 글자(pypdfium2)는 `python -m measure.v17_gate --baseline`이 만든다.
