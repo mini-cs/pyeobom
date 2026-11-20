@@ -115,3 +115,65 @@ def test_write_blind_single_csv_keeps_old_names(tmp_path, monkeypatch):
     r = tmp_path / "stage2-pdev-2026-11-10.csv"
     _csv(r, [{"id": "p01-1", "method": "m0", "type": "paraphrase", "question": "q", "expected_ref": "", "answer": "A"}])
     assert write_blind(r, {}).name == "stage2-blind-sheet.md"
+
+
+# 조각 설명 붙이기(v1.95) Task 2: 두 벌 모두 찾은 답끼리 응답 시간 쌍
+def lat(method, qid, latency, *, run="r1", found=True, blocked=False):
+    return {"method": method, "id": qid, "run": run, "found": found, "rule_blocked": blocked, "latency_ms": latency}
+
+
+def test_paired_latency_only_both_found_same_run():
+    from measure.stage2 import paired_latency
+    rows = [lat("m0", "a", 1000), lat("ctx", "a", 1100),
+            lat("m0", "b", 1000), lat("ctx", "b", 5000, found=False),
+            lat("m0", "c", 1000, run="r1"), lat("ctx", "c", 9000, run="r2")]
+    got = paired_latency(rows, "m0", "ctx", min_pairs=1)
+    assert got["pairs"] == 1 and got["pair_diff_ms"] == 100 and got["basis"] == "pairs" and got["diff_ms"] == 100
+    assert got["pass"] is True
+
+
+def test_paired_latency_pools_two_runs():
+    from measure.stage2 import paired_latency
+    rows = [lat("m0", "a", 1000), lat("ctx", "a", 1100), lat("m0", "a", 1000, run="r2"), lat("ctx", "a", 1300, run="r2")]
+    got = paired_latency(rows, "m0", "ctx", min_pairs=2)
+    assert got["pairs"] == 2 and got["pair_diff_ms"] == 200 and got["basis"] == "pairs"
+
+
+def test_paired_latency_falls_back_to_all_under_10_pairs():
+    from measure.stage2 import paired_latency
+    rows = [lat("m0", "a", 1000), lat("ctx", "a", 1100),
+            lat("m0", "b", 1000, found=False), lat("ctx", "b", 2500)]
+    got = paired_latency(rows, "m0", "ctx")
+    assert got["pairs"] == 1 and got["pair_diff_ms"] == 100
+    assert got["all_diff_ms"] == 800 and got["basis"] == "all" and got["diff_ms"] == 800 and got["pass"] is False
+
+
+def test_paired_latency_excludes_rule_blocked():
+    from measure.stage2 import paired_latency
+    rows = [lat("m0", "a", 1000), lat("ctx", "a", 1100),
+            lat("m0", "b", 0, blocked=True), lat("ctx", "b", 3000)]
+    got = paired_latency(rows, "m0", "ctx", min_pairs=1)
+    assert got["pairs"] == 1 and got["pair_diff_ms"] == 100
+    assert got["all_diff_ms"] == (1100 + 3000) / 2 - 1000  # 막힌 운영 답(0ms)은 평균에서 뺀다
+
+
+def test_paired_latency_reads_csv_strings():
+    from measure.stage2 import paired_latency
+    rows = [lat("m0", "a", "1000", found="True", blocked="False"), lat("ctx", "a", "1250", found="True", blocked="False"),
+            lat("m0", "b", "1000", found="True", blocked="False"), lat("ctx", "b", "", found="True", blocked="False"),
+            lat("m0", "c", "1000", found="False", blocked="False"), lat("ctx", "c", "1000", found="True", blocked="False")]
+    got = paired_latency(rows, "m0", "ctx", min_pairs=1)
+    assert got["pairs"] == 1 and got["pair_diff_ms"] == 250
+    assert got["all_diff_ms"] == (1250 + 1000) / 2 - 1000  # 빈 시간은 빼고, "False"를 참으로 읽지 않는다
+
+
+def test_blind_headers_have_033_rule():
+    import random
+
+    from measure.stage2 import BLIND_HEADER
+    from measure.v17_blind4 import build_sheet
+    q30 = {"r1": [{"id": "q01", "type": "usage", "question": "질문", "expected_ref": "manual:1", "answer": "답"}]}
+    fu = {"f1": [{"dialog_id": "d01", "turn": "1", "type": "base", "question": "질문", "expected_ref": "manual:2", "answer": "답"}]}
+    text, _ = build_sheet(q30, fu, random.Random(1), label="x")
+    for header in (BLIND_HEADER, text):
+        assert "일반적인 안전 주의" in header and "버튼·기능·코스 이름" in header

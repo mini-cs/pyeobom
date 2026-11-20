@@ -221,9 +221,10 @@ def test_guide_chunks_identical_to_production(conn):
     guides = [c for c in build_bundle("t", {}, chunk_plain_800, guides=load_guide_chunks(conn)) if c.id < MANUAL_ID_BASE]
     assert [(c.id, c.doc_id, c.page, c.content) for c in guides] == [tuple(r) for r in prod]
     assert {299, 300} <= {c.id for c in guides}
-    from measure.emb_large import BUNDLE_EMBED, text_mismatches
+    from measure.emb_large import text_mismatches
+    from measure.v17_bundle import SAME_TEXT_BUNDLES
     for name in stored_bundles(conn):  # 저장된 벌이 없으면 이 부분만 건너뛴다
-        if name in BUNDLE_EMBED:  # 다시 임베딩한 벌(v1.9, 사용자 승인 2026-11-20): 글·쪽·문서·번호가 운영과 같음만 본다
+        if name in SAME_TEXT_BUNDLES:  # 다시 임베딩한 벌(v1.9·v1.95, 사용자 승인 2026-11-20): 글·쪽·문서·번호가 운영과 같음만 본다
             assert text_mismatches(conn, name) == [], name
             continue
         stored = {r[0] for r in conn.execute("SELECT id FROM bundle_chunks WHERE bundle = %s AND id < %s",
@@ -245,11 +246,18 @@ def test_bundle_diag_ids_in_bundle(conn):
     names = stored_bundles(conn)
     if not names:
         pytest.skip("저장된 실험 조각 한 벌이 없음")
-    from measure.emb_large import BUNDLE_EMBED
+    from measure.v17_bundle import SAME_TEXT_BUNDLES
     for name in names:
         ids = {r[0] for r in conn.execute("SELECT id FROM bundle_chunks WHERE bundle = %s", (name,)).fetchall()}
         for m in load_models():
             got = fetch_manual_pages(conn, m["id"], diagnostic_pages(m), bundle=name)
             assert {c.id for c in got} <= ids, (name, m["id"])
             # 다시 임베딩한 벌은 운영 번호를 그대로 쓰므로 1,000,000 이상 조건을 뺀다(v1.9, 사용자 승인 2026-11-20)
-            assert name in BUNDLE_EMBED or all(c.id >= MANUAL_ID_BASE for c in got), (name, m["id"])
+            assert name in SAME_TEXT_BUNDLES or all(c.id >= MANUAL_ID_BASE for c in got), (name, m["id"])
+
+
+def test_same_text_registry():  # 조각 설명 붙이기(v1.95) Task 2: 운영과 번호·글이 같고 임베딩만 다른 벌
+    from measure import chunk_context
+    from measure.emb_large import BUNDLE_EMBED
+    from measure.v17_bundle import SAME_TEXT_BUNDLES
+    assert set(BUNDLE_EMBED) <= SAME_TEXT_BUNDLES and chunk_context.BUNDLE in SAME_TEXT_BUNDLES
