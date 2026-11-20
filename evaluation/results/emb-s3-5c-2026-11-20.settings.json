@@ -1,0 +1,37 @@
+{
+ "label": "emb-s3-5c",
+ "time": "2026-11-20T16:05:03",
+ "settings": {
+  "search_mode": "vector",
+  "top_k": 5,
+  "openai_chat_model": "gpt-6-luna",
+  "reasoning_effort": "low",
+  "prompt_version": "v1",
+  "rewrite_model": "gpt-6-luna",
+  "rewrite_reasoning_effort": "none",
+  "rewrite_max_output_tokens": 300,
+  "openai_embed_model": "text-embedding-3-small",
+  "openai_embed_dimensions": null,
+  "max_output_tokens": 600,
+  "rewrite_timeout_s": 5.0,
+  "max_question_len": 500
+ },
+ "differences": [],
+ "experiment": {
+  "search_methods": {
+   "emb_large": "v1.7 실험 조각 한 벌"
+  },
+  "same_run": true,
+  "summary": {
+   "emb_large": {
+    "n": 3,
+    "found": 3,
+    "latency_avg_ms": 5732,
+    "cost_per_q_usd": 0.0003957
+   }
+  },
+  "bundles": [
+   "emb_large"
+  ]
+ }
+}
