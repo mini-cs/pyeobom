@@ -58,22 +58,25 @@ def guard_cases_path(path: str | Path) -> None:
 
 
 def measure_sets(cases: dict[str, list[dict]], bundles: list[str | None], embed: Callable, fns: Callable,
-                 top_k: int = 5) -> tuple[dict, dict]:
-    """fns(한 벌 이름 또는 None) → (검색, 진단). 질문 임베딩은 질문 글자별 1회. (요약, 행)"""
+                 top_k: int = 5, *, embed_for: Callable | None = None, depth: int = 20) -> tuple[dict, dict]:
+    """fns(한 벌 이름 또는 None) → (검색, 진단). embed_for(벌, embed) → 그 벌의 질문 임베딩 함수(v1.9, 없으면 모두 embed).
+    질문 임베딩은 (임베딩 함수, 질문 글자)마다 1회. (요약, 행)"""
     from measure.search_eval import run_eval
-    cache: dict[str, list[float]] = {}
+    cache: dict[tuple, list[float]] = {}
 
-    def cached(q):
-        if q not in cache:
-            cache[q] = embed(q)
-        return cache[q]
+    def cached_with(fn):
+        def cached(q):
+            if (fn, q) not in cache:
+                cache[(fn, q)] = fn(q)
+            return cache[(fn, q)]
+        return cached
 
     summary: dict = {}
     rows: dict = {}
     for set_name, cs in cases.items():
         for b in bundles:
             search, diag = fns(b)
-            r = run_eval(cs, cached, search, diag, top_k=top_k)
+            r = run_eval(cs, cached_with(embed_for(b, embed) if embed_for else embed), search, diag, top_k=top_k, depth=depth)
             rows[(set_name, b)] = r
             summary.setdefault(set_name, {})[b or "production"] = {
                 "hit5": sum(bool(x["rank"] and x["rank"] <= top_k) for x in r), "denominator": len(r),
@@ -138,7 +141,8 @@ def measure(only: list[str] | None = None, out_name: str = "stage1") -> None:
     deps = get_deps()
     fns = lambda b: (deps.search, deps.diagnostic) if b is None else bundle_fns(b, models, get_conn)
     cases = {k: read_cases(ROOT / p) for k, p in SETS.items()}
-    summary, rows = measure_sets(cases, [None, *names], deps.embed_query, fns, top_k=settings.top_k)
+    from measure.emb_large import embed_for  # 다시 임베딩한 벌(v1.9)이 섞여도 그 벌의 모델로 질문을 임베딩
+    summary, rows = measure_sets(cases, [None, *names], deps.embed_query, fns, top_k=settings.top_k, embed_for=embed_for)
     out = OUT / out_name
     out.mkdir(parents=True, exist_ok=True)
     for (set_name, b), r in rows.items():

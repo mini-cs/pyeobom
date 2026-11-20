@@ -14,5 +14,6 @@ def bundle_deps(deps: Deps, bundle: str | None, models: dict[str, dict], get_con
     """bundle이 None이면 deps 그대로. 저장 안 된 이름·빈 이름이면 bundle_fns가 멈춘다"""
     if bundle is None:
         return deps
+    from measure.emb_large import embed_for  # 다시 임베딩한 벌(v1.9)은 질문도 그 모델로
     search, diagnostic = bundle_fns(bundle, models, get_conn)
-    return dataclasses.replace(deps, search=search, diagnostic=diagnostic)
+    return dataclasses.replace(deps, search=search, diagnostic=diagnostic, embed_query=embed_for(bundle, deps.embed_query))
