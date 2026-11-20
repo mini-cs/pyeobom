@@ -4,3 +4,5 @@
 evaluation/*.csv text eol=lf
 # 판정 후 공개한 대응표도 해시를 적어 두므로 줄 끝을 LF로
 evaluation/results/*-blind-key-*.json text eol=lf
+# 프롬프트 파일은 해시(prompt_sha256)를 적어 두므로 줄 끝을 LF로
+ingest/prompts/*.txt text eol=lf
