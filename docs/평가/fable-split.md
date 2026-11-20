@@ -98,6 +98,11 @@
   - v1.7 MinerU(GPU) 삼성·SQ06 출력도 ocr 모드(VLM이 옮겨 적은 글)였다.
 - **고치기**: 실행 옵션 `ocr_mode=txt`(계획 Task 3 Step 2의 허용 범위). 쪽을 나눠 돌리는 우회는 6쪽이 든 창이 ocr로 분류되면 같은 실패라 쓰지 않았다.
   - 실행 스크립트: `experiments/v17_extract/run_mineru.py`에 넷째 인자 `ocr_mode`만 더한 사본(`measure/out/fable/run_mineru_ocrmode.py`, git 밖)
+  - (덧붙임, 사용자 결정 2026-11-20: `ocr_mode=txt`로 계속) 같은 변경(넷째 인자 `ocr_mode`, 기본 `auto`)을 `experiments/v17_extract/run_mineru.py`에 커밋했다. 실행에 쓴 사본과 줄 끝을 빼면 내용이 같다(LF 기준 SHA-256 `218d2ba0…`). 재현 명령: `MINERU_MODEL_ONNX_DEVICE=gpu python experiments/v17_extract/run_mineru.py <PDF> measure/out/v17/extract/mineru-gpu/<doc_id>.json standard txt`
+- **v1.7과 방식이 다름**: v1.7 MinerU(GPU) 삼성·SQ06은 `ocr_mode=auto` → ocr 모드(VLM이 옮겨 적은 글)였고, 이번은 txt 모드(PDF 글자 층 + 레이아웃, VLM은 일부 블록만)다.
+- **GPU·VLM 사용 확인**(방법: MinerU 실행 로그의 ONNX 세션 providers, llama.cpp device policy, 진행 막대의 VLM Predict 수. 실행 중 GPU 사용률은 재지 않아 실제 연산량은 확인하지 못함)
+  - ONNX: 레이아웃·글자 인식 세션의 첫째 provider가 `DmlExecutionProvider`(GPU, DirectML), 글자 위치 찾기(ocr_det)는 CPU
+  - VLM: llama.cpp device policy `gpu`, 엔진 로드됨. 처리한 VLM 블록 수는 삼성 21, FX25 6, SQ06 5(v1.7 ocr 모드 FX25 첫 창 1,232블록과 비교해 일부만)
 - **다시 돌림**: 세 설명서를 같은 설정(GPU: ONNX DirectML + llama.cpp, tier `standard`, `ocr_mode=txt`, 그 밖 기본)으로 처음부터 `measure/out/v17/extract/mineru-gpu/`에. v1.7 `mineru` 폴더와 섞지 않음
 
 | 설명서 | 쪽 | 실행 초 |
