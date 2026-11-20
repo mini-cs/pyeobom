@@ -141,7 +141,9 @@ def main() -> None:
         from app.catalog.registry import load_models
         search, diagnostic = bundle_fns(args.bundle, {m["id"]: m for m in load_models()}, get_conn)
         experiment = {"bundle": args.bundle}
-    rows = run_eval(read_cases(args.cases), deps.embed_query, search, diagnostic, transform=transform, top_k=settings.top_k)
+    from measure.emb_large import embed_for  # 다시 임베딩한 벌(v1.9)은 질문도 그 모델로(최종 검토 M1)
+    rows = run_eval(read_cases(args.cases), embed_for(args.bundle, deps.embed_query), search, diagnostic, transform=transform,
+                    top_k=settings.top_k)
     summary = metrics([r["rank"] for r in rows]) | {
         "hit5_or_diag": round(sum(r["hit5_or_diag"] for r in rows) / len(rows), 4) if rows else 0.0}
     OUT.mkdir(exist_ok=True)
