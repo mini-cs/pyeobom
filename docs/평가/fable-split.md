@@ -85,3 +85,36 @@
 - 조건과 다르게 돌린 실행 2개(Fable 줄 번호 분할 1개 채팅, Fable PDF 분할 1개 채팅, 각각 설명서 3개를 한 채팅에): 설계 5-1의 3 "설명서 하나에 대화 하나"와 달라 **내용을 보지 않고 제외**하고, 설명서마다 새 채팅에서 다시 돌린다.
 - 두 실행의 답은 Claude Code에 전달되지 않아 저장한 답 파일이 없다(`measure/out/fable/answers/excluded/`로 옮긴 파일 0). `measure/out/fable/runs.json`의 `excluded`에 적었다.
 - 설계 5-1의 5 "다시 돌리는 경우"(답을 읽을 수 없음, 채팅이 끊김)와는 다른 사유다. 결과를 보고 고른 것이 아니다(내용을 보지 않음).
+
+### MinerU 기본 층 다시 하기 (Task 3, 2026-11-20 10:45:01~약 11:20 KST, 상한 2시간 안, AI 호출 없음, 비용 0)
+
+- 진단 기록: `measure/out/fable/mineru-debug.md`(git 밖). 라이브러리 소스는 고치지 않았다.
+- **원인(확인함)**
+  - MinerU 기본값 `ocr_mode=auto`가 세 설명서를 모두 ocr로 분류한다(문서 분류 `classify()`를 쪽 범위별로 직접 불러 확인). ocr 모드에서는 VLM이 글 블록을 옮겨 적는다.
+  - FX25 **6쪽** 블록 하나에서 VLM 출력에 깨진 UTF-8(`0xed`, 자리 63, invalid continuation byte)이 나오고, 네이티브 엔진(`mineru_llama_cpp`)이 오류를 올린다. 블록 오류 격리(`isolate_block_errors`)가 꺼져 있어 실행 전체가 멈춘다.
+  - 같은 입력이면 같은 자리에서 실패했다(재현 1회 + 쪽 범위 시험 15회). 6쪽만 ocr로 돌려도 실패, 5쪽만 ocr은 통과, 1~8쪽을 `ocr_mode=txt`로 돌리면 통과.
+  - 기각한 가설: 동시 처리(`max_concurrency=1`에서도 실패), 4·5쪽에 걸친 블록(4~5쪽·3~6쪽 통과)
+  - 확인하지 못함: 문법 제약(`root ::= .*`)이 있는데 모델 출력에 깨진 바이트가 나오는 이유(네이티브 코드 안), `classify()`가 글자가 있는 PDF를 ocr로 고른 이유
+  - v1.7 MinerU(GPU) 삼성·SQ06 출력도 ocr 모드(VLM이 옮겨 적은 글)였다.
+- **고치기**: 실행 옵션 `ocr_mode=txt`(계획 Task 3 Step 2의 허용 범위). 쪽을 나눠 돌리는 우회는 6쪽이 든 창이 ocr로 분류되면 같은 실패라 쓰지 않았다.
+  - 실행 스크립트: `experiments/v17_extract/run_mineru.py`에 넷째 인자 `ocr_mode`만 더한 사본(`measure/out/fable/run_mineru_ocrmode.py`, git 밖)
+- **다시 돌림**: 세 설명서를 같은 설정(GPU: ONNX DirectML + llama.cpp, tier `standard`, `ocr_mode=txt`, 그 밖 기본)으로 처음부터 `measure/out/v17/extract/mineru-gpu/`에. v1.7 `mineru` 폴더와 섞지 않음
+
+| 설명서 | 쪽 | 실행 초 |
+|---|---|---|
+| 삼성 WD90H25 | 80 | 65.1 |
+| LG FX25 | 65 | 43.8 |
+| LG SQ06FA1WDS | 58 | 34.4 |
+
+- **0단계 거르기** (`run_gate(out_path=measure/out/fable/gate-mineru.json)`, v1.7 `gate.json`은 덮어쓰지 않음)
+
+| 설명서 | 쪽 수 맞음 | 쪽 밀림 비율(찾은 수) | 글자 비율 | 깨진 줄(기준 pypdfium2) | 제목 잡기(기록만) |
+|---|---|---|---|---|---|
+| 삼성 WD90H25 | 예 | 1.00 (50) | 0.987 | **41** (6) | 1.00 |
+| LG FX25 | 예 | 1.00 (54) | 0.986 | 1 (4) | 0.96 |
+| LG SQ06FA1WDS | 예 | 0.98 (49) | 0.987 | 0 (0) | 0.72 |
+
+  - 소수 판정(조건 3)·표 줄(조건 4) 통과, 실행 시간(조건 1) 통과
+  - **탈락: 조건 5**(깨진 글자 줄이 기준보다 많음, 삼성 41 > 6). 깨진 글자는 삼성 4쪽에 걸친 제어 문자 U+0003 439개와 U+0005 1개, FX25 U+0003 1개(종류와 수만 셈, 글은 보지 않음). 생긴 이유는 확인하지 못했다.
+- **결론**: MinerU 800자(`mineru_800`)는 만들지 않는다(계획 Task 3 Step 6은 탈락 조건이 없을 때만). 1단계 후보는 Fable 줄 번호 분할·Fable PDF 분할만이다.
+- 라이선스 기록(설계 5-4의 5): v1.7 결정기록 031 그대로(MinerU 3.1.0부터 Apache 2.0 기반 자체 라이선스, 2차 출처, 공식 확인 필요)
