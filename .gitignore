@@ -14,3 +14,6 @@ measure/out/
 node_modules/
 evaluation/results/*-contexts.json
 .deepeval/
+
+# 채팅 Claude 출력 폴더(설명서 글·판정 자료가 들어 있을 수 있음, 2026-11-20 최종 검토 M10)
+docs/Claude outputs/
