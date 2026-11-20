@@ -133,3 +133,58 @@ def test_embed_for_same_spec_same_function():
     base = lambda q: [0.0]
     assert el.embed_for("emb_large", base) is el.embed_for("emb_large", base)
     assert el.embed_for(None, base) is base and el.embed_for("strip_800", base) is base
+
+
+# --- 최종 검토 M9·M1 (사용자 결정 2026-11-20) ---
+import sys
+
+
+class _RecordingClient:
+    def __init__(self):
+        self.calls = []
+        self.embeddings = self
+
+    def create(self, **kwargs):
+        self.calls.append({k: (list(v) if k == "input" else v) for k, v in kwargs.items()})
+        return SimpleNamespace(data=[SimpleNamespace(embedding=[0.0]) for _ in kwargs["input"]])
+
+
+def test_embed_for_emb_large_sends_large_1536():  # M9: 후보 벌 질문 임베딩이 실제로 large·1536을 보낸다
+    client, base = _RecordingClient(), (lambda q: [9.0])
+    el.embed_for("emb_large", base)("질문", client=client)
+    assert client.calls == [{"model": "text-embedding-3-large", "input": ["질문"], "dimensions": 1536}]
+    assert el.embed_for("strip_800", base) is base and el.embed_for(None, base) is base
+
+
+def test_search_eval_bundle_uses_embed_for(monkeypatch):  # M1: search_eval --bundle도 그 벌의 질문 임베딩을 쓴다
+    import app.ask.routes as routes
+    import app.catalog.registry as registry
+    import app.core.config as config
+    import evaluation.run_config as run_config
+    import ingest.__main__ as ingest_main
+    from measure import search_eval as se
+
+    base = lambda q: [0.0]
+    monkeypatch.setattr(ingest_main, "load_env", lambda: None)
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(search_mode="vector", top_k=5))
+    monkeypatch.setattr(run_config, "warn_if_different", lambda s: [])
+    monkeypatch.setattr(routes, "get_deps", lambda: SimpleNamespace(embed_query=base, search=lambda *a: [], diagnostic=lambda m: []))
+    monkeypatch.setattr(registry, "load_models", lambda: [])
+    monkeypatch.setattr(se, "bundle_fns", lambda b, models, gc: ((lambda *a: []), (lambda m: [])))
+    monkeypatch.setattr(se, "read_cases", lambda p: [])
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    def fake_run_eval(cases, embed, *a, **k):
+        seen.append(embed)
+        raise Stop
+
+    monkeypatch.setattr(se, "run_eval", fake_run_eval)
+    for extra, expect in ((["--bundle", "emb_large"], el.embed_for("emb_large", base)), (["--bundle", "strip_800"], base), ([], base)):
+        seen.clear()
+        monkeypatch.setattr(sys, "argv", ["search_eval", "x.csv", "--label", "t", *extra])
+        with pytest.raises(Stop):
+            se.main()
+        assert seen[0] is expect, extra
