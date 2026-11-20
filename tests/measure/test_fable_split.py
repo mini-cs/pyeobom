@@ -62,3 +62,69 @@ def test_zero_items_is_unreadable():
 
 def test_dropped_ratio_counts_bad_and_missing():
     assert dropped_ratio(Parsed(items=[(1, 1)] * 9, received=10, bad_format=1), 1) == 0.2
+
+
+# --- Task 2: 줄 번호 파일·자를 위치 파일 ---
+import json
+
+from measure import fable_split as fs
+from measure.v17_gate import DOCS
+
+
+def _fake_pages(n_lines=9):
+    return {d: [(1, PlainPage("\n".join(f"{i}번째 줄 문장입니다" for i in range(1, n_lines + 1)), []))] for d in DOCS}
+
+
+def _setup(tmp_path, monkeypatch, pages, bundle, answers):
+    monkeypatch.setattr(fs, "FABLE", tmp_path)
+    monkeypatch.setattr(fs, "base_pages", lambda: pages)
+    fs.write_lines(tmp_path / "input")
+    (tmp_path / "answers" / bundle).mkdir(parents=True)
+    for d in DOCS:
+        (tmp_path / "answers" / bundle / f"{d}.md").write_text(answers.get(d, "```\n1:2\n```"), encoding="utf-8")
+
+
+def _build(tmp_path, bundle):
+    return fs.build_cuts(bundle, tmp_path / "answers", tmp_path / "cuts")
+
+
+def test_cuts_refuse_when_text_hash_differs(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch, _fake_pages(), "fable_lines", {})
+    meta = json.loads((tmp_path / "input" / "meta.json").read_text(encoding="utf-8"))
+    meta[DOCS[0]]["text_hash"] = "0" * 64
+    (tmp_path / "input" / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        _build(tmp_path, "fable_lines")
+
+
+@pytest.mark.parametrize("missing_lines, eliminated", [(["1:20", "1:21"], True), (["1:20"], False)])
+def test_build_cuts_marks_eliminated_over_10_percent(tmp_path, monkeypatch, missing_lines, eliminated):
+    good = [f"1:{i}" for i in range(1, 11 - len(missing_lines))]
+    answer = "```\n" + "\n".join(good + missing_lines) + "\n```"
+    _setup(tmp_path, monkeypatch, _fake_pages(), "fable_lines", {DOCS[0]: answer})
+    got = _build(tmp_path, "fable_lines")
+    assert got["stats"][DOCS[0]]["received"] == 10
+    assert got["stats"][DOCS[0]]["missing"] == len(missing_lines)
+    assert got["eliminated"] is eliminated
+    assert json.loads((tmp_path / "cuts" / "fable_lines.json").read_text(encoding="utf-8"))["eliminated"] is eliminated
+
+
+def test_write_lines_meta_has_counts_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(fs, "base_pages", lambda: _fake_pages(3))
+    meta = fs.write_lines(tmp_path)
+    assert meta[DOCS[0]] | {"text_hash": ""} == {"text_hash": "", "pages": 1, "lines": 3,
+                                                  "chars": len((tmp_path / f"{DOCS[0]}-lines.txt").read_text(encoding="utf-8"))}
+    assert (tmp_path / f"{DOCS[0]}-lines.txt").read_bytes().count(b"\r") == 0
+
+
+def test_fable_pages_stops_when_eliminated(tmp_path, monkeypatch):
+    monkeypatch.setattr(fs, "FABLE", tmp_path)
+    raw = {d: [(1, "세탁 코스 설명 문장입니다.\n건조 코스 설명 문장입니다.")] for d in DOCS}
+    (tmp_path / "cuts").mkdir()
+    cuts = {"cuts": {d: {"1": [15]} for d in DOCS}, "stats": {}, "eliminated": False, "text_hash": {}}
+    (tmp_path / "cuts" / "fable_lines.json").write_text(json.dumps(cuts), encoding="utf-8")
+    got = fs.fable_pages("fable_lines")(raw)
+    assert got[DOCS[0]][0][1].headings == [(15, "")]
+    (tmp_path / "cuts" / "fable_lines.json").write_text(json.dumps(cuts | {"eliminated": True}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        fs.fable_pages("fable_lines")(raw)
