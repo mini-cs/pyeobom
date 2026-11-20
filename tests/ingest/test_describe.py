@@ -166,11 +166,13 @@ def test_ingest_texts_prepend_when_on():
 
 def test_build_prompt_keeps_braces_and_backslashes_in_source():
     from ingest.describe import ContextItem, build_prompt
-    source = "쪽 글 {chunk} \1 \g<0> {doc_label} 끝"
-    item = ContextItem("doc-a", "manual", 3, "조각 본문 \1", source, "문서 — 모델")
+    source = r"쪽 글 {chunk} \1 \g<0> {doc_label} 끝"  # raw: 진짜 역슬래시(\1이 제어 문자로 읽히지 않게)
+    chunk = r"조각 본문 \1"
+    assert "\\" in source and "\x01" not in source + chunk
+    item = ContextItem("doc-a", "manual", 3, chunk, source, "문서 — 모델")
     prompt = build_prompt(item)
     assert source in prompt  # 쪽 글의 "{chunk}"·역슬래시가 글자 그대로
-    assert prompt.count("조각 본문 \1") == 1 and "<조각>\n조각 본문 \1\n</조각>" in prompt
+    assert prompt.count(chunk) == 1 and "<조각>\n" + chunk + "\n</조각>" in prompt
     assert prompt.count("문서 — 모델") == 1
 
 
