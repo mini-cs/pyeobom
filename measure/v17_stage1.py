@@ -14,13 +14,17 @@ from ingest.section_chunk import chunk_sections
 from ingest.load import ROOT
 from measure.v17_bundle import (build_bundle, chunk_plain_800, load_guide_chunks, manual_pages_from_pypdfium2,
                                 manual_pages_from_tool, store_bundle)
+from measure.fable_split import fable_pages
 from measure.v17_gate import DOCS, EXTRACT, _load
 
 OUT = ROOT / "measure" / "out" / "v17"
 BUNDLES = {"strip_800": ("pypdfium2", manual_pages_from_pypdfium2, chunk_plain_800),
            "docling_800": ("docling", manual_pages_from_tool, chunk_plain_800),
            "marker_800": ("marker", manual_pages_from_tool, chunk_plain_800),
-           "docling_sections": ("docling", manual_pages_from_tool, chunk_sections)}  # 순서는 Docling 800자와 같고 자르기만 소제목
+           "docling_sections": ("docling", manual_pages_from_tool, chunk_sections),  # 순서는 Docling 800자와 같고 자르기만 소제목
+           # Fable 분할(계획 2026-11-20 Task 2): 운영과 같은 글에 Fable이 정한 자를 위치를 붙여 소제목 자르기와 같은 규칙으로
+           "fable_lines": ("pypdfium2", fable_pages("fable_lines"), chunk_sections),
+           "fable_pdf": ("pypdfium2", fable_pages("fable_pdf"), chunk_sections)}
 COST_PER_CHAR = 2e-8
 SETS = {"dev": "evaluation/paraphrase_dev.csv", "q30": "evaluation/questions.csv"}
 

@@ -87,3 +87,10 @@ def test_measure_args_select_bundles_and_out():
         ["strip_800", "docling_sections"], "stage2")
     with pytest.raises(SystemExit):
         s1.parse_measure_args(["nope"])
+
+
+def test_fable_bundles_use_pypdfium2_and_chunk_sections():  # Fable 분할 계획 Task 2
+    from ingest.section_chunk import chunk_sections
+    for name in ("fable_lines", "fable_pdf"):
+        assert s1.BUNDLES[name][0] == "pypdfium2"
+        assert s1.BUNDLES[name][2] is chunk_sections

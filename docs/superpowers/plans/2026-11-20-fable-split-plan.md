@@ -165,6 +165,7 @@ def test_dropped_ratio_counts_bad_and_missing():
 - [ ] **Step 2:** FAIL 확인 → 테스트 커밋
 - [ ] **Step 3:** 구현. CLI `python -m measure.fable_split lines`는 `write_lines`, `cuts <한 벌>`은 `build_cuts` 뒤 stats와 `eliminated`만 출력
 - [ ] **Step 4:** PASS 확인 → 구현 커밋
+- (덧붙임 2026-11-20, 사용자 결정) `fable_pages`도 cuts 파일의 `text_hash`와 지금 쪽 글 해시를 대조해 다르면 멈춘다. 테스트 `test_fable_pages_stops_when_text_hash_differs` 먼저 커밋 → 구현 커밋
 - [ ] **Step 5:** `python -m measure.fable_split lines` 실행 → 설명서별 쪽·줄·글자 수를 리포트 "0단계"에 적는다(파일 위치만, 글 없음). 줄 번호 파일 3개를 사용자에게 넘길 위치를 보고한다.
 
 ### Task 3: MinerU 기본 층 다시 하기 (AI 비용 0, systematic-debugging, ultrathink)
