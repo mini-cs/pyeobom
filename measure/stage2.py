@@ -65,6 +65,34 @@ def summarize_methods(rows: list[dict]) -> dict:
     return out
 
 
+def parse_result_row(r: dict) -> dict:
+    """결과 CSV 행(글자)을 집계용 값으로: found·rule_blocked는 "True"만 참, 시간·비용은 숫자(빈칸은 None·0)."""
+    flag = lambda v: v is True or str(v).strip().lower() == "true"
+    num = lambda v: None if v is None or v == "" else float(v)
+    return r | {"found": flag(r.get("found")), "rule_blocked": flag(r.get("rule_blocked")),
+                "latency_ms": num(r.get("latency_ms")), "cost_usd": num(r.get("cost_usd")) or 0.0}
+
+
+def paired_latency(rows: list[dict], base: str, cand: str, min_pairs: int = 10) -> dict:
+    """응답 시간(v1.95 설계 6절 B-2, 사용자 결정 2026-11-20): 같은 회차(run)·같은 문장에 두 벌 모두 찾은 답끼리
+    (후보 − 운영) 평균, 두 회차 쌍을 합쳐 평균. 쌍이 min_pairs 미만이면 전체 답 평균 차이로 판정.
+    규칙으로 막힌 답·시간이 빈 답은 뺀다(summarize_methods와 같은 제외)."""
+    lat: dict[str, dict] = {base: {}, cand: {}}
+    for r in map(parse_result_row, rows):
+        if r["method"] in lat and not r["rule_blocked"] and r["latency_ms"] is not None:
+            lat[r["method"]][(r.get("run"), r["id"])] = (r["latency_ms"], r["found"])
+    mean = lambda xs: sum(xs) / len(xs) if xs else None
+    pairs = [k for k, (_, found) in lat[cand].items() if found and lat[base].get(k, (0, False))[1]]
+    pair_diff = mean([lat[cand][k][0] - lat[base][k][0] for k in pairs])
+    b_all, c_all = mean([v for v, _ in lat[base].values()]), mean([v for v, _ in lat[cand].values()])
+    all_diff = c_all - b_all if b_all is not None and c_all is not None else None
+    basis = "pairs" if len(pairs) >= min_pairs else "all"
+    diff = pair_diff if basis == "pairs" else all_diff
+    r1 = lambda x: None if x is None else round(x, 1)
+    return {"pairs": len(pairs), "pair_diff_ms": r1(pair_diff), "all_diff_ms": r1(all_diff), "basis": basis,
+            "diff_ms": r1(diff), "pass": diff is not None and diff <= 500}
+
+
 def judgment_rows(rows: list[dict], methods: list[str]) -> list[dict]:
     """문장마다 방법별 답을 나란히. 앞 방법과 답이 글자까지 같으면 *_same_as에 그 방법(판정을 이어받음)"""
     out = []
@@ -93,6 +121,14 @@ def blind_sheet(rows: list[dict], rng) -> tuple[list[dict], list[dict]]:
                    | ({"run": r["run"]} if "run" in r else {}) for r in rows]
 
 
+# 덧붙임 판정 규칙(결정기록 033, docs/평가/평가-규칙.md "사람 판정", 사용자 결정 2026-11-19). 판정지 머리말에 넣는다
+RULE_033 = """덧붙임 판정 규칙(결정기록 033, 2026-11-19 사용자 결정):
+1. 일반적인 안전 주의(전원 끄기, 전원 플러그 뽑기 등)와 서비스센터 문의 권유는 원문에 없어도 환각이 아니다. 핵심 답이 원문과 맞으면 정답이 될 수 있고, 판정지에 "덧붙임"으로 표시한다.
+2. 그 상황에만 해당하는 해결 절차, 숫자, 버튼·기능·코스 이름, 에러 코드 뜻이 원문(그 모델의 설명서·해결 가이드)에 없으면 환각이다.
+3. 기존 규칙(질문이 직접 묻는 내용이면 원문과 다른 이유는 오답 등)은 그대로다.
+4. 판단이 갈리면 경계 판정으로 표시하고, 뒤집었을 때 결론이 바뀌는지 적는다(기존 규칙).
+"""
+
 BLIND_HEADER = """# 사람 판정지 ({label}, 방법 이름 가림)
 
 판정 기준(측정 전 확정, 2026-11-10):
@@ -104,6 +140,7 @@ BLIND_HEADER = """# 사람 판정지 ({label}, 방법 이름 가림)
 - 핵심 답이 원문과 맞는데 원문에 없는 이유·설명이 덧붙으면: 질문이 묻지 않은 부가 설명은 원문과 모순되지 않고 새 사실(숫자·절차·원인)을 만들지 않았을 때 **정답**, 질문이 직접 묻는 내용('왜' 등)이면 원문과 다른 이유는 **오답**, 어느 경우든 새 사실을 만들면 **환각**(평가 규칙, 2026-11-10 사용자 결정)
 - 판정이 갈릴 수 있으면 **경계 판정**으로 표시(평가 규칙)
 
+""" + RULE_033 + """
 답 번호는 무작위이고 문장마다 순서를 섞었다. 글자까지 같은 답은 한 번만 적었다(같은 번호가 여러 방법의 답).
 "찾지 못함" = "설명서에서 찾지 못했어요. 공식 고객센터에 문의해 보세요."
 """
