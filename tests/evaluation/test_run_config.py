@@ -1,3 +1,4 @@
+import pytest
 import json
 from dataclasses import replace
 
@@ -40,3 +41,18 @@ def test_write_settings_records_experiment(tmp_path):
     # 실험 색인·질문 넓히기를 쓴 실행은 그 사실을 설정 기록에 남긴다(검색 개선 계획 1-5)
     path = write_settings(tmp_path / "r.csv", PROD, "x", experiment={"method": "m1"})
     assert json.loads(path.read_text(encoding="utf-8"))["experiment"] == {"method": "m1"}
+
+
+@pytest.fixture
+def settings_large_1536():  # 임베딩 모델 바꾸기(v1.9) Task 1
+    return replace(PROD, openai_embed_model="text-embedding-3-large", openai_embed_dimensions=1536)
+
+
+def test_production_defaults_include_embedding(settings_large_1536):
+    assert any(d.startswith("openai_embed_model=") for d in differences(settings_large_1536))
+    assert any(d.startswith("openai_embed_dimensions=") for d in differences(settings_large_1536))
+
+
+def test_recorded_has_no_duplicates():
+    from evaluation.run_config import RECORDED
+    assert len(RECORDED) == len(set(RECORDED)) and "openai_embed_dimensions" in RECORDED
