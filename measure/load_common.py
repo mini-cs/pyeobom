@@ -3,7 +3,7 @@ import csv
 import json
 from urllib.parse import urlparse
 
-PRODUCTION_HOST = "pyeobom.vercel.app"
+PRODUCTION_HOSTS = frozenset({"pyeobom.vercel.app", "pyeobom.help", "www.pyeobom.help"})
 BYPASS_HEADER = "x-vercel-protection-bypass"  # Vercel 공식 문서 "Protection Bypass for Automation"(헤더 방식)
 
 
@@ -19,7 +19,7 @@ def bypass_headers(secret: str | None) -> dict:
 
 def assert_not_production(url: str) -> None:
     host = urlparse(url if "//" in url else f"//{url}").hostname
-    if host == PRODUCTION_HOST:
+    if host in PRODUCTION_HOSTS:
         raise ValueError("부하 측정은 운영 주소로 보내지 않는다(미리보기 주소만)")
 
 
