@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.answer.llm import complete_json
+from app.answer.refine import refine_question
 from app.answer.rewrite import rewrite_question
 from app.ask.service import Deps, answer_question
 from app.catalog.registry import load_models
@@ -16,8 +17,8 @@ from app.core.config import MAX_HISTORY_ANSWER_LEN, get_settings
 from app.core.db import get_conn
 from app.core.errors import AppError, make_error
 from app.core.observability import get_tracer
-from app.retrieval.embeddings import embed_query
-from app.retrieval.search import fetch_manual_pages, search_hybrid, search_vector
+from app.retrieval.embeddings import embed_query, embed_texts
+from app.retrieval.search import fetch_manual_pages, search_hybrid, search_vector, search_vectors
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,15 +45,27 @@ def get_deps() -> Deps:
     models = {m["id"]: m for m in load_models()}
     timings: dict[str, int] = {}
 
-    def search(model_id: str, query_vec: list[float], question: str, k: int):
+    def connect():
         start = time.perf_counter()
         with get_tracer().span("db_connect"):
             conn = get_conn()  # 접속은 여기서 일어난다(with는 끝날 때 닫기만 함)
         timings["db_connect_ms"] = int((time.perf_counter() - start) * 1000)
-        with conn:
+        return conn
+
+    def search(model_id: str, query_vec: list[float], question: str, k: int):
+        with connect() as conn:
             if get_settings().search_mode == "hybrid":  # v2b: 질문 단어 + 코드 키워드를 섞음
                 return search_hybrid(conn, model_id, query_vec, question, k)
             return search_vector(conn, model_id, query_vec, k)
+
+    def search_queries(model_id: str, query_vecs: list[list[float]], k: int):  # 첫 질문 다듬기(v1.96) 두 질문 검색
+        with connect() as conn:
+            return search_vectors(conn, model_id, query_vecs, k)
+
+    settings = get_settings()
+    extra = {}
+    if settings.refine_model and settings.search_mode == "vector":  # 비면 다듬지 않는다(Deps 기본값 = 꺼짐)
+        extra["refine"] = lambda q, m: refine_question(q, models[m]["name"], settings.refine_model, settings)
 
     def diagnostic(model_id: str):
         pages = diagnostic_pages(models[model_id])
@@ -64,7 +77,7 @@ def get_deps() -> Deps:
     return Deps(embed_query=embed_query, search=search, complete=lambda msgs: complete_json(msgs, get_settings(), usage=timings),
                 supported_ids=set(models), official_url=lambda m: models[m]["official_url"], brand=lambda m: models[m]["brand"], timings=timings,
                 rewrite=lambda q, h: rewrite_question(q, h, get_settings().rewrite_model, get_settings()),
-                diagnostic=diagnostic)
+                diagnostic=diagnostic, embed_queries=embed_texts, search_queries=search_queries, **extra)
 
 
 def _error(e: AppError) -> JSONResponse:

@@ -8,7 +8,8 @@ import os
 from contextlib import contextmanager
 from functools import lru_cache
 
-ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens", "rewrite_used", "rewrite_reason", "reasoning_tokens"}
+ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens", "rewrite_used", "rewrite_reason", "reasoning_tokens",
+                 "refine_used", "refine_reason"}  # refine_reason은 코드가 정한 값만(app/answer/refine.py RefineResult.reason)
 USAGE_KEYS = ("input_tokens", "output_tokens", "reasoning_tokens")
 
 

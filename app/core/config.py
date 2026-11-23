@@ -28,6 +28,10 @@ class Settings:
     openai_embed_dimensions: int | None = None  # 비면 임베딩 요청에 dimensions를 넣지 않는다(v1.9, 지금 운영 그대로)
     chunk_context_model: str = ""  # 조각 설명(v1.95)을 쓰는 모델. 비면 적재 때 설명을 붙이지 않는다(지금 운영). 답변 모델과 따로 고정
     chunk_context_reasoning_effort: str = "low"
+    refine_model: str = ""  # 첫 질문 다듬기(v1.96) 모델. 비면 다듬지 않는다(지금 운영). 답변 모델과 따로 고정
+    refine_reasoning_effort: str = "none"
+    refine_timeout_s: float = 3.0
+    refine_max_output_tokens: int = 300
 
 
 @lru_cache
@@ -54,4 +58,8 @@ def get_settings() -> Settings:
         rewrite_reasoning_effort=env("REWRITE_REASONING_EFFORT") or "none",
         chunk_context_model=env("CHUNK_CONTEXT_MODEL", ""),
         chunk_context_reasoning_effort=env("CHUNK_CONTEXT_REASONING_EFFORT") or "low",
+        refine_model=env("REFINE_MODEL", ""),
+        refine_reasoning_effort=env("REFINE_REASONING_EFFORT") or "none",
+        refine_timeout_s=float(env("REFINE_TIMEOUT_S") or 3),
+        refine_max_output_tokens=int(env("REFINE_MAX_OUTPUT_TOKENS") or 300),
     )
