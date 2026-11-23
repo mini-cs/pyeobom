@@ -6,6 +6,22 @@
       "sourceType": "github",
       "skillPath": "skills/accessibility/SKILL.md",
       "computedHash": "c668809f5df57feb87cc06f1bc37fb340d1d92e26bacb6edbeab9258d22e76a5"
+    },
+    "ffmpeg-usage": {
+      "source": "ychoi-kr/claude-ffmpeg-skill",
+      "commit": "b88cb5ce08337ab55c66c67674100b8de29cf232",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "10e24d9f39077d9ad7972964bd422c3ffd4769f183e1089558652cd5b63c2c2c",
+      "installMode": "copy"
+    },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+      "sourceType": "github",
+      "skillPath": "skills/security-audit/SKILL.md",
+      "computedHash": "8513eb3b2c39b8d05ef4f47b32ef4d18280b93a5efb91d8df6272f7435034af5",
+      "installMode": "copy"
     }
   }
 }
