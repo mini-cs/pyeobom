@@ -106,3 +106,43 @@ def test_get_deps_uses_hybrid_when_search_mode_is_hybrid(monkeypatch):
         routes.get_deps().search("washer-a", [0.1], "질문", 5)
     routes.get_settings.cache_clear()
     assert calls == ["vector", "hybrid"]
+
+
+
+@pytest.mark.parametrize("env", [{}, {"REFINE_MODEL": "gpt-6-luna", "SEARCH_MODE": "hybrid"}])
+def test_get_deps_refine_off_without_setting(monkeypatch, env):  # 첫 질문 다듬기(v1.96): 설정이 없거나 vector가 아니면 꺼짐
+    import app.ask.routes as routes
+    monkeypatch.delenv("REFINE_MODEL", raising=False)
+    monkeypatch.delenv("SEARCH_MODE", raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    called = []
+    monkeypatch.setattr(routes, "refine_question", lambda *a, **kw: called.append(a))
+    routes.get_settings.cache_clear()
+    assert routes.get_deps().refine("x", "washer-lg-fx25").reason == "off" and called == []
+    routes.get_settings.cache_clear()
+
+
+def test_get_deps_refine_on_passes_product_name(monkeypatch):
+    import app.ask.routes as routes
+    from app.answer.refine import RefineResult
+    monkeypatch.setenv("REFINE_MODEL", "gpt-6-luna")
+    monkeypatch.delenv("SEARCH_MODE", raising=False)
+    calls = []
+    monkeypatch.setattr(routes, "refine_question",
+                        lambda q, product, model_name, settings: calls.append((q, product, model_name)) or RefineResult(q, False, "same"))
+    routes.get_settings.cache_clear()
+    routes.get_deps().refine("문이 안 열려요", "washer-lg-fx25")
+    routes.get_settings.cache_clear()
+    assert calls == [("문이 안 열려요", "LG 드럼세탁기", "gpt-6-luna")]
+
+
+def test_get_deps_wires_dual_search(monkeypatch):
+    import app.ask.routes as routes
+    calls = []
+    monkeypatch.setattr(routes, "get_conn", lambda: __import__("contextlib").nullcontext("conn"))
+    monkeypatch.setattr(routes, "search_vectors", lambda *a: calls.append(a) or [])
+    d = routes.get_deps()
+    d.search_queries("washer-a", [[0.1], [0.2]], 5)
+    assert calls == [("conn", "washer-a", [[0.1], [0.2]], 5)] and "db_connect_ms" in d.timings
+    assert d.embed_queries is routes.embed_texts

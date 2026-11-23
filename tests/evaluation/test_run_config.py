@@ -61,3 +61,10 @@ def test_recorded_has_no_duplicates():
 def test_production_has_chunk_context_off():  # 조각 설명 붙이기(v1.95) Task 1: 반영 전에는 꺼짐
     assert PRODUCTION["chunk_context_model"] == "" and PRODUCTION["chunk_context_reasoning_effort"] == "low"
     assert any(d.startswith("chunk_context_model=") for d in differences(replace(PROD, chunk_context_model="gpt-6-luna")))
+
+
+
+def test_production_has_refine_off():  # 첫 질문 다듬기(v1.96): 반영 전까지 꺼짐
+    assert (PRODUCTION["refine_model"], PRODUCTION["refine_reasoning_effort"], PRODUCTION["refine_max_output_tokens"]) == ("", "none", 300)
+    assert run_settings(PROD)["refine_timeout_s"] == 3.0
+    assert differences(replace(PROD, refine_model="gpt-6-luna")) == ["refine_model=gpt-6-luna (운영 )"]
