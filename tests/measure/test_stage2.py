@@ -232,3 +232,39 @@ def test_stage2_q_refine_runs_with_candidate_refine(monkeypatch):
     assert calls == [("문이 안 열려요", "LG 드럼세탁기", "gpt-6-luna")]
     m0 = deps_for("m0", base, models={}, settings=None, variant_search=None, get_conn=None)
     assert m0.refine is base.refine and m0.search is base.search  # 운영 벌은 다듬기 꺼짐 그대로
+
+
+# ── 임베딩 large 다시 해 보기(v1.97) Task 1 ──
+def test_stage2_result_row_without_card_column():
+    case = {"id": "q01", "type": "usage", "question": "q", "expected_ref": "manual:1"}  # questions.csv 행(card 없음)
+    r = result_row(case, "m0", {"found": True, "answer": "a", "latency_ms": 10, "llm_ms": 5, "embed_ms": 1}, "", {})
+    assert r["card"] == ""
+
+
+def _main_stops(monkeypatch, argv):
+    import sys
+
+    import ingest.__main__ as ingest_main
+    import pytest
+    monkeypatch.setattr(ingest_main, "load_env", lambda: pytest.fail("멈추기 전에 환경을 불러옴"))
+    monkeypatch.setattr(sys, "argv", ["stage2", *argv])
+    from measure.stage2 import main
+    with pytest.raises(SystemExit) as e:
+        main()
+    return str(e.value)
+
+
+def test_stage2_refuses_test_set_without_flag(tmp_path, monkeypatch):
+    import measure.emb_retry as emb_retry
+    commit = "f" * 40
+    (tmp_path / "open.json").write_text(f'{{"decision_record": "041", "commit": "{commit}"}}', encoding="utf-8")
+    monkeypatch.setattr(emb_retry, "OPEN_FILE", tmp_path / "open.json")
+    msg = _main_stops(monkeypatch, [str(tmp_path / "paraphrase_test_v197.csv"), "--label", "x"])
+    assert "확인용 P 세트" in msg
+
+
+def test_stage2_refuses_test_set_without_open_file(tmp_path, monkeypatch):
+    import measure.emb_retry as emb_retry
+    monkeypatch.setattr(emb_retry, "OPEN_FILE", tmp_path / "stage4-open.json")
+    msg = _main_stops(monkeypatch, [str(tmp_path / "paraphrase_test_v197.csv"), "--label", "x", "--open-test-set"])
+    assert "열기 파일" in msg
