@@ -226,3 +226,12 @@ def test_stage3_report_counts_errors_and_cost_without_errors(tmp_path):
 def test_stage3_report_cost_pass_without_errors_uses_plain_ratio(tmp_path):
     r = stage3_report(_report_csvs(tmp_path, [("0.0005", "", "ok"), ("0.0005", "", "same")]))
     assert r["errors"] == {"m0": 0, METHOD: 0} and r["cost_ratio"] == pytest.approx(1.25) and r["cost_pass"] is True
+
+
+
+def test_stage3_report_cost_pass_with_errors_when_both_ratios_ok(tmp_path):
+    # 오류 행만으로 실패하지 않는다: 두 비율이 모두 1.5배 이하면 통과(B-2 덧붙임, 사용자 결정 2026-11-23)
+    r = stage3_report(_report_csvs(tmp_path, [("0.0005", "", "ok"), ("0", "SERVICE_UNAVAILABLE", "")]))
+    assert r["errors"] == {"m0": 0, METHOD: 2}
+    assert r["cost_ratio"] == pytest.approx(0.625) and r["cost_ratio_without_errors"] == pytest.approx(1.25)
+    assert r["cost_pass"] is True
