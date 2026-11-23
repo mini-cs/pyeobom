@@ -177,3 +177,56 @@ def test_blind_headers_have_033_rule():
     text, _ = build_sheet(q30, fu, random.Random(1), label="x")
     for header in (BLIND_HEADER, text):
         assert "일반적인 안전 주의" in header and "버튼·기능·코스 이름" in header
+
+
+
+# ── 첫 질문 다듬기(v1.96) ──
+from measure.stage2 import bundle_names  # noqa: E402
+
+CASE = {"id": "p08-2", "card": "8", "type": "paraphrase", "question": "q", "expected_ref": "manual:42"}
+
+
+def test_bundle_names_excludes_q_refine():
+    assert bundle_names(["m0", "q_refine", "emb_large"]) == ["emb_large"]
+
+
+def test_result_row_cost_includes_refine_tokens():
+    resp = {"found": True, "answer": "a", "latency_ms": 10, "llm_ms": 5, "embed_ms": 1,
+            "refine_input_tokens": 100, "refine_output_tokens": 10}
+    r = result_row(CASE, "q_refine", resp, "", {"input_tokens": 1000, "output_tokens": 50})
+    assert (r["input_tokens"], r["output_tokens"]) == (1100, 60) and r["cost_usd"] == cost_usd(1100, 60)
+    off = result_row(CASE, "m0", {"found": True, "answer": "a", "latency_ms": 10, "llm_ms": 5, "embed_ms": 1}, "",
+                     {"input_tokens": 1000, "output_tokens": 50})
+    assert (off["input_tokens"], off["output_tokens"]) == (1000, 50)
+
+
+def test_result_row_has_refine_columns():
+    assert COLUMNS[-4:] == ["refined_question", "refine_ms", "refine_reason", "human_verdict"]
+    resp = {"found": True, "answer": "a", "latency_ms": 10, "llm_ms": 5, "embed_ms": 1,
+            "refined_question": "문이 안 열려요 도어 잠김", "refine_ms": 812, "refine_reason": "ok"}
+    r = result_row(CASE, "q_refine", resp, "", {})
+    assert (r["refined_question"], r["refine_ms"], r["refine_reason"]) == ("문이 안 열려요 도어 잠김", 812, "ok")
+    assert set(r) == set(COLUMNS)
+
+
+
+def test_stage2_q_refine_runs_with_candidate_refine(monkeypatch):
+    # q_refine이 운영 검색으로 조용히 돌지 않고, refine만 후보로 바뀐 Deps로 돈다(search_eval.METHODS에 넣지 않음)
+    import measure.refine_eval as refine_eval
+    from app.answer.refine import RefineResult
+    from app.ask.service import Deps
+    from measure.search_eval import METHODS
+    from measure.stage2 import deps_for
+    calls = []
+    monkeypatch.setattr(refine_eval, "refine_question",
+                        lambda q, product, model_name, settings: calls.append((q, product, model_name)) or RefineResult(q, False, "same"))
+    base = Deps(embed_query=lambda q: [0.0], search=lambda *a: [], complete=lambda m: "", supported_ids={"washer-lg-fx25"},
+                official_url=lambda m: "")
+    d = deps_for("q_refine", base, models={"washer-lg-fx25": {"name": "LG 드럼세탁기"}}, settings=None,
+                 variant_search=None, get_conn=None)
+    assert "q_refine" not in METHODS
+    assert d.search is base.search and d.embed_query is base.embed_query and d.refine is not base.refine
+    d.refine("문이 안 열려요", "washer-lg-fx25")
+    assert calls == [("문이 안 열려요", "LG 드럼세탁기", "gpt-6-luna")]
+    m0 = deps_for("m0", base, models={}, settings=None, variant_search=None, get_conn=None)
+    assert m0.refine is base.refine and m0.search is base.search  # 운영 벌은 다듬기 꺼짐 그대로

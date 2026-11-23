@@ -264,3 +264,16 @@ def test_refine_same_text_uses_single_search():
 def test_non_debug_body_keys_unchanged(fake):
     assert set(answer_question("washer-a", Q, fake.deps, S)) == BODY_KEYS
     assert set(answer_question("washer-a", Q, RefineFake().deps, S)) == BODY_KEYS
+
+
+
+def test_latency_includes_refine_time():  # 설계 13절: latency_ms는 요청 처음부터 재므로 다듬기 시간이 들어간다
+    import time
+
+    class SlowRefine(RefineFake):
+        def refine(self, question, model_id):
+            time.sleep(0.3)  # 나머지 단계(가짜)보다 훨씬 오래
+            return super().refine(question, model_id)
+
+    r = answer_question("washer-a", Q, SlowRefine().deps, S, debug=True)
+    assert r["refine_ms"] >= 300 and r["latency_ms"] >= r["refine_ms"]
