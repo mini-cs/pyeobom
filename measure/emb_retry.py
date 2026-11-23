@@ -30,6 +30,9 @@ BASE, CAND = "m0", "emb_large"
 FU_COLUMNS = ["dialog_id", "turn", "type", "model_id", "method", "question", "expected_ref", "expected_found", "found", "answer",
               "cited_refs", "retrieved_refs", "retrieved_chunk_ids", "rewritten_question", "rewrite_ms", "latency_ms", "llm_ms",
               "input_tokens", "output_tokens", "cost_usd", "rule_blocked", "error", "human_verdict"]
+ADR041 = "docs/결정기록/041-임베딩-large-다시-측정-전-결정.md"
+LABELS = {"정답", "정답(경계)", "오답", "오답(경계)", "환각", "환각(경계)"}  # ⑰이 받는 판정 이름(사용자 결정)
+RESULT_SETS = {(s, r) for s in ("test", "q30", "fu") for r in ("r1", "r2")}  # 시간·비용을 세는 범위(설계 5-3의 1)
 RESULT_NAME = re.compile(r"emb-retry-(test|q30|fu)-(r\d+)-\d{4}-\d{2}-\d{2}\.csv")
 
 
@@ -43,10 +46,17 @@ def _full_commit(commit: str, repo: Path) -> str:
     return r.stdout.strip()
 
 
+def _require_041(full: str, repo: Path) -> None:
+    """그 커밋에 결정기록 041이 들어 있어야 한다(041 앞 커밋으로 확인용을 열지 않게)."""
+    if subprocess.run(["git", "-C", str(repo), "cat-file", "-e", f"{full}:{ADR041}"], capture_output=True).returncode != 0:
+        raise SystemExit(f"그 커밋에 결정기록 041이 없어 멈춤: {full}")
+
+
 def write_open_file(commit: str, path: Path = OPEN_FILE) -> Path:
     if path.exists():
         raise SystemExit(f"열기 파일이 이미 있어 멈춤(덮어쓰지 않음): {path}")
     full = _full_commit(commit, ROOT)
+    _require_041(full, ROOT)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as f:
         json.dump({"decision_record": "041", "commit": full,
@@ -61,7 +71,11 @@ def require_open_file(path: Path = OPEN_FILE, *, repo: Path = ROOT) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("decision_record") != "041":
         raise SystemExit("열기 파일의 결정기록이 041이 아니라 멈춤")
-    full = _full_commit(data.get("commit", ""), repo)
+    commit = str(data.get("commit", ""))
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise SystemExit(f"열기 파일의 커밋이 40자 해시가 아니라 멈춤: {commit}")
+    full = _full_commit(commit, repo)
+    _require_041(full, repo)
     if subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", full, "HEAD"]).returncode != 0:
         raise SystemExit(f"열기 파일의 커밋이 HEAD의 조상이 아니라 멈춤: {full}")
     return data
@@ -77,21 +91,28 @@ def load_backup_pages(path: Path = BACKUP, sha256: str = BACKUP_SHA256) -> dict[
 
 
 def old_chunk_refs_to_pages(refs: str, backup: dict[int, tuple[str, int]]) -> tuple[str, int]:
-    """chunk:<1~297>(옛 설명서 조각)만 manual:<쪽>으로. 가이드 번호(298~335)·manual:·guide:는 그대로. 겹치면 처음 것만."""
+    """chunk:<1~297>(옛 설명서 조각)만 manual:<쪽>으로. 가이드 번호(298~335)·manual:·guide:는 그대로. 겹치면 처음 것만.
+    그 밖의 chunk: 글(0, 336 이상, 숫자가 아닌 것)과 백업에 없는 번호는 멈춘다."""
     out, converted = [], 0
-    for ref in (r for r in refs.split("|") if r):
-        m = re.fullmatch(r"chunk:(\d+)", ref)
-        if m and 1 <= int(m[1]) <= 297:
-            if int(m[1]) not in backup:
-                raise SystemExit(f"백업에 없는 옛 조각 번호라 멈춤: {ref}")
-            ref, converted = f"manual:{backup[int(m[1])][1]}", converted + 1
+    for ref in (r.strip() for r in refs.split("|") if r.strip()):
+        if ref.startswith("chunk:"):
+            m = re.fullmatch(r"chunk:(\d+)", ref)
+            if not m or not 1 <= int(m[1]) <= 335:
+                raise SystemExit(f"옛 설명서(1~297)·가이드(298~335) 밖의 조각 번호라 멈춤: {ref}")
+            if int(m[1]) <= 297:
+                if int(m[1]) not in backup:
+                    raise SystemExit(f"백업에 없는 옛 조각 번호라 멈춤: {ref}")
+                ref, converted = f"manual:{backup[int(m[1])][1]}", converted + 1
         if ref not in out:
             out.append(ref)
     return "|".join(out), converted
 
 
-def build_test_set(sealed: Path, new_rows: list[dict], split_json: Path, backup: dict, out: Path) -> dict:
-    """봉인된 지난 문장(해시 확인) + 새 문장을 합치고 기대 근거의 옛 조각 번호를 쪽으로 바꿔 out에 쓴다(설계 6절 준비 4·5)."""
+def build_test_set(sealed: Path, new_rows: list[dict], split_json: Path, backup: dict, out: Path, *,
+                   open_file: Path = OPEN_FILE, repo: Path = ROOT) -> dict:
+    """봉인된 지난 문장(해시 확인) + 새 문장을 합치고 기대 근거의 옛 조각 번호를 쪽으로 바꿔 out에 쓴다(설계 6절 준비 4·5).
+    열기 파일이 있어야 하고, id가 겹치거나 함정·기대 근거가 맞지 않으면(함정에 근거 있음, 함정 아닌데 근거 없음) 멈춘다."""
+    require_open_file(open_file, repo=repo)
     if out.exists():
         raise SystemExit(f"합친 확인용 파일이 이미 있어 멈춤: {out}")
     raw = sealed.read_bytes()
@@ -103,13 +124,17 @@ def build_test_set(sealed: Path, new_rows: list[dict], split_json: Path, backup:
     rows = list(reader)
     if bad := [r.get("id") for r in new_rows if list(r) != reader.fieldnames]:
         raise SystemExit(f"새 문장의 열이 봉인 파일과 달라 멈춤: {bad}")
-    if dup := {r["id"] for r in rows} & {r["id"] for r in new_rows}:
-        raise SystemExit(f"id가 겹쳐 멈춤: {sorted(dup)}")
+    ids = [r["id"] for r in rows + new_rows]
+    if dup := sorted({i for i in ids if ids.count(i) > 1}):
+        raise SystemExit(f"id가 겹쳐 멈춤: {dup}")
     merged, converted_rows = [], 0
     for r in rows + new_rows:
         ref, n = old_chunk_refs_to_pages(r["expected_ref"], backup)
         merged.append(r | {"expected_ref": ref})
         converted_rows += n > 0
+    # 검색은 기대 근거가 빈 행만 함정으로 빼므로(run_eval), 함정 여부와 근거 유무가 어긋나면 5위 안 분모가 틀어진다
+    if bad := [r["id"] for r in merged if r["type"].startswith("trap") == bool(r["expected_ref"])]:
+        raise SystemExit(f"함정인데 기대 근거가 있거나, 함정이 아닌데 기대 근거가 없어 멈춤: {bad}")
     buf = io.StringIO()
     buf.writelines(c.rstrip("\r\n") + "\n" for c in comments)
     w = csv.DictWriter(buf, fieldnames=reader.fieldnames, lineterminator="\n")
@@ -168,16 +193,23 @@ def _diff(a, b):
 def _time_stats(rows: list[dict], base: str, cand: str) -> dict:
     lat = {base: [], cand: []}
     non_llm = {base: [], cand: []}
+    role = {base: "base", cand: "cand"}
+    excluded = {k: {"error": 0, "rule_blocked": 0, "no_latency": 0} for k in role.values()}
     for r in rows:
         p = parse_result_row(r)
-        if p["method"] not in lat or p["rule_blocked"] or str(r.get("error") or "") or p["latency_ms"] is None:
+        if p["method"] not in lat:
+            continue
+        why = ("error" if str(r.get("error") or "") else "rule_blocked" if p["rule_blocked"]
+               else "no_latency" if p["latency_ms"] is None else None)
+        if why:
+            excluded[role[p["method"]]][why] += 1
             continue
         lat[p["method"]].append(p["latency_ms"])
         if (llm := _num(r.get("llm_ms"))) is not None:
             non_llm[p["method"]].append(p["latency_ms"] - llm)
     b, c, bn, cn = _mean(lat[base]), _mean(lat[cand]), _mean(non_llm[base]), _mean(non_llm[cand])
     return {"n": {"base": len(lat[base]), "cand": len(lat[cand])}, "base_ms": b, "cand_ms": c, "diff_ms": _diff(b, c),
-            "base_non_llm_ms": bn, "cand_non_llm_ms": cn, "diff_non_llm_ms": _diff(bn, cn)}
+            "base_non_llm_ms": bn, "cand_non_llm_ms": cn, "diff_non_llm_ms": _diff(bn, cn), "excluded": excluded}
 
 
 def time_summary(rows_by_set: dict[str, list[dict]], base: str = BASE, cand: str = CAND) -> dict:
@@ -218,12 +250,14 @@ def split_by_method(rows_by_run: dict[str, list[dict]]) -> dict[str, list[dict]]
 
 # ── 판정 집계(⑰)와 B-3(설계 6절) ──
 def rule17(verdicts: list[str]) -> str:
-    """모든 회차 정답(경계 포함)이면 정답, 한 회차라도 환각이면 환각, 그 밖은 오답. 빈 판정이 있으면 멈춤."""
-    if not verdicts or any(not v.strip() for v in verdicts):
-        raise ValueError(f"판정이 비어 있음: {verdicts}")
-    if any(v.startswith("환각") for v in verdicts):
+    """모든 회차 정답이면 정답, 한 회차라도 환각이면 환각, 그 밖은 오답. (경계)는 같은 종류로 센다(환각(경계)도 환각).
+    LABELS 밖의 글(빈칸 포함)이 있으면 멈춤."""
+    if not verdicts or any(v not in LABELS for v in verdicts):
+        raise ValueError(f"판정 이름이 정답·오답·환각(경계 포함)이 아님: {verdicts}")
+    kinds = [v.removesuffix("(경계)") for v in verdicts]
+    if "환각" in kinds:
         return "환각"
-    return "정답" if all(v.startswith("정답") for v in verdicts) else "오답"
+    return "정답" if all(k == "정답" for k in kinds) else "오답"
 
 
 def b3(test_hit5: dict, test17: dict, q30_17: dict, fu17: dict, cost: dict, time: dict, line: dict) -> dict:
@@ -342,11 +376,17 @@ def followups(label: str) -> Path:
 def read_results(paths: list[Path]) -> dict[str, list[dict]]:
     """emb-retry-<세트>-r<n>-<날짜>.csv들을 세트별로, 행에 run(r<n>)을 붙여."""
     out: dict[str, list[dict]] = {}
+    seen: set[tuple[str, str]] = set()
     for p in paths:
         m = RESULT_NAME.fullmatch(p.name)
         if not m:
             raise SystemExit(f"결과 파일 이름이 emb-retry-<test|q30|fu>-r<n>-<날짜>.csv가 아니라 멈춤: {p.name}")
+        if (m[1], m[2]) in seen:
+            raise SystemExit(f"같은 세트·회차 파일이 두 번 들어와 멈춤: {m[1]} {m[2]}")
+        seen.add((m[1], m[2]))
         out.setdefault(m[1], []).extend(r | {"run": m[2]} for r in _read_csv(p))
+    if seen != RESULT_SETS:
+        raise SystemExit(f"세 세트 × 두 회차(6개)가 정확히 있어야 함: 빠짐 {sorted(RESULT_SETS - seen)}, 남음 {sorted(seen - RESULT_SETS)}")
     return out
 
 
