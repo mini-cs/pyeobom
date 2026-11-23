@@ -72,10 +72,12 @@ def test_refine_question_accepts_200_chars():
     assert refine_question(Q, PRODUCT, "m", S, client=FakeClient('{"search_question": "' + text + '"}')) == RefineResult(text, True, "ok")
 
 
-@pytest.mark.parametrize("text", ['{"search_question": ""}', '{"search_question": "   "}',
-                                  '{"search_question": "' + "가" * 201 + '"}', "JSON 아님", '{"other": "x"}', ""])
-def test_refine_question_invalid_outputs(text):
-    assert refine_question(Q, PRODUCT, "m", S, client=FakeClient(text)) == RefineResult(Q, False, "invalid_output")
+@pytest.mark.parametrize("text, reason", [('{"search_question": ""}', "empty"), ('{"search_question": "   "}', "empty"),
+                                          ('{"search_question": "' + "가" * 201 + '"}', "too_long"),
+                                          ("JSON 아님", "not_json"), ('{"other": "x"}', "not_json"), ("", "not_json"),
+                                          ('{"search_question": 5}', "not_json"), ('["x"]', "not_json")])
+def test_refine_question_invalid_outputs(text, reason):  # 설계 6절 0단계 3: 빈 문장·200자 초과 수를 따로 센다
+    assert refine_question(Q, PRODUCT, "m", S, client=FakeClient(text)) == RefineResult(Q, False, reason)
 
 
 def test_refine_question_timeout_returns_original():

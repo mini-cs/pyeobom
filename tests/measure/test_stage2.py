@@ -222,7 +222,9 @@ def test_stage2_q_refine_runs_with_candidate_refine(monkeypatch):
                         lambda q, product, model_name, settings: calls.append((q, product, model_name)) or RefineResult(q, False, "same"))
     base = Deps(embed_query=lambda q: [0.0], search=lambda *a: [], complete=lambda m: "", supported_ids={"washer-lg-fx25"},
                 official_url=lambda m: "")
-    d = deps_for("q_refine", base, models={"washer-lg-fx25": {"name": "LG 드럼세탁기"}}, settings=None,
+    from app.core.config import Settings
+    settings = Settings(openai_api_key="", database_url="", openai_embed_model="m", openai_chat_model="m", embed_dim=3)
+    d = deps_for("q_refine", base, models={"washer-lg-fx25": {"name": "LG 드럼세탁기"}}, settings=settings,
                  variant_search=None, get_conn=None)
     assert "q_refine" not in METHODS
     assert d.search is base.search and d.embed_query is base.embed_query and d.refine is not base.refine

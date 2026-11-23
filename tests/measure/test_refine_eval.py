@@ -7,8 +7,11 @@ import pytest
 
 from app.answer.refine import RefineResult
 from app.ask.service import Deps
-from measure.refine_eval import (LIMIT_MS, METHOD, PREVIEW, PREVIEW_SHA256, code_tokens, latency_b2, missing_tokens,
-                                 new_tokens, refine_rows, run_preview, stage3_report, with_candidate)
+from app.core.config import Settings
+from measure.refine_eval import (LIMIT_MS, METHOD, PREVIEW, PREVIEW_SHA256, candidate_refine, code_tokens, latency_b2,
+                                 missing_tokens, new_tokens, refine_rows, run_preview, stage3_report, with_candidate)
+
+SETTINGS = Settings(openai_api_key="", database_url="", openai_embed_model="m", openai_chat_model="m", embed_dim=3)
 from measure.stage2 import PRICE_IN, PRICE_OUT
 
 C = lambda ref, content="": SimpleNamespace(ref=ref, id=ref, content=content)
@@ -167,7 +170,7 @@ def test_with_candidate_only_replaces_refine(monkeypatch):
                         lambda q, product, model_name, settings: calls.append((q, product, model_name)) or RefineResult(q, False, "same"))
     base = Deps(embed_query=lambda q: [0.0], search=lambda *a: [], complete=lambda m: "", supported_ids={"washer-lg-fx25"},
                 official_url=lambda m: "")
-    d = with_candidate(base, {"washer-lg-fx25": {"name": "LG 드럼세탁기"}}, settings=None)
+    d = with_candidate(base, {"washer-lg-fx25": {"name": "LG 드럼세탁기"}}, settings=SETTINGS)
     d.refine("문이 안 열려요", "washer-lg-fx25")
     assert calls == [("문이 안 열려요", "LG 드럼세탁기", "gpt-6-luna")]
     assert replace(d, refine=base.refine) == base
@@ -181,3 +184,45 @@ def test_refine_rows_other_brand_uses_single_search():
     assert f.embedded_many == [] and f.searched_many == []
     assert f.embedded == ["문이 안 열려요"] and f.searched == [("washer-lg-fx25", "문이 안 열려요", 100)]
     assert (rows[0]["refined"], rows[0]["refine_reason"], rows[0]["rank"]) == ("", "other_brand", 1)
+
+
+
+def test_candidate_refine_stops_when_timeout_is_not_3s(monkeypatch):
+    import measure.refine_eval as refine_eval
+    monkeypatch.setattr(refine_eval, "refine_question", lambda *a: pytest.fail("AI를 부르면 안 된다"))
+    with pytest.raises(SystemExit):
+        candidate_refine({}, replace(SETTINGS, refine_timeout_s=5.0))  # 로컬 .env의 REFINE_TIMEOUT_S가 섞인 경우
+    candidate_refine({}, SETTINGS)  # 3초면 통과
+
+
+def test_candidate_refine_stops_when_prompt_hash_differs(monkeypatch):
+    import measure.refine_eval as refine_eval
+    monkeypatch.setattr(refine_eval, "prompt_sha256", lambda: "0" * 64)
+    with pytest.raises(SystemExit):
+        candidate_refine({}, SETTINGS)
+
+
+def _report_csvs(tmp_path, q_refine_rows):
+    head = "id,method,found,rule_blocked,latency_ms,cost_usd,error,refine_ms,refine_reason\n"
+    paths = []
+    for run in ("r1", "r2"):
+        p = tmp_path / f"refine-s3-{run}.csv"
+        body = "".join(f"p{i},m0,True,False,1000,0.0004,,,\n" for i in range(2))
+        body += "".join(f"p{i},{METHOD},True,False,1500,{cost},{err},800,{reason}\n" for i, (cost, err, reason) in enumerate(q_refine_rows))
+        p.write_text(head + body, encoding="utf-8")
+        paths.append(p)
+    return paths
+
+
+def test_stage3_report_counts_errors_and_cost_without_errors(tmp_path):
+    # 오류 행(비용 0)이 평균을 낮추므로 오류 행을 뺀 비율도 본다(B-2 덧붙임, 사용자 결정 2026-11-23)
+    r = stage3_report(_report_csvs(tmp_path, [("0.0007", "", "ok"), ("0", "SERVICE_UNAVAILABLE", "")]))
+    assert r["errors"] == {"m0": 0, METHOD: 2}
+    assert r["cost_ratio"] == pytest.approx(0.00035 / 0.0004)  # (0.0007 + 0) / 2 ÷ 0.0004 = 0.875
+    assert r["cost_ratio_without_errors"] == pytest.approx(0.0007 / 0.0004)  # 1.75
+    assert r["cost_pass"] is False  # 오류 행이 있으면 두 비율이 모두 1.5배 이하여야 통과
+
+
+def test_stage3_report_cost_pass_without_errors_uses_plain_ratio(tmp_path):
+    r = stage3_report(_report_csvs(tmp_path, [("0.0005", "", "ok"), ("0.0005", "", "same")]))
+    assert r["errors"] == {"m0": 0, METHOD: 0} and r["cost_ratio"] == pytest.approx(1.25) and r["cost_pass"] is True
