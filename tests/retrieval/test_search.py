@@ -1,7 +1,7 @@
 import pytest
 
 from app.retrieval.embeddings import embed_query
-from app.retrieval.search import search_vector
+from app.retrieval.search import SQL, search_vector, search_vectors
 
 MODELS = ["washer-samsung-wd90h25", "washer-lg-fx25", "aircon-lg-sq06fa1wds"]
 
@@ -42,3 +42,41 @@ def test_fetch_manual_pages_returns_only_that_models_manual(conn):
     chunks = fetch_manual_pages(conn, "aircon-lg-sq06fa1wds", [34, 49])
     assert chunks and {c.page for c in chunks} == {34, 49} and {c.doc_type for c in chunks} == {"manual"}
     assert fetch_manual_pages(conn, "washer-samsung-wd90h25", []) == []
+
+
+# ── 첫 질문 다듬기(v1.96): 두 질문 검색 ──
+class FakeConn:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params):
+        self.calls.append((sql, params))
+        return self
+
+    def fetchall(self):
+        return []
+
+
+LEAST = "LEAST(c.embedding <=> %(q1)s::vector, c.embedding <=> %(q2)s::vector)"
+
+
+def test_search_vectors_one_vector_equals_search_vector():
+    a, b = FakeConn(), FakeConn()
+    search_vectors(a, "washer-lg-fx25", [[0.1]], 5)
+    search_vector(b, "washer-lg-fx25", [0.1], 5)
+    assert a.calls == b.calls == [(SQL, {"q": [0.1], "model_id": "washer-lg-fx25", "k": 5})]
+
+
+def test_search_vectors_two_vectors_uses_least():
+    conn = FakeConn()
+    search_vectors(conn, "washer-lg-fx25", [[0.1], [0.2]], 5)
+    sql, params = conn.calls[0]
+    assert LEAST + " AS score" in sql
+    assert sql.replace(LEAST, "c.embedding <=> %(q)s::vector") == SQL  # 점수 말고는 운영 SQL과 같은 모양(모델 필터 포함)
+    assert params == {"q1": [0.1], "q2": [0.2], "model_id": "washer-lg-fx25", "k": 5}
+
+
+@pytest.mark.parametrize("n", [0, 3])
+def test_search_vectors_rejects_zero_or_three(n):
+    with pytest.raises(ValueError):
+        search_vectors(FakeConn(), "washer-lg-fx25", [[0.1]] * n, 5)

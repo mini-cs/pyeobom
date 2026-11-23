@@ -48,3 +48,19 @@ def test_chunk_context_settings_from_env(monkeypatch):  # 조각 설명 붙이�
     s = get_settings()
     assert (s.chunk_context_model, s.chunk_context_reasoning_effort) == ("gpt-6-luna", "medium")
     get_settings.cache_clear()
+
+
+
+def test_refine_settings_from_env(monkeypatch):  # 첫 질문 다듬기(v1.96): 없으면 꺼짐("")·none·3초·300
+    for key in ("REFINE_MODEL", "REFINE_REASONING_EFFORT", "REFINE_TIMEOUT_S", "REFINE_MAX_OUTPUT_TOKENS"):
+        monkeypatch.delenv(key, raising=False)
+    get_settings.cache_clear()
+    s = get_settings()
+    assert (s.refine_model, s.refine_reasoning_effort, s.refine_timeout_s, s.refine_max_output_tokens) == ("", "none", 3.0, 300)
+    for key, value in (("REFINE_MODEL", "gpt-6-luna"), ("REFINE_REASONING_EFFORT", "low"), ("REFINE_TIMEOUT_S", "2.5"),
+                       ("REFINE_MAX_OUTPUT_TOKENS", "200")):
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+    s = get_settings()
+    assert (s.refine_model, s.refine_reasoning_effort, s.refine_timeout_s, s.refine_max_output_tokens) == ("gpt-6-luna", "low", 2.5, 200)
+    get_settings.cache_clear()

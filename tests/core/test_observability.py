@@ -181,3 +181,50 @@ def test_trace_records_rewrite_tokens_as_numbers(fake_langfuse):
     assert rewrite["as_type"] == "generation"
     usage = [r["update"]["usage_details"] for r in fake_langfuse.records if "usage_details" in r.get("update", {})]
     assert {"input_tokens": 462, "output_tokens": 85, "reasoning_tokens": 57} in usage
+
+
+
+REFINED = "통세척 세탁조 청소 코스 방법"  # 다듬은 문장(첫 질문 다듬기 v1.96). 추적에는 숫자·이유만 남는다
+
+
+def test_trace_records_refine_stage_without_text(fake_langfuse):
+    from app.answer.refine import RefineResult
+
+    def deps_with_refine():
+        d = make_deps()
+        d.refine = lambda q, m: RefineResult(REFINED, True, "ok",
+                                             usage={"input_tokens": 150, "output_tokens": 20, "reasoning_tokens": 0})
+        d.embed_queries = lambda texts: [[0.1] for _ in texts]
+        d.search_queries = lambda m, vecs, k: d.search(m, vecs[0], "", k)
+        return d
+
+    app = create_app()
+    app.dependency_overrides[get_deps] = deps_with_refine
+    assert TestClient(app).post("/api/ask", json={"model_id": "washer-a", "question": QUESTION}).status_code == 200
+    assert fake_langfuse.names() == ["ask", "refine", "embed", "search", "llm"]
+    meta = [r["update"]["metadata"] for r in fake_langfuse.records if "metadata" in r.get("update", {})]
+    assert {"refine_used": True, "refine_reason": "ok"} in meta
+    usage = [r["update"]["usage_details"] for r in fake_langfuse.records if "usage_details" in r.get("update", {})]
+    assert {"input_tokens": 150, "output_tokens": 20, "reasoning_tokens": 0} in usage
+    assert REFINED not in fake_langfuse.sent_text()  # 다듬은 문장 글은 어떤 속성에도 없다
+
+
+
+def test_trace_refine_stage_is_generation_with_tokens(fake_langfuse):
+    # langfuse는 generation 종류에만 usage_details를 남긴다(5.2.0 _client/span.py update). rewrite·llm과 같게
+    from app.answer.refine import RefineResult
+
+    def deps_with_refine():
+        d = make_deps()
+        d.refine = lambda q, m: RefineResult(REFINED, True, "ok", usage={"input_tokens": 150, "output_tokens": 20})
+        d.embed_queries = lambda texts: [[0.1] for _ in texts]
+        d.search_queries = lambda m, vecs, k: d.search(m, vecs[0], "", k)
+        return d
+
+    app = create_app()
+    app.dependency_overrides[get_deps] = deps_with_refine
+    assert TestClient(app).post("/api/ask", json={"model_id": "washer-a", "question": QUESTION}).status_code == 200
+    refine = [r for r in fake_langfuse.records if r.get("name") == "refine"][0]
+    assert refine["as_type"] == "generation"
+    usage = [r["update"]["usage_details"] for r in fake_langfuse.records if "usage_details" in r.get("update", {})]
+    assert {"input_tokens": 150, "output_tokens": 20} in usage

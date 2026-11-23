@@ -18,8 +18,11 @@ PRODUCTION = {
     "openai_embed_dimensions": None,
     "chunk_context_model": "",  # 조각 설명 붙이기(v1.95): 반영 전까지 꺼짐, 반영 뒤 "gpt-6-luna"
     "chunk_context_reasoning_effort": "low",
+    "refine_model": "",  # 첫 질문 다듬기(v1.96): 반영 전까지 꺼짐, 반영 뒤 "gpt-6-luna"
+    "refine_reasoning_effort": "none",
+    "refine_max_output_tokens": 300,
 }
-RECORDED = list(PRODUCTION) + ["max_output_tokens", "rewrite_timeout_s", "max_question_len"]
+RECORDED = list(PRODUCTION) + ["max_output_tokens", "rewrite_timeout_s", "max_question_len", "refine_timeout_s"]
 
 
 def run_settings(settings) -> dict:

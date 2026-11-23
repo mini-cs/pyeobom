@@ -74,6 +74,20 @@ def search_vector(conn, model_id: str, query_vec: list[float], k: int, variant: 
     return [Chunk(*row) for row in rows]
 
 
+# 첫 질문 다듬기(v1.96): 원래 질문·다듬은 질문 중 조각마다 가까운 쪽 거리. 점수 말고는 운영 SQL과 같다
+DUAL_SQL = SQL.replace("c.embedding <=> %(q)s::vector AS score",
+                       "LEAST(c.embedding <=> %(q1)s::vector, c.embedding <=> %(q2)s::vector) AS score")
+
+
+def search_vectors(conn, model_id: str, query_vecs: list[list[float]], k: int) -> list[Chunk]:
+    if len(query_vecs) == 1:
+        return search_vector(conn, model_id, query_vecs[0], k)
+    if len(query_vecs) != 2:
+        raise ValueError(f"질문 벡터는 1개 또는 2개: {len(query_vecs)}개")
+    params = {"q1": query_vecs[0], "q2": query_vecs[1], "model_id": model_id, "k": k}
+    return [Chunk(*row) for row in conn.execute(DUAL_SQL, params).fetchall()]
+
+
 # ── 에러 코드 (결정기록 019) ──
 _CODE = re.compile(r"(?<![A-Za-z0-9.])(?:([A-Za-z]{1,3})\s?(\d{1,3})|(\d{1,2})\s?([A-Za-z]{1,2})|([A-Za-z]{2,3}))(?![A-Za-z0-9])")
 _ERROR_CONTEXT = re.compile(r"에러|코드|떴|떠|뜨|표시|라고")

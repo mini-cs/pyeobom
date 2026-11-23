@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from app.answer.check import GUIDE_WARNING, NOT_FOUND_MESSAGE, Answer, parse_and_verify
 from app.answer.prompting import build_messages
+from app.answer.refine import RefineResult
 from app.answer.rewrite import RewriteResult
 from app.core.brand_guard import guard_message
 from app.core.config import HISTORY_ANSWER_KEEP_LEN, Settings
@@ -24,6 +25,14 @@ class Deps:
     diagnostic: Callable[[str], list[Chunk]] = lambda model_id: []  # 모델의 진단 안내 쪽 조각(결정기록 019)
     brand: Callable[[str], str] = lambda model_id: ""  # 모델의 제조사(models.json brand). 다른 브랜드 규칙에 쓴다
     rewrite: Callable[[str, list[dict]], RewriteResult] = lambda q, h: RewriteResult(q, False, "no_history")  # 질문 바꾸기(계획 2)
+    # 첫 질문 다듬기(v1.96). 기본은 꺼짐(지금 운영). 두 질문 검색 함수는 연결하지 않으면 부를 수 없다
+    refine: Callable[[str, str], RefineResult] = lambda q, model_id: RefineResult(q, False, "off")
+    embed_queries: Callable[[list[str]], list[list[float]]] = lambda texts: _unwired("embed_queries")
+    search_queries: Callable[[str, list[list[float]], int], list[Chunk]] = lambda model_id, query_vecs, k: _unwired("search_queries")
+
+
+def _unwired(name: str):
+    raise RuntimeError(f"{name}가 연결되지 않았다")
 
 
 def _ms(since: float) -> int:
@@ -55,17 +64,36 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
             if r.used:
                 rewritten = r.text
                 blocked = guard_message(rewritten, deps.brand(model_id))  # 바꾼 질문에도 다시 적용
+        refined, refine_ms, refine_reason, refine_usage = None, None, None, {}
+        if not history and not blocked and not settings.force_fail:  # 첫 질문만(v1.96). 다듬은 문장은 검색에만 쓴다
+            t = time.perf_counter()
+            rr = deps.refine(question, model_id)
+            if rr.used and guard_message(rr.text, deps.brand(model_id)):  # 다듬은 문장만 버리고 원래 질문으로 답한다
+                rr = RefineResult(question, False, "other_brand", rr.usage)
+            refine_reason, refine_usage = rr.reason, rr.usage
+            if rr.reason != "off":  # 꺼짐이면 시간·추적을 남기지 않는다(꺼짐 = 지금 운영 그대로)
+                refine_ms = _ms(t)
+                # 최종 이유를 남기려고 호출 뒤에 기록한다(Langfuse의 이 단계 시간은 0에 가깝고, 걸린 시간은 refine_ms)
+                with tracer.span("refine", model=settings.refine_model) as span:
+                    span.update(refine_used=rr.used, refine_reason=rr.reason, **rr.usage)  # 토큰 수는 숫자만
+            refined = rr.text if rr.used else None
         query = rewritten or question
         if blocked:
             result = Answer(False, blocked, [])
         else:
             t = time.perf_counter()
             with tracer.span("embed"):
-                query_vec = deps.embed_query(query)
+                if refined:
+                    query_vecs = deps.embed_queries([query, refined])  # 한 번의 호출로 함께
+                else:
+                    query_vec = deps.embed_query(query)
             embed_ms = _ms(t)
             t = time.perf_counter()
             with tracer.span("search"):
-                chunks = deps.search(model_id, query_vec, query, settings.top_k)
+                if refined:
+                    chunks = deps.search_queries(model_id, query_vecs, settings.top_k)
+                else:
+                    chunks = deps.search(model_id, query_vec, query, settings.top_k)
                 # 질문의 에러 코드가 검색된 조각 어디에도 없으면 진단 안내 쪽을 덧붙인다(프롬프트 규칙 4가 진단 안내를 지시)
                 diagnostic_added = False
                 if needs_diagnostic(query, chunks):
@@ -107,5 +135,8 @@ def answer_question(model_id: str, question: str, deps: Deps, settings: Settings
         body |= {"retrieved_refs": [c.ref for c in chunks], "retrieved_chunk_ids": [c.id for c in chunks],
                  "cited_refs": [c.ref for c in result.citations],
                  "diagnostic_added": diagnostic_added, "embed_ms": embed_ms, "db_connect_ms": db_connect_ms,
-                 "search_ms": max(search_total_ms - db_connect_ms, 0), "llm_ms": llm_ms, "rewrite_ms": rewrite_ms}
+                 "search_ms": max(search_total_ms - db_connect_ms, 0), "llm_ms": llm_ms, "rewrite_ms": rewrite_ms,
+                 "refined_question": refined, "refine_ms": refine_ms, "refine_reason": refine_reason,
+                 "refine_input_tokens": refine_usage.get("input_tokens", 0),
+                 "refine_output_tokens": refine_usage.get("output_tokens", 0)}
     return body

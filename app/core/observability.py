@@ -8,7 +8,8 @@ import os
 from contextlib import contextmanager
 from functools import lru_cache
 
-ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens", "rewrite_used", "rewrite_reason", "reasoning_tokens"}
+ALLOWED_ATTRS = {"question_masked", "model_id", "model", "input_tokens", "output_tokens", "rewrite_used", "rewrite_reason", "reasoning_tokens",
+                 "refine_used", "refine_reason"}  # refine_reason은 코드가 정한 값만(app/answer/refine.py RefineResult.reason)
 USAGE_KEYS = ("input_tokens", "output_tokens", "reasoning_tokens")
 
 
@@ -47,7 +48,8 @@ class Tracer:
             yield _NoopSpan()
             return
         model = attrs.pop("model", None)
-        kwargs = {"as_type": "generation", "model": model} if name in ("llm", "rewrite") else {"as_type": "span"}
+        # AI 호출 단계는 generation(langfuse는 이 종류에만 토큰 수를 남긴다)
+        kwargs = {"as_type": "generation", "model": model} if name in ("llm", "rewrite", "refine") else {"as_type": "span"}
         with self._client.start_as_current_observation(name=name, metadata=attrs, **kwargs) as obs:
             yield _Span(obs)
 

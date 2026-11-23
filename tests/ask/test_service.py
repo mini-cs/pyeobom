@@ -152,3 +152,128 @@ def test_question_without_code_never_looks_up_diagnostic(fake):
     with_diagnostic(fake, [DIAG])
     answer_question("washer-a", "통세척", fake.deps, S)
     assert fake.diag_calls == []
+
+
+# ── 첫 질문 다듬기(v1.96) ──
+from dataclasses import replace
+
+import app.ask.service as service
+from app.answer.refine import RefineResult
+
+Q = "문이 안 열려요"
+REFINED = "문이 안 열려요 도어 잠김"
+BODY_KEYS = {"found", "answer", "citations", "official_url", "latency_ms", "pii_masked", "question_masked",
+             "rewritten_question", "reason"}
+
+
+class RefineFake(Fake):
+    def __init__(self, result=None, brand="LG"):
+        super().__init__()
+        self.result = result or RefineResult(REFINED, True, "ok", {"input_tokens": 100, "output_tokens": 10})
+        self.refine_calls, self.embeds_calls, self.searches_calls = [], [], []
+        self.deps.refine, self.deps.embed_queries, self.deps.search_queries = self.refine, self.embed_many, self.search_many
+        self.deps.brand = lambda m: brand
+
+    def refine(self, question, model_id):
+        self.refine_calls.append((question, model_id))
+        return self.result
+
+    def embed_many(self, texts):
+        self.embeds_calls.append(texts)
+        return [[0.1], [0.2]]
+
+    def search_many(self, model_id, query_vecs, k):
+        self.searches_calls.append((model_id, query_vecs, k))
+        return self.chunks
+
+
+def test_refine_off_keeps_current_flow(fake):
+    r = answer_question("washer-a", Q, fake.deps, S, debug=True)
+    assert fake.embed_calls == [Q] and fake.search_calls == [("washer-a", Q, 5)] and len(fake.complete_calls) == 1
+    assert (r["refine_reason"], r["refine_ms"], r["refined_question"]) == ("off", None, None)
+    assert (r["refine_input_tokens"], r["refine_output_tokens"]) == (0, 0)
+    for unwired in (lambda: fake.deps.embed_queries([Q]), lambda: fake.deps.search_queries("washer-a", [[0.1]], 5)):
+        with pytest.raises(RuntimeError):  # 기본값은 연결하지 않으면 부를 수 없다(꺼짐에서 몰래 쓰이지 않게)
+            unwired()
+
+
+def test_first_question_refined_and_searched_with_both():
+    rf = RefineFake()
+    r = answer_question("washer-a", Q, rf.deps, S, debug=True)
+    assert rf.refine_calls == [(Q, "washer-a")]
+    assert rf.embeds_calls == [[Q, REFINED]] and rf.searches_calls == [("washer-a", [[0.1], [0.2]], 5)]
+    assert rf.embed_calls == [] and rf.search_calls == []
+    assert (r["refined_question"], r["refine_reason"]) == (REFINED, "ok") and isinstance(r["refine_ms"], int)
+    assert (r["refine_input_tokens"], r["refine_output_tokens"]) == (100, 10) and r["found"] is True
+
+
+def test_answer_ai_and_diagnostic_use_original_question(monkeypatch):
+    seen = []
+    monkeypatch.setattr(service, "needs_diagnostic", lambda question, chunks: seen.append(question) or False)
+    rf = RefineFake()
+    answer_question("washer-a", Q, rf.deps, S)
+    assert seen == [Q]
+    sent = str(rf.complete_calls)
+    assert Q in sent and "도어 잠김" not in sent
+
+
+def test_refine_receives_masked_question():
+    rf = RefineFake()
+    answer_question("washer-a", "010-0000-0000 문이 안 열려요", rf.deps, S)
+    assert "0000-0000" not in rf.refine_calls[0][0] and rf.refine_calls[0][1] == "washer-a"
+
+
+def test_followup_is_not_refined():
+    rf = RefineFake()
+    r = answer_question("washer-a", "그건 얼마나 걸려요?", rf.deps, S, debug=True,
+                        history=[{"question": "통세척은 어떻게 해요?", "answer": "통살균 코스를 선택하세요."}])
+    assert rf.refine_calls == [] and rf.embeds_calls == [] and len(rf.search_calls) == 1
+    assert (r["refine_reason"], r["refine_ms"], r["refined_question"]) == (None, None, None)
+
+
+def test_blocked_and_force_fail_are_not_refined():
+    rf = RefineFake(brand="LG")
+    r = answer_question("washer-a", "삼성 세탁기 문이 안 열려요", rf.deps, S)
+    assert r["reason"] == "other_brand" and rf.refine_calls == []
+    rf = RefineFake()
+    answer_question("washer-a", Q, rf.deps, replace(S, force_fail=True))
+    assert rf.refine_calls == []
+
+
+def test_refined_other_brand_falls_back_not_blocked():
+    rf = RefineFake(RefineResult("문이 안 열려요 삼성 세탁기 도어", True, "ok"), brand="LG")
+    r = answer_question("washer-a", Q, rf.deps, S, debug=True)
+    assert r["refine_reason"] == "other_brand" and r["refined_question"] is None
+    assert r["reason"] is None and r["found"] is True
+    assert rf.embed_calls == [Q] and len(rf.search_calls) == 1 and rf.embeds_calls == [] and rf.searches_calls == []
+
+
+def test_refine_failure_answers_with_original_search():
+    rf = RefineFake(RefineResult(Q, False, "timeout"))
+    r = answer_question("washer-a", Q, rf.deps, S, debug=True)
+    assert len(rf.search_calls) == 1 and rf.searches_calls == [] and r["found"] is True
+    assert r["refine_reason"] == "timeout" and isinstance(r["refine_ms"], int) and r["refined_question"] is None
+
+
+def test_refine_same_text_uses_single_search():
+    rf = RefineFake(RefineResult(Q, False, "same"))
+    r = answer_question("washer-a", Q, rf.deps, S, debug=True)
+    assert rf.embeds_calls == [] and rf.embed_calls == [Q] and r["refine_reason"] == "same"
+
+
+def test_non_debug_body_keys_unchanged(fake):
+    assert set(answer_question("washer-a", Q, fake.deps, S)) == BODY_KEYS
+    assert set(answer_question("washer-a", Q, RefineFake().deps, S)) == BODY_KEYS
+
+
+
+def test_latency_includes_refine_time():  # 설계 13절: latency_ms는 요청 처음부터 재므로 다듬기 시간이 들어간다
+    import time
+
+    class SlowRefine(RefineFake):
+        def refine(self, question, model_id):
+            time.sleep(0.3)  # 나머지 단계(가짜)보다 훨씬 오래
+            return super().refine(question, model_id)
+
+    r = answer_question("washer-a", Q, SlowRefine().deps, S, debug=True)
+    assert r["refine_ms"] >= 300 and r["latency_ms"] >= r["refine_ms"]
