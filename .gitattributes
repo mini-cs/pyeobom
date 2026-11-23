@@ -6,3 +6,5 @@ evaluation/*.csv text eol=lf
 evaluation/results/*-blind-key-*.json text eol=lf
 # 프롬프트 파일은 해시(prompt_sha256)를 적어 두므로 줄 끝을 LF로
 ingest/prompts/*.txt text eol=lf
+# 2차 계획은 채팅 Claude가 준 SHA-256과 대조하므로 줄 끝을 LF로
+docs/superpowers/plans/2026-11-21-phase2-model-request-plan.md text eol=lf

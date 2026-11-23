@@ -221,6 +221,8 @@ done
 ## 외부 스킬과 라이선스
 
 - `.claude/skills/accessibility/`: Claude Code 프로젝트 스킬(접근성 점검, WCAG 2.2). 출처 [addyosmani/web-quality-skills](https://github.com/addyosmani/web-quality-skills) `skills/accessibility`, **MIT License**(Copyright (c) 2026 Addy Osmani). 내려받은 그대로이며 고치지 않았다(`skills-lock.json`의 `computedHash`로 확인).
+- `.claude/skills/ffmpeg-usage/`: Claude Code 프로젝트 스킬(영상 편집 명령 모음, 2차 시연 영상용). 출처 [ychoi-kr/claude-ffmpeg-skill](https://github.com/ychoi-kr/claude-ffmpeg-skill) `b88cb5c`, **MIT License**(Copyright (c) 2025 Yong Choi, 원문은 폴더 안 `LICENSE`). 내려받은 그대로이며 고치지 않았다(`skills-lock.json`의 `computedHash`로 확인). 폴더 안 `install.sh`·`validate.py`·`examples/conversion.sh`는 원본에 들어 있는 파일이며 이 프로젝트는 실행하지 않는다.
+- `.claude/skills/security-audit/`: Claude Code 프로젝트 스킬(보안 검토). 출처 [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) `skills/security-audit` `c1c8a8c`, **MIT License**(Copyright (c) 2025-2026 Cloudflare, Inc., 원문은 아래). 내려받은 그대로이며 고치지 않았다(`skills-lock.json`의 `computedHash`로 확인).
 - 라이선스 안내를 스킬 폴더 안에 두지 않은 이유: 폴더에 파일을 더하면 `skills-lock.json`의 해시가 달라져 수정된 스킬로 보인다.
 
 <details>
@@ -230,6 +232,35 @@ done
 MIT License
 
 Copyright (c) 2026 Addy Osmani
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
+
+<details>
+<summary>MIT License 원문 (cloudflare/security-audit-skill)</summary>
+
+```
+MIT License
+
+Copyright (c) 2025-2026 Cloudflare, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

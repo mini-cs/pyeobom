@@ -19,7 +19,8 @@ def test_bypass_headers_sends_one_header():
     assert headers == {"x-vercel-protection-bypass": "s"}
 
 
-@pytest.mark.parametrize("url", ["https://pyeobom.vercel.app", "https://pyeobom.vercel.app/api/ask", "pyeobom.vercel.app"])
+@pytest.mark.parametrize("url", ["https://pyeobom.vercel.app", "https://pyeobom.vercel.app/api/ask", "pyeobom.vercel.app",
+                                 "https://pyeobom.help", "https://pyeobom.help/api/ask", "www.pyeobom.help"])
 def test_assert_not_production_rejects_production(url):
     with pytest.raises(ValueError):
         assert_not_production(url)
