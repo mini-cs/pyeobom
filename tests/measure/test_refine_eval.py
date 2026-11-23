@@ -34,7 +34,7 @@ def _clock(step_s):
     t = [0.0]
 
     def timer():
-        t[0] += step_s / 2  # 다듬기 앞뒤로 한 번씩 부르므로 한 번에 step_s
+        t[0] += step_s  # 부를 때마다 step_s씩: 다듬기 앞뒤 두 번 부르면 그 차이가 step_s
         return t[0]
     return timer
 
