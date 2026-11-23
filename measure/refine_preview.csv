@@ -1,0 +1,21 @@
+id,model_id,question
+r01,washer-lg-fx25,탈수할 때 세탁기가 너무 덜덜 떨려요
+r02,washer-lg-fx25,OE 에러가 떴는데 뭘 해야 하나요?
+r03,washer-lg-fx25,울 코스는 물 온도가 몇 도예요?
+r04,washer-lg-fx25,세제 넣는 곳이 어디 있어요
+r05,washer-lg-fx25,문이 안 열려요 급하니까 010-0000-0000으로 연락 주세요
+r06,washer-samsung-wd90h25,건조가 끝났는데 빨래가 아직 축축해요
+r07,washer-samsung-wd90h25,4E라고 표시돼요
+r08,washer-samsung-wd90h25,세탁기에서 쉰내가 나요
+r09,washer-samsung-wd90h25,예약 세탁을 3시간 뒤로 맞추고 싶어요
+r10,washer-samsung-wd90h25,test@example.com으로 답 주세요 세탁조 청소는 어떻게 해요
+r11,aircon-lg-sq06fa1wds,리모컨으로 제습 켜는 법 알려주세요
+r12,aircon-lg-sq06fa1wds,CH 05가 깜빡여요
+r13,aircon-lg-sq06fa1wds,에어컨 밑으로 물이 뚝뚝 떨어져요
+r14,aircon-lg-sq06fa1wds,필터는 얼마나 자주 씻어야 해요?
+r15,aircon-lg-sq06fa1wds,실외기 소리가 너무 커요
+r16,aircon-lg-sq06fa1wds,온도를 18도 밑으로는 못 내리나요
+r17,aircon-lg-sq06fa1wds,끄고 나서 혼자 바람이 계속 나와요
+r18,aircon-lg-sq06fa1wds,전원 버튼을 눌러도 아무 반응이 없어요
+r19,aircon-lg-sq06fa1wds,찬바람이 안 나오고 미지근해요
+r20,aircon-lg-sq06fa1wds,SQ06FA1WDS 전기 덜 쓰는 기능 있어요?
