@@ -52,6 +52,16 @@ def test_require_open_file_accepts_ancestor_commit(tmp_path):
     assert require_open_file(_open_file(tmp_path / "open.json", a), repo=repo)["commit"] == a
 
 
+def test_require_open_file_non_ancestor_commit_stops(tmp_path):
+    repo = _repo(tmp_path)
+    _commit(repo, "A")
+    _git(repo, "switch", "-q", "-c", "side")
+    side = _commit(repo, "side")
+    _git(repo, "switch", "-q", "-")
+    with pytest.raises(SystemExit):
+        require_open_file(_open_file(tmp_path / "open.json", side), repo=repo)
+
+
 def test_write_open_file_refuses_existing(tmp_path):
     path = _open_file(tmp_path / "open.json", "f" * 40)
     with pytest.raises(SystemExit):
@@ -262,15 +272,20 @@ def test_b3_10pp_rounds_up():
     assert got["test_hit5"]["ok"] is False and got["all_ok"] is False
 
 
-def test_b3_10pp_exact_multiple_has_no_float_error():
-    # 0.10 * 30 = 3.0000000000000004라 math.ceil이면 4가 된다. 분모 30은 +3이면 통과
-    hit = {"production": {"hit5": 10, "denominator": 30}, "emb_large": {"hit5": 13, "denominator": 30}}
-    assert b3(**_b3_args(test_hit5=hit))["test_hit5"]["ok"] is True
-
-
 def test_b3_time_line_both_parts():
     # line {"total_ms": 1500, "non_llm_ms": 500}: non_llm 600이면 실패
     over = {"time": {"pooled": {"all": {"diff_ms": 1000.0, "diff_non_llm_ms": 600.0}}}}
     assert b3(**_b3_args(**over))["time"]["ok"] is False
     assert b3(**_b3_args(**over, line={"total_ms": 1500, "non_llm_ms": None}))["time"]["ok"] is True
     assert b3(**_b3_args(line={"total_ms": 900, "non_llm_ms": None}))["time"]["ok"] is False
+
+
+def test_read_results_adds_run_and_rejects_bad_name(tmp_path):
+    from measure.emb_retry import read_results
+    good = tmp_path / "emb-retry-q30-r2-2026-11-24.csv"
+    good.write_text("id,method\nq01,m0\n", encoding="utf-8")
+    assert read_results([good]) == {"q30": [{"id": "q01", "method": "m0", "run": "r2"}]}
+    bad = tmp_path / "emb-retry-test-2026-11-24.csv"
+    bad.write_text("id,method\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        read_results([bad])

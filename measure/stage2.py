@@ -34,7 +34,7 @@ def result_row(case: dict, method: str, resp: dict, err: str, timings: dict) -> 
     # 토큰·비용은 답변 + 첫 질문 다듬기(v1.96, 꺼짐이면 0)
     inp = timings.get("input_tokens", 0) + resp.get("refine_input_tokens", 0)
     outp = timings.get("output_tokens", 0) + resp.get("refine_output_tokens", 0)
-    return {"id": case["id"], "card": case["card"], "method": method, "type": case["type"], "question": case["question"],
+    return {"id": case["id"], "card": case.get("card", ""), "method": method, "type": case["type"], "question": case["question"],
             "expected_ref": case["expected_ref"], "found": resp.get("found"), "answer": resp.get("answer", err),
             "cited_refs": "|".join(resp.get("cited_refs", [])), "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
             "retrieved_chunk_ids": "|".join(map(str, resp.get("retrieved_chunk_ids", []))),
@@ -202,6 +202,7 @@ def main() -> None:
     ap.add_argument("--methods", nargs="+", default=["m0", "m2", "m12"], help="m0 등 또는 저장된 v1.7 실험 조각 한 벌 이름")
     ap.add_argument("--label")
     ap.add_argument("--blind", action="store_true", help="cases 자리에 2단계 결과 CSV를 주면 방법 이름을 가린 판정지를 만든다")
+    ap.add_argument("--open-test-set", action="store_true", help="확인용 세트(v1.97 4단계): 열기 파일(결정기록 041)도 있어야 함")
     args = ap.parse_args()
     if args.blind:
         return print(write_blind([Path(c) for c in args.cases], BLIND_NOTES, args.label or "stage2"))
@@ -211,7 +212,10 @@ def main() -> None:
         raise SystemExit("질문 CSV는 하나만 받는다(--blind만 여러 개)")
     args.cases = args.cases[0]
     if "test" in Path(args.cases).name:
-        raise SystemExit("확인용 P 세트는 3단계 전까지 열지 않는다")
+        if not args.open_test_set:
+            raise SystemExit("확인용 P 세트는 3단계 전까지 열지 않는다")
+        from measure import emb_retry
+        emb_retry.require_open_file(emb_retry.OPEN_FILE)
 
     from ingest.__main__ import load_env
     load_env()
