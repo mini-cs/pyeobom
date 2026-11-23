@@ -16,7 +16,7 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from app.answer.refine import PROMPT_SHA256, RefineResult, refine_question
+from app.answer.refine import PROMPT_SHA256, RefineResult, prompt_sha256, refine_question
 from app.core.brand_guard import guard_message
 from app.input_guard.pii import mask_pii
 from app.retrieval.search import needs_diagnostic
@@ -30,10 +30,17 @@ PREVIEW = ROOT / "measure" / "refine_preview.csv"
 PREVIEW_SHA256 = "10af0c4f2901cf4d4ca7c8b1ea213f75c60e9d5416971be3535af0c9cc70021c"  # 측정 전 고정(결정기록 039)
 LIMIT_MS = 1500  # B-2 응답 시간(사용자 결정 +1.5초)이자 0단계 멈춤 기준
 USAGE = "사용법: python -m measure.refine_eval preview | stage1 [--out 폴더] | report <r1 CSV> <r2 CSV>"
+TIMEOUT_S = 3.0  # 후보 다듬기 시간 제한(설계 5절 6). PRODUCTION 대조 밖이라 여기서 확인한다
+COST_LIMIT = 1.5  # B-2 질문당 비용 비율 상한
 
 
 def candidate_refine(models: dict[str, dict], settings) -> Callable[[str, str], RefineResult]:
-    """운영 get_deps와 같은 연결에 다듬기 모델만 후보로(추론·시간 제한·토큰은 설정의 운영 기본값)."""
+    """운영 get_deps와 같은 연결에 다듬기 모델만 후보로(추론·시간 제한·토큰은 설정의 운영 기본값).
+    측정 세 곳(preview·stage1·stage2 q_refine)이 AI를 부르기 전에 이 함수를 지나므로 여기서 멈춘다."""
+    if settings.refine_timeout_s != TIMEOUT_S:
+        raise SystemExit(f"다듬기 시간 제한이 {TIMEOUT_S}초가 아니라 멈춤: {settings.refine_timeout_s}")
+    if prompt_sha256() != PROMPT_SHA256:
+        raise SystemExit("다듬기 요청문 파일이 고정한 해시와 달라 멈춤")
     return lambda q, m: refine_question(q, models[m]["name"], CANDIDATE_MODEL, settings)
 
 
@@ -132,13 +139,13 @@ def measure_stage1(out_name: str = "stage1") -> dict:
     for p in SETS.values():
         guard_cases_path(p)
     models = {m["id"]: m for m in load_models()}
+    refine = candidate_refine(models, settings)  # 시간 제한·요청문 해시 확인을 운영 벌 임베딩(AI)보다 먼저
     deps = get_deps()
     cases = {k: read_cases(ROOT / p) for k, p in SETS.items()}
     summary, rows = measure_sets(cases, [None], deps.embed_query, lambda b: (deps.search, deps.diagnostic),
                                  top_k=settings.top_k, depth=100)
     if bad := _production_rank_mismatches(rows):
         raise SystemExit(f"운영 벌 1~20위가 2026-11-20 1단계와 달라 멈춤: {bad}")
-    refine = candidate_refine(models, settings)
     for set_name, cs in cases.items():
         r = refine_rows(cs, refine, deps.embed_query, deps.embed_queries, deps.search, deps.search_queries, deps.diagnostic,
                         brand=deps.brand, top_k=settings.top_k, depth=100)
@@ -178,12 +185,18 @@ def stage3_report(paths: list[Path]) -> dict:
         with open(p, encoding="utf-8-sig", newline="") as f:
             rows += [parse_result_row(r) | {"run": p.stem} for r in csv.DictReader(f)]
 
-    def per_q(method):
-        costs = [r["cost_usd"] for r in rows if r["method"] == method]
+    def per_q(method, rs):
+        costs = [r["cost_usd"] for r in rs if r["method"] == method]
         return sum(costs) / len(costs)
+    ok_rows = [r for r in rows if not r.get("error")]
+    errors = {m: sum(1 for r in rows if r["method"] == m and r.get("error")) for m in ("m0", METHOD)}
+    ratio, ratio_ok = per_q(METHOD, rows) / per_q("m0", rows), per_q(METHOD, ok_rows) / per_q("m0", ok_rows)
+    # 오류 행(비용 0)이 평균을 낮추므로 오류 행이 있으면 두 비율이 모두 상한 이하여야 통과(B-2 덧붙임, 사용자 결정 2026-11-23)
+    cost_pass = ratio <= COST_LIMIT and (not any(errors.values()) or ratio_ok <= COST_LIMIT)
     cand = [r for r in rows if r["method"] == METHOD]
     ms = [float(r["refine_ms"]) for r in cand if r.get("refine_ms") not in (None, "")]
-    return {"summary": summarize_methods(rows), "latency": latency_b2(rows), "cost_ratio": per_q(METHOD) / per_q("m0"),
+    return {"summary": summarize_methods(rows), "latency": latency_b2(rows), "cost_ratio": ratio,
+            "errors": errors, "cost_ratio_without_errors": ratio_ok, "cost_pass": cost_pass,
             "refine": {"ms_avg": round(sum(ms) / len(ms)) if ms else None,
                        "reasons": dict(Counter(r.get("refine_reason") or "" for r in cand))}}
 

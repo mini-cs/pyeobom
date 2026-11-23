@@ -34,7 +34,7 @@ REFINE_FORMAT = {
 class RefineResult:
     text: str
     used: bool
-    reason: str  # ok · same · off · timeout · api_error · invalid_output · other_brand
+    reason: str  # ok · same · off · timeout · api_error · not_json · empty · too_long · other_brand
     usage: dict = field(default_factory=dict, compare=False)  # 토큰 수(입력·출력·추론). 추적에는 숫자로만
 
 
@@ -48,13 +48,20 @@ def build_refine_messages(question: str, product: str) -> list[dict]:
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
-def _parse(text: str) -> str | None:
+def _parse(text: str) -> tuple[str | None, str]:
+    """(다듬은 문장, 이유). 실패 이유는 0단계에서 따로 센다(설계 6절 0단계 3): not_json · empty · too_long."""
     try:
         value = json.loads(text).get("search_question")
     except (ValueError, AttributeError):
-        return None
-    value = " ".join(value.split()) if isinstance(value, str) else ""
-    return value if 0 < len(value) <= MAX_REFINED_LEN else None
+        return None, "not_json"
+    if not isinstance(value, str):
+        return None, "not_json"
+    value = " ".join(value.split())
+    if not value:
+        return None, "empty"
+    if len(value) > MAX_REFINED_LEN:
+        return None, "too_long"
+    return value, "ok"
 
 
 def refine_question(question: str, product: str, model_name: str, settings: Settings, client=None) -> RefineResult:
@@ -75,9 +82,9 @@ def refine_question(question: str, product: str, model_name: str, settings: Sett
     u = getattr(resp, "usage", None)
     usage = {"input_tokens": u.input_tokens, "output_tokens": u.output_tokens,
              "reasoning_tokens": getattr(getattr(u, "output_tokens_details", None), "reasoning_tokens", 0) or 0} if u else {}
-    refined = _parse(resp.output_text or "")
+    refined, reason = _parse(resp.output_text or "")
     if refined is None:
-        return RefineResult(question, False, "invalid_output", usage)
+        return RefineResult(question, False, reason, usage)
     if refined == " ".join(question.split()):
         return RefineResult(question, False, "same", usage)
     return RefineResult(refined, True, "ok", usage)

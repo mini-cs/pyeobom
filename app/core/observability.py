@@ -48,7 +48,8 @@ class Tracer:
             yield _NoopSpan()
             return
         model = attrs.pop("model", None)
-        kwargs = {"as_type": "generation", "model": model} if name in ("llm", "rewrite") else {"as_type": "span"}
+        # AI 호출 단계는 generation(langfuse는 이 종류에만 토큰 수를 남긴다)
+        kwargs = {"as_type": "generation", "model": model} if name in ("llm", "rewrite", "refine") else {"as_type": "span"}
         with self._client.start_as_current_observation(name=name, metadata=attrs, **kwargs) as obs:
             yield _Span(obs)
 

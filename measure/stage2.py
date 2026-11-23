@@ -15,7 +15,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PRICE_IN, PRICE_OUT = 0.10, 0.50  # 답변 모델 gpt-6-luna 1M 토큰당 달러(장부와 같은 단가). 임베딩은 방법마다 1회로 같아 뺌
+PRICE_IN, PRICE_OUT = 0.10, 0.50  # 답변 모델 gpt-6-luna 1M 토큰당 달러(장부와 같은 단가)
+# 임베딩 비용은 v1.9와 같이 비교에서 뺀다. q_refine은 질문 두 개를 임베딩해 질문당 약 1e-6달러 더 들지만 뺌(1.5배 판정 영향 약 0.003)
 COLUMNS = ["id", "card", "method", "type", "question", "expected_ref", "found", "answer", "cited_refs", "retrieved_refs",
            "retrieved_chunk_ids",
            "diagnostic_added", "latency_ms", "llm_ms", "input_tokens", "output_tokens", "cost_usd", "rule_blocked", "error",
@@ -240,6 +241,9 @@ def main() -> None:
     from measure.refine_eval import CANDIDATE_MODEL, METHOD as REFINE
     bundles = bundle_names(args.methods)
     models = {m["id"]: m for m in load_models()}
+    if REFINE in args.methods:  # 문장마다 방법 순서를 돌려 m0가 먼저 돌 수 있으므로, AI를 부르기 전에 한 번 확인(시간 제한·요청문 해시)
+        from measure.refine_eval import candidate_refine
+        candidate_refine(models, settings)
     if bundles:
         from measure.v17_answer import bundle_deps
         if settings.search_mode != "vector":
