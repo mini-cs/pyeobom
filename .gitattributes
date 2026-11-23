@@ -8,3 +8,8 @@ evaluation/results/*-blind-key-*.json text eol=lf
 ingest/prompts/*.txt text eol=lf
 # 2차 계획은 채팅 Claude가 준 SHA-256과 대조하므로 줄 끝을 LF로
 docs/superpowers/plans/2026-11-21-phase2-model-request-plan.md text eol=lf
+# v1.96 첫 질문 다듬기: 설계·계획·다듬기 요청문·미리 보기 문장은 SHA-256을 적어 두므로 줄 끝을 LF로
+docs/superpowers/specs/2026-11-23-first-question-refine-design.md text eol=lf
+docs/superpowers/plans/2026-11-23-first-question-refine-plan.md text eol=lf
+app/answer/prompts/refine_v1.txt text eol=lf
+measure/refine_preview.csv text eol=lf
