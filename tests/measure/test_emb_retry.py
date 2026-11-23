@@ -16,9 +16,22 @@ def _git(repo, *args) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
-def _commit(repo, msg) -> str:
+ADR041 = "docs/결정기록/041-임베딩-large-다시-측정-전-결정.md"
+
+
+def _commit(repo, msg, *, with_041=True) -> str:
+    if with_041:  # 열기 파일의 커밋에는 결정기록 041이 있어야 한다(검토 지적 6)
+        (repo / ADR041).parent.mkdir(parents=True, exist_ok=True)
+        (repo / ADR041).write_text(f"가짜 041 {msg}\n", encoding="utf-8")
+        _git(repo, "add", ADR041)
     _git(repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", "commit", "-q", "--allow-empty", "-m", msg)
     return _git(repo, "rev-parse", "HEAD")
+
+
+def _opened(tmp_path):
+    """041이 든 커밋을 가리키는 열기 파일과 그 저장소."""
+    repo = _repo(tmp_path)
+    return _open_file(tmp_path / "open.json", _commit(repo, "A")), repo
 
 
 def _repo(tmp_path):
@@ -62,6 +75,21 @@ def test_require_open_file_non_ancestor_commit_stops(tmp_path):
         require_open_file(_open_file(tmp_path / "open.json", side), repo=repo)
 
 
+def test_require_open_file_rev_name_stops(tmp_path):
+    repo = _repo(tmp_path)
+    _commit(repo, "A")
+    with pytest.raises(SystemExit):
+        require_open_file(_open_file(tmp_path / "open.json", "HEAD"), repo=repo)
+
+
+def test_require_open_file_commit_without_041_stops(tmp_path):
+    repo = _repo(tmp_path)
+    before = _commit(repo, "041 앞", with_041=False)
+    _commit(repo, "041")
+    with pytest.raises(SystemExit):
+        require_open_file(_open_file(tmp_path / "open.json", before), repo=repo)
+
+
 def test_write_open_file_refuses_existing(tmp_path):
     path = _open_file(tmp_path / "open.json", "f" * 40)
     with pytest.raises(SystemExit):
@@ -82,6 +110,16 @@ def test_old_chunk_refs_keeps_guides_and_pages():
 def test_old_chunk_refs_unknown_id_stops():
     with pytest.raises(SystemExit):
         old_chunk_refs_to_pages("chunk:5", {})
+
+
+@pytest.mark.parametrize("ref", ["chunk:0", "chunk:336", "chunk: 12", "chunk:x"])
+def test_old_chunk_refs_out_of_range_stops(ref):  # 검토 지적 5: 옛 설명서(1~297)·가이드(298~335) 밖 번호는 조용히 두지 않음
+    with pytest.raises(SystemExit):
+        old_chunk_refs_to_pages(f"manual:1|{ref}", {12: ("manual-x", 41)})
+
+
+def test_old_chunk_refs_strips_spaces():
+    assert old_chunk_refs_to_pages(" chunk:12 | manual:7", {12: ("manual-x", 41)}) == ("manual:41|manual:7", 1)
 
 
 def test_load_backup_pages_hash_mismatch_stops(tmp_path):
@@ -107,11 +145,17 @@ def _sealed(tmp_path, body="p01-1,1,paraphrase,가짜 질문,chunk:12,washer-x\n
 NEW = [{"id": "n3-1", "card": "3", "type": "paraphrase", "question": "새 가짜 질문", "expected_ref": "manual:9", "model_id": "washer-x"}]
 
 
+def _build(tmp_path, sealed, split, new_rows=NEW, out=None, opened=None):
+    open_file, repo = opened or _opened(tmp_path)
+    return build_test_set(sealed, new_rows, split, {12: ("manual-x", 41)}, out or tmp_path / "out.csv",
+                          open_file=open_file, repo=repo)
+
+
 def test_build_test_set_sealed_hash_mismatch_stops(tmp_path):
     sealed, split = _sealed(tmp_path)
     split.write_text(json.dumps({"test_sha256": "0" * 64}), encoding="utf-8")
     with pytest.raises(SystemExit):
-        build_test_set(sealed, NEW, split, {12: ("manual-x", 41)}, tmp_path / "out.csv")
+        _build(tmp_path, sealed, split)
     assert not (tmp_path / "out.csv").exists()
 
 
@@ -120,7 +164,7 @@ def test_build_test_set_refuses_existing_out(tmp_path):
     out = tmp_path / "out.csv"
     out.write_text("그대로", encoding="utf-8")
     with pytest.raises(SystemExit):
-        build_test_set(sealed, NEW, split, {12: ("manual-x", 41)}, out)
+        _build(tmp_path, sealed, split, out=out)
     assert out.read_text(encoding="utf-8") == "그대로"
 
 
@@ -128,11 +172,45 @@ def test_build_test_set_merges_and_converts(tmp_path):
     from measure.search_eval import read_cases
     sealed, split = _sealed(tmp_path)
     out = tmp_path / "out.csv"
-    got = build_test_set(sealed, NEW, split, {12: ("manual-x", 41)}, out)
+    got = _build(tmp_path, sealed, split, out=out)
     rows = read_cases(out)
     assert [r["id"] for r in rows] == ["p01-1", "n3-1"] and rows[0]["expected_ref"] == "manual:41"
     assert got == {"rows": 2, "sha256": hashlib.sha256(out.read_bytes()).hexdigest(), "converted_rows": 1}
     assert b"\r" not in out.read_bytes()
+
+
+def test_build_test_set_without_open_file_stops(tmp_path):  # 검토 지적 1: 열기 파일 없이 봉인 파일을 읽지 않음
+    sealed, split = _sealed(tmp_path)
+    with pytest.raises(SystemExit):
+        _build(tmp_path, sealed, split, opened=(tmp_path / "no-open.json", _repo(tmp_path)))
+    assert not (tmp_path / "out.csv").exists()
+
+
+def test_build_test_set_duplicate_new_ids_stops(tmp_path):  # 검토 지적 2가: 새 행끼리 겹쳐도 멈춤
+    sealed, split = _sealed(tmp_path)
+    with pytest.raises(SystemExit):
+        _build(tmp_path, sealed, split, new_rows=NEW + [NEW[0] | {"question": "다른 가짜 질문"}])
+    assert not (tmp_path / "out.csv").exists()
+
+
+def test_build_test_set_trap_with_ref_stops(tmp_path):  # 검토 지적 2나: 함정에 기대 근거가 있으면 5위 안 분모에 들어감
+    sealed, split = _sealed(tmp_path)
+    with pytest.raises(SystemExit):
+        _build(tmp_path, sealed, split, new_rows=[NEW[0] | {"type": "trap"}])
+    assert not (tmp_path / "out.csv").exists()
+
+
+def test_build_test_set_nontrap_empty_ref_stops(tmp_path):  # 사용자 결정: 함정이 아닌데 기대 근거가 비어도 멈춤
+    sealed, split = _sealed(tmp_path)
+    with pytest.raises(SystemExit):
+        _build(tmp_path, sealed, split, new_rows=[NEW[0] | {"expected_ref": ""}])
+    assert not (tmp_path / "out.csv").exists()
+
+
+def test_build_test_set_trap_without_ref_passes(tmp_path):
+    sealed, split = _sealed(tmp_path)
+    got = _build(tmp_path, sealed, split, new_rows=[NEW[0] | {"type": "trap", "expected_ref": ""}])
+    assert got["rows"] == 2
 
 
 # ── 이어지는 질문: 같은 실행 안에서 방법 번갈아 ──
@@ -202,6 +280,15 @@ def test_time_summary_excludes_errors_and_blocked():
     assert s["n"] == {"base": 1, "cand": 1}
 
 
+def test_time_summary_reports_excluded_counts():  # 검토 지적 4: 뺀 행 수를 결과 CSV를 열지 않고 보고
+    rows = [T("m0", 1000), T("m0", 9000, error="AI_TIMEOUT"), T("m0", 0, blocked="True"), T("m0", ""),
+            T("emb_large", 1500), T("emb_large", 0, blocked="True", run="r2")]
+    got = time_summary({"test": rows})["test"]
+    assert got["all"]["excluded"] == {"base": {"error": 1, "rule_blocked": 1, "no_latency": 1},
+                                      "cand": {"error": 0, "rule_blocked": 1, "no_latency": 0}}
+    assert got["r2"]["excluded"]["cand"]["rule_blocked"] == 1 and got["r1"]["excluded"]["cand"]["rule_blocked"] == 0
+
+
 def test_time_summary_pools_all_rows_not_set_means():
     # test 세트 1행(m0 1000, cand 2000), q30 3행(m0 1000, cand 1000) → pooled diff_ms == 250.0 (세트 평균의 평균이면 500)
     got = time_summary({"test": [T("m0", 1000), T("emb_large", 2000)],
@@ -245,6 +332,18 @@ def test_rule17_blank_verdict_stops():
         rule17(["정답", ""])
 
 
+def test_rule17_boundary_labels():  # 사용자 결정: (경계)는 같은 종류로 센다. 환각(경계)도 환각(032 다시 세기와 같음)
+    assert rule17(["정답", "환각(경계)"]) == "환각"
+    assert rule17(["정답", "오답(경계)"]) == "오답"
+    assert rule17(["정답(경계)", "정답(경계)"]) == "정답"
+
+
+@pytest.mark.parametrize("label", ["경계: 정답", "정답 (경계)", "정담", "맞음", "환각?"])
+def test_rule17_unknown_label_stops(label):  # 검토 지적 7: 여섯 이름 밖의 글은 조용히 오답으로 세지 않음
+    with pytest.raises(ValueError):
+        rule17(["정답", label])
+
+
 def _b3_args(**over):
     args = {"test_hit5": {"production": {"hit5": 20, "denominator": 46}, "emb_large": {"hit5": 25, "denominator": 46}},
             "test17": {"m0": {"정답": 30, "환각": 0}, "emb_large": {"정답": 31, "환각": 0}},
@@ -280,12 +379,37 @@ def test_b3_time_line_both_parts():
     assert b3(**_b3_args(line={"total_ms": 900, "non_llm_ms": None}))["time"]["ok"] is False
 
 
+def _six(tmp_path, date="2026-11-24"):
+    paths = []
+    for s in ("test", "q30", "fu"):
+        for r in ("r1", "r2"):
+            p = tmp_path / f"emb-retry-{s}-{r}-{date}.csv"
+            p.write_text(f"id,method\n{s}{r},m0\n", encoding="utf-8")
+            paths.append(p)
+    return paths
+
+
 def test_read_results_adds_run_and_rejects_bad_name(tmp_path):
     from measure.emb_retry import read_results
-    good = tmp_path / "emb-retry-q30-r2-2026-11-24.csv"
-    good.write_text("id,method\nq01,m0\n", encoding="utf-8")
-    assert read_results([good]) == {"q30": [{"id": "q01", "method": "m0", "run": "r2"}]}
+    paths = _six(tmp_path)
+    got = read_results(paths)
+    assert set(got) == {"test", "q30", "fu"} and got["q30"] == [{"id": "q30r1", "method": "m0", "run": "r1"},
+                                                                 {"id": "q30r2", "method": "m0", "run": "r2"}]
     bad = tmp_path / "emb-retry-test-2026-11-24.csv"
     bad.write_text("id,method\n", encoding="utf-8")
     with pytest.raises(SystemExit):
-        read_results([bad])
+        read_results(paths[1:] + [bad])
+
+
+def test_read_results_duplicate_set_run_stops(tmp_path):  # 검토 지적 3: 같은 세트·회차를 두 번 세지 않음
+    from measure.emb_retry import read_results
+    other = tmp_path / "other"
+    other.mkdir()
+    with pytest.raises(SystemExit):
+        read_results(_six(tmp_path) + [_six(other, "2026-11-25")[2]])
+
+
+def test_read_results_missing_file_stops(tmp_path):  # 검토 지적 3: 범위(세 세트 × 두 회차)가 다 있어야 냄
+    from measure.emb_retry import read_results
+    with pytest.raises(SystemExit):
+        read_results(_six(tmp_path)[:5])
