@@ -19,7 +19,7 @@ PRICE_IN, PRICE_OUT = 0.10, 0.50  # 답변 모델 gpt-6-luna 1M 토큰당 달러
 COLUMNS = ["id", "card", "method", "type", "question", "expected_ref", "found", "answer", "cited_refs", "retrieved_refs",
            "retrieved_chunk_ids",
            "diagnostic_added", "latency_ms", "llm_ms", "input_tokens", "output_tokens", "cost_usd", "rule_blocked", "error",
-           "human_verdict"]
+           "refined_question", "refine_ms", "refine_reason", "human_verdict"]
 
 
 # 판정지에 적을 원문 확인(사실만, 사용자 요청 2026-11-10). 인용은 150자 이내
@@ -30,7 +30,9 @@ BLIND_NOTES = {"p01-1": _C312, "p01-2": _C312}
 
 
 def result_row(case: dict, method: str, resp: dict, err: str, timings: dict) -> dict:
-    inp, outp = timings.get("input_tokens", 0), timings.get("output_tokens", 0)
+    # 토큰·비용은 답변 + 첫 질문 다듬기(v1.96, 꺼짐이면 0)
+    inp = timings.get("input_tokens", 0) + resp.get("refine_input_tokens", 0)
+    outp = timings.get("output_tokens", 0) + resp.get("refine_output_tokens", 0)
     return {"id": case["id"], "card": case["card"], "method": method, "type": case["type"], "question": case["question"],
             "expected_ref": case["expected_ref"], "found": resp.get("found"), "answer": resp.get("answer", err),
             "cited_refs": "|".join(resp.get("cited_refs", [])), "retrieved_refs": "|".join(resp.get("retrieved_refs", [])),
@@ -38,11 +40,32 @@ def result_row(case: dict, method: str, resp: dict, err: str, timings: dict) -> 
             "diagnostic_added": resp.get("diagnostic_added"), "latency_ms": resp.get("latency_ms"), "llm_ms": resp.get("llm_ms"),
             "input_tokens": inp, "output_tokens": outp, "cost_usd": cost_usd(inp, outp),
             "rule_blocked": bool(resp) and resp.get("embed_ms") == 0 and resp.get("llm_ms") == 0, "error": err,
-            "human_verdict": ""}
+            "refined_question": resp.get("refined_question") or "", "refine_ms": resp.get("refine_ms"),
+            "refine_reason": resp.get("refine_reason") or "", "human_verdict": ""}
 
 
 def with_search(deps, search):
     return dataclasses.replace(deps, search=search)
+
+
+def bundle_names(methods: list[str]) -> list[str]:
+    """검색 방법(search_eval.METHODS)도 첫 질문 다듬기(q_refine)도 아닌 이름 = 저장된 실험 조각 한 벌."""
+    from measure.refine_eval import METHOD
+    from measure.search_eval import METHODS
+    return [m for m in methods if m not in METHODS and m != METHOD]
+
+
+def deps_for(method: str, deps, *, models: dict, settings, variant_search, get_conn):
+    """방법별 Deps. q_refine은 다듬기 모델만 후보로 바꾸고 검색은 운영 그대로(설명은 settings에만, METHODS에 넣지 않음)."""
+    from measure.refine_eval import METHOD, with_candidate
+    from measure.search_eval import METHODS, method_fns
+    if method in METHODS:
+        search, _ = method_fns(method, deps.search, variant_search, {})
+        return with_search(deps, search)
+    if method == METHOD:
+        return with_candidate(deps, models, settings)
+    from measure.v17_answer import bundle_deps
+    return bundle_deps(deps, method, models, get_conn)
 
 
 def method_order(methods: list[str], i: int) -> list[str]:
@@ -198,7 +221,8 @@ def main() -> None:
     from app.core.errors import AppError
     from app.retrieval.search import search_vector
     from evaluation.run_config import warn_if_different, write_settings
-    from measure.search_eval import METHODS, method_fns, read_cases
+    from app.answer.refine import PROMPT_SHA256
+    from measure.search_eval import METHODS, read_cases
 
     settings = get_settings()
     if warn_if_different(settings):
@@ -212,13 +236,14 @@ def main() -> None:
     with get_conn() as conn:  # 방법 이름과 같은 한 벌이 저장돼 있으면 그 이름으로 운영 검색이 조용히 돈다
         if clash := [m for m in args.methods if m in METHODS and bundle_exists(conn, m)]:
             raise SystemExit(f"방법 이름과 같은 실험 조각 한 벌이 저장돼 있어 멈춤: {clash}")
-    bundles = [m for m in args.methods if m not in METHODS]
+    from app.catalog.registry import load_models
+    from measure.refine_eval import CANDIDATE_MODEL, METHOD as REFINE
+    bundles = bundle_names(args.methods)
+    models = {m["id"]: m for m in load_models()}
     if bundles:
-        from app.catalog.registry import load_models
         from measure.v17_answer import bundle_deps
         if settings.search_mode != "vector":
             raise SystemExit("실험 조각 한 벌은 벡터 검색(search_mode=vector)에서만 써서 멈춤")
-        models = {m["id"]: m for m in load_models()}
         for b in bundles:  # 방법 이름도 저장된 한 벌도 아니면 AI를 부르기 전에 멈춤(bundle_fns)
             bundle_deps(get_deps(), b, models, get_conn)
 
@@ -230,12 +255,7 @@ def main() -> None:
     rows, raws = [], []
     for i, case in enumerate(cases):
         for m in method_order(args.methods, i):
-            deps = get_deps()
-            if m in METHODS:
-                search, _ = method_fns(m, deps.search, variant_search, {})
-                deps = with_search(deps, search)
-            else:
-                deps = bundle_deps(deps, m, models, get_conn)
+            deps = deps_for(m, get_deps(), models=models, settings=settings, variant_search=variant_search, get_conn=get_conn)
             raw, complete = [], deps.complete
             deps = dataclasses.replace(deps, complete=lambda msgs, raw=raw, complete=complete: raw.append(complete(msgs)) or raw[-1])
             try:
@@ -252,9 +272,12 @@ def main() -> None:
         w.writeheader()
         w.writerows(rows)
     summary = summarize_methods(rows)
-    write_settings(out, settings, args.label, experiment={"search_methods": {m: METHODS.get(m, "v1.7 실험 조각 한 벌") for m in args.methods},
+    names = METHODS | {REFINE: "첫 질문 다듬기(v1.96)"}
+    write_settings(out, settings, args.label, experiment={"search_methods": {m: names.get(m, "v1.7 실험 조각 한 벌") for m in args.methods},
                                                           "same_run": True, "summary": summary}
-                                                         | ({"bundles": bundles} if bundles else {}))
+                                                         | ({"bundles": bundles} if bundles else {})
+                                                         | ({"refine": {"model": CANDIDATE_MODEL, "prompt_sha256": PROMPT_SHA256}}
+                                                            if REFINE in args.methods else {}))
     lines = [f"# 2단계 사람 판정 목록 ({args.label}, {today})", "",
              "같은 문장의 답이 앞 방법과 글자까지 같으면 '같음'으로 표시(판정을 이어받음). 함정은 B 기준(지어내지 않고 없다고 밝히면 정답).", "",
              "| id | 질문 | " + " | ".join(args.methods) + " |", "|---|---|" + "---|" * len(args.methods)]
