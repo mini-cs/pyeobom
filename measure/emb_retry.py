@@ -2,7 +2,7 @@
 
 설계 `docs/superpowers/specs/2026-11-23-embedding-large-retry-design.md` 6·11절, 계획 Task 1.
 CLI: python -m measure.emb_retry open <commit> | search-test --test-set <path> | followups --label <label>
-     | time-summary <결과 CSV들> | blind-regression --label <label> --date <날짜>
+     | time-summary <결과 CSV들> | blind-regression --label <label> <q30·fu 결과 CSV 4개>
 - 확인용 세트는 열기 파일(결정기록 041 커밋 해시)이 있을 때만 읽는다
 - 화면에는 파일 경로와 시간 숫자만 찍는다(시간 선을 커밋하기 전에 찾은 수·5위 안·답이 보이지 않게, 설계 5-2의 2)
 """
@@ -33,6 +33,7 @@ FU_COLUMNS = ["dialog_id", "turn", "type", "model_id", "method", "question", "ex
 ADR041 = "docs/결정기록/041-임베딩-large-다시-측정-전-결정.md"
 LABELS = {"정답", "정답(경계)", "오답", "오답(경계)", "환각", "환각(경계)"}  # ⑰이 받는 판정 이름(사용자 결정)
 RESULT_SETS = {(s, r) for s in ("test", "q30", "fu") for r in ("r1", "r2")}  # 시간·비용을 세는 범위(설계 5-3의 1)
+REGRESSION_SETS = {(s, r) for s in ("q30", "fu") for r in ("r1", "r2")}  # ⑳ 회귀 판정지 범위
 RESULT_NAME = re.compile(r"emb-retry-(test|q30|fu)-(r\d+)-\d{4}-\d{2}-\d{2}\.csv")
 
 
@@ -390,17 +391,28 @@ def read_results(paths: list[Path]) -> dict[str, list[dict]]:
     return out
 
 
-def blind_regression(label: str, date: str) -> tuple[Path, str]:
-    """30문항·이어지는 질문 두 회차를 방법별로 나눠 가린 판정지 한 장(⑳ 입력). 판정지·대응표는 git 밖, 대응표 해시를 돌려준다."""
+def blind_regression(label: str, paths: list[Path]) -> tuple[Path, str]:
+    """30문항·이어지는 질문 두 회차 결과 CSV 4개를 방법별로 나눠 가린 판정지 한 장(⑳ 입력). 회차 이름은 파일 이름(날짜 포함).
+    파일 날짜가 회차마다 다를 수 있어 경로를 직접 받는다(fu-r2만 2026-11-24). 판정지·대응표는 git 밖, 대응표 해시를 돌려준다."""
     import random
 
     from measure.v17_blind4 import build_sheet
-    res = ROOT / "evaluation" / "results"
-    sets = {s: {f"{label}-{s}-{r}-{date}": _read_csv(res / f"{label}-{s}-{r}-{date}.csv") for r in ("r1", "r2")}
-            for s in ("q30", "fu")}
+    seen: dict[tuple[str, str], Path] = {}
+    for p in paths:
+        m = RESULT_NAME.fullmatch(p.name)
+        if not m:
+            raise SystemExit(f"결과 파일 이름이 emb-retry-<q30|fu>-r<n>-<날짜>.csv가 아니라 멈춤: {p.name}")
+        if (m[1], m[2]) not in REGRESSION_SETS:
+            raise SystemExit(f"회귀 판정지는 q30·fu만 받음(test 파일 등은 멈춤): {p.name}")
+        if (m[1], m[2]) in seen:
+            raise SystemExit(f"같은 세트·회차 파일이 두 번 들어와 멈춤: {m[1]} {m[2]}")
+        seen[(m[1], m[2])] = p
+    if set(seen) != REGRESSION_SETS:
+        raise SystemExit(f"q30·fu × r1·r2(4개)가 정확히 있어야 함: 빠짐 {sorted(REGRESSION_SETS - set(seen))}")
     sheet_path, key_path = OUT / f"{label}-regression-blind-sheet.md", OUT / f"{label}-regression-blind-key.json"
     if sheet_path.exists() or key_path.exists():
         raise SystemExit("판정지 또는 대응표가 이미 있어 멈춤(덮어쓰지 않음)")
+    sets = {s: {seen[(s, r)].stem: _read_csv(seen[(s, r)]) for r in ("r1", "r2")} for s in ("q30", "fu")}
     text, key = build_sheet(split_by_method(sets["q30"]), split_by_method(sets["fu"]), random.SystemRandom(), label)
     OUT.mkdir(parents=True, exist_ok=True)
     sheet_path.write_text(text, encoding="utf-8")
@@ -410,7 +422,7 @@ def blind_regression(label: str, date: str) -> tuple[Path, str]:
 
 
 USAGE = ("사용법: python -m measure.emb_retry open <commit> | search-test --test-set <path> | followups --label <label> "
-         "| time-summary <결과 CSV들> | blind-regression --label <label> --date <날짜>")
+         "| time-summary <결과 CSV들> | blind-regression --label <label> <q30·fu 결과 CSV 4개>")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -424,8 +436,8 @@ def main(argv: list[str] | None = None) -> None:
         print(followups(rest[1]))
     elif cmd == "time-summary" and rest:
         print(json.dumps(time_summary(read_results([Path(p) for p in rest])), ensure_ascii=False, indent=1))
-    elif cmd == "blind-regression" and rest[0::2] == ["--label", "--date"] and len(rest) == 4:
-        sheet, key_sha = blind_regression(rest[1], rest[3])
+    elif cmd == "blind-regression" and rest[:1] == ["--label"] and len(rest) >= 3:
+        sheet, key_sha = blind_regression(rest[1], [Path(p) for p in rest[2:]])
         print(sheet, "대응표 SHA-256", key_sha)
     else:
         raise SystemExit(USAGE)
