@@ -49,5 +49,20 @@
       "manual:34",
       "manual:49"
     ]
+  },
+  {
+    "id": "washer-samsung-sew-hbw122l",
+    "brand": "삼성",
+    "appliance": "washer",
+    "model_name": "SEW-HBW122L",
+    "display_name": "삼성 하우젠 드럼세탁기 (SEW-HBW122L)",
+    "name": "삼성 하우젠 드럼세탁기",
+    "short_name": "삼성 하우젠 드럼",
+    "model_codes": [
+      "SEW-HBW122L"
+    ],
+    "official_url": "https://www.samsungsvc.co.kr/download",
+    "model_name_hint": "제품에 붙은 라벨(옆면·뒷면 등)에서 모델명을 확인하세요. 위치는 제품마다 달라요",
+    "diagnostic_refs": []
   }
 ]

@@ -7,6 +7,10 @@ export const EXAMPLES = {
     { "question": "이불 코스는 어떻게 해요?", "hint": "코스 쓰는 방법" },
     { "question": "물이 안 빠지고 탈수가 안 돼요", "hint": "원인과 해결 방법" },
   ],
+  "washer-samsung-sew-hbw122l": [
+    { "question": "울 코스는 어떤 옷을 빨 때 써요?", "hint": "코스 쓰는 방법" },
+    { "question": "헹굼 횟수는 어떻게 늘려요?", "hint": "헹굼 설정 방법" },
+  ],
   "washer-lg-fx25": [
     { "question": "통세척은 어떻게 해요?", "hint": "세탁조 관리 방법" },
     { "question": "UE 에러가 떴어요", "hint": "원인과 해결 방법" },
