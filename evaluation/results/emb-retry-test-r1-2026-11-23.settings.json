@@ -1,0 +1,50 @@
+{
+ "label": "emb-retry-test-r1",
+ "time": "2026-11-23T23:35:15",
+ "settings": {
+  "search_mode": "vector",
+  "top_k": 5,
+  "openai_chat_model": "gpt-6-luna",
+  "reasoning_effort": "low",
+  "prompt_version": "v1",
+  "rewrite_model": "gpt-6-luna",
+  "rewrite_reasoning_effort": "none",
+  "rewrite_max_output_tokens": 300,
+  "openai_embed_model": "text-embedding-3-small",
+  "openai_embed_dimensions": null,
+  "chunk_context_model": "",
+  "chunk_context_reasoning_effort": "low",
+  "refine_model": "",
+  "refine_reasoning_effort": "none",
+  "refine_max_output_tokens": 300,
+  "max_output_tokens": 600,
+  "rewrite_timeout_s": 5.0,
+  "max_question_len": 500,
+  "refine_timeout_s": 3.0
+ },
+ "differences": [],
+ "experiment": {
+  "search_methods": {
+   "m0": "운영 검색",
+   "emb_large": "v1.7 실험 조각 한 벌"
+  },
+  "same_run": true,
+  "summary": {
+   "m0": {
+    "n": 30,
+    "found": 18,
+    "latency_avg_ms": 4810,
+    "cost_per_q_usd": 0.0003775
+   },
+   "emb_large": {
+    "n": 30,
+    "found": 21,
+    "latency_avg_ms": 4631,
+    "cost_per_q_usd": 0.0003527
+   }
+  },
+  "bundles": [
+   "emb_large"
+  ]
+ }
+}
