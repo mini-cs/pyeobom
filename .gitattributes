@@ -13,3 +13,5 @@ docs/superpowers/specs/2026-11-23-first-question-refine-design.md text eol=lf
 docs/superpowers/plans/2026-11-23-first-question-refine-plan.md text eol=lf
 app/answer/prompts/refine_v1.txt text eol=lf
 measure/refine_preview.csv text eol=lf
+# 2차 설계도 해시를 기록하므로 줄 끝을 LF로
+docs/superpowers/specs/2026-11-17-phase2-model-request-design.md text eol=lf
