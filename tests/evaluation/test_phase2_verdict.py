@@ -47,6 +47,21 @@ def test_confirm_set_accepts_several_pages_and_rejects_bad_fields():
         assert validate_confirm_set(rows, PAGES), (field, value)
 
 
+def test_confirm_set_usage_questions_must_come_from_manual():
+    # 설계 9.3-7 "설명서 앞·중간·뒤에서 고르게 고른 사용법 질문" (사용자 결정 2026-11-24)
+    rows = [usage("q1", 3, "guide:guide-test"), usage("q2", 7, "guide:guide-test")]
+    rows += [usage(f"q{i + 3}", p) for i, p in enumerate([2, 5, 12, 15, 23, 28])]
+    rows += [error("q9", 3), error("q10", 4, "manual")]
+    assert validate_confirm_set(rows, PAGES)
+
+
+def test_confirm_set_thirds_use_earliest_expected_page():
+    # 정답 쪽 적는 순서와 관계없이 가장 앞 쪽으로 나눈다(사용자 결정 2026-11-24): "28;2"는 앞 1/3
+    rows = [usage(f"q{i + 1}", p) for i, p in enumerate(["28;2", 5, 12, 15, 19, 23, 26, 29])]
+    rows += [error("q9", 3), error("q10", 4)]
+    assert validate_confirm_set(rows, PAGES) == []
+
+
 def judged(verdicts, borderline=()):
     """borderline: (인덱스, worse_verdict) 목록."""
     rows = [{"qid": f"q{i + 1}", "verdict": v, "borderline": "no", "worse_verdict": ""} for i, v in enumerate(verdicts)]
