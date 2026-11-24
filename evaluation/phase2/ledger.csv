@@ -1,1 +1,3 @@
 date,item,estimate_usd,actual_usd,note
+2026-11-24,적재 임베딩 manual-samsung-sew-hbw122l(조각 63개·약 4만 자 text-embedding-3-small; 글자당 1토큰 넘게 잡아 0.0008달러에 여유),0.002,,전 측정 Task 3 Step 3
+2026-11-24,확인 질문 답 10건(로컬 서버·운영과 같은 답변 경로; 1차 실측 질문당 약 0.0365센트 × 10 = 0.0037달러에 다시 묻기 여유),0.01,,전 측정 Task 3 Step 3
