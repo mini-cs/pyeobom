@@ -413,3 +413,64 @@ def test_read_results_missing_file_stops(tmp_path):  # 검토 지적 3: 범위(�
     from measure.emb_retry import read_results
     with pytest.raises(SystemExit):
         read_results(_six(tmp_path)[:5])
+
+
+# ── 회귀 가린 판정지(Task 5 Step 2): 결과 CSV 경로를 직접 받음(fu-r2만 날짜가 달라서) ──
+REG_NAMES = ["emb-retry-q30-r1-2026-11-23.csv", "emb-retry-q30-r2-2026-11-23.csv",
+             "emb-retry-fu-r1-2026-11-23.csv", "emb-retry-fu-r2-2026-11-24.csv"]
+
+
+def _reg_csv(path):
+    import csv
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        if "-q30-" in path.name:
+            w = csv.DictWriter(f, fieldnames=["id", "method", "type", "question", "expected_ref", "answer"])
+            w.writeheader()
+            w.writerows({"id": "q1", "method": m, "type": "single", "question": "가짜 질문", "expected_ref": "manual:1",
+                         "answer": f"가짜 답 {m}"} for m in ("m0", "emb_large"))
+        else:
+            w = csv.DictWriter(f, fieldnames=["dialog_id", "turn", "method", "type", "question", "expected_ref", "answer"])
+            w.writeheader()
+            w.writerows({"dialog_id": "d1", "turn": t, "method": m, "type": "followup", "question": f"가짜 질문 {t}",
+                         "expected_ref": "", "answer": f"가짜 답 {t} {m}"} for t in (1, 2) for m in ("m0", "emb_large"))
+    return path
+
+
+def _reg(tmp_path, monkeypatch, names=REG_NAMES):
+    from measure import emb_retry
+    monkeypatch.setattr(emb_retry, "OUT", tmp_path / "out")
+    (tmp_path / "res").mkdir(exist_ok=True)
+    return [_reg_csv(tmp_path / "res" / n) for n in names]
+
+
+def test_blind_regression_takes_paths_with_different_dates(tmp_path, monkeypatch):
+    from measure.emb_retry import blind_regression
+    paths = _reg(tmp_path, monkeypatch)
+    sheet, key_sha = blind_regression("emb-retry", paths)
+    key_path = tmp_path / "out" / "emb-retry-regression-blind-key.json"
+    assert sheet == tmp_path / "out" / "emb-retry-regression-blind-sheet.md" and sheet.exists()
+    assert key_sha == hashlib.sha256(key_path.read_bytes()).hexdigest()
+    runs = {k["run"] for k in json.loads(key_path.read_text(encoding="utf-8"))}
+    assert runs == {f"{p.stem}-{m}" for p in paths for m in ("m0", "emb_large")}  # 회차 이름 = 파일 이름(날짜 포함)
+
+
+@pytest.mark.parametrize("names, why", [
+    (REG_NAMES[:3], "빠짐"),
+    (REG_NAMES + ["emb-retry-q30-r1-2026-11-24.csv"], "두 번"),
+    (REG_NAMES + ["emb-retry-test-r1-2026-11-23.csv"], "test"),
+    (REG_NAMES + ["notes.csv"], "이름"),
+])
+def test_blind_regression_wrong_files_stop(tmp_path, monkeypatch, names, why):
+    from measure.emb_retry import blind_regression
+    paths = _reg(tmp_path, monkeypatch, names)
+    with pytest.raises(SystemExit, match=why):
+        blind_regression("emb-retry", paths)
+    assert not (tmp_path / "out").exists()  # 판정지·대응표를 쓰지 않음
+
+
+def test_blind_regression_cli_passes_paths(monkeypatch):
+    from measure import emb_retry
+    got = {}
+    monkeypatch.setattr(emb_retry, "blind_regression", lambda label, paths: got.update(label=label, paths=paths) or ("s", "h"))
+    emb_retry.main(["blind-regression", "--label", "emb-retry", *REG_NAMES])
+    assert got == {"label": "emb-retry", "paths": [emb_retry.Path(n) for n in REG_NAMES]}
