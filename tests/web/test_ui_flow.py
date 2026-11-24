@@ -17,6 +17,7 @@ PUBLIC = Path(__file__).resolve().parents[2] / "public"
 MODELS = list_models()  # 실제 /api/models와 같은 공개 필드만
 NAMES = {m["id"]: m["name"] for m in MODELS}  # 화면 이름(코드 없음). 코드는 모델 선택 카드에만
 TITLES = {m["id"]: m.get("short_name") or m["name"] for m in MODELS}  # 채팅 위쪽 막대 이름(short_name ?? name)
+WASHERS = sum(m["appliance"] == "washer" for m in MODELS)  # 세탁기 카드 수(모델을 더해도 테스트를 안 고치게)
 CODES = [c for m in MODELS for c in m["model_codes"]]
 LANDING_H1 = "가전 설명서, 대신 펴 봐 드려요"
 CATEGORY_H1 = "어떤 가전이 궁금하세요?"
@@ -139,7 +140,7 @@ def test_start_category_model_cards_with_illustrations(open_page):
     go_category(page)
     page.get_by_role("button", name="세탁기").click()
     cards = page.locator(".model-card")
-    expect(cards).to_have_count(2)
+    expect(cards).to_have_count(WASHERS)
     washer_ids = [m["id"] for m in MODELS if m["appliance"] == "washer"]
     for card, model_id in zip(cards.all(), washer_ids):
         expect(card).to_contain_text(NAMES[model_id])
@@ -168,7 +169,7 @@ def test_back_goes_model_category_landing(open_page):
     assert_screen(page, LANDING_H1)
     go_category(page)
     page.get_by_role("button", name="세탁기").click()
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     page.go_back()
     assert_screen(page, CATEGORY_H1)
     page.go_back()
@@ -181,7 +182,7 @@ def test_each_screen_has_one_h1_and_focus_moves_to_it(open_page):
     go_category(page)
     assert_focus_on_h1(page, CATEGORY_H1)
     page.get_by_role("button", name="세탁기").click()
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     model_h1 = page.get_by_role("heading", level=1).text_content().strip()
     assert visible_h1(page) == [{"text": model_h1, "hidden": False}]
     assert_focus_on_h1(page, model_h1)
@@ -247,7 +248,7 @@ def test_model_cards_have_no_external_links_and_ai_note_only_there(open_page):
     go_category(page)
     expect(page.get_by_text(AI_NOTE)).to_be_hidden()
     page.get_by_role("button", name="세탁기").click()
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     expect(page.get_by_text(AI_NOTE)).to_be_visible()
     outside = page.evaluate("""() => [...document.querySelectorAll('.model-card a, a.model-card')]
         .filter((a) => new URL(a.href).origin !== location.origin).map((a) => a.href)""")
@@ -266,7 +267,7 @@ def test_model_codes_on_model_cards_never_split(open_page):
     page = open_page()
     go_category(page)
     page.get_by_role("button", name="세탁기").click()
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     codes = page.locator(".model-card .model-code")
     washer_codes = [c for m in MODELS if m["appliance"] == "washer" for c in m["model_codes"]]
     expect(codes).to_have_text(washer_codes)
@@ -601,11 +602,11 @@ def test_answer_arriving_on_other_screen_is_saved_without_changing_screen(open_p
     send(page, "가짜 질문 1")
     wait_until(page, lambda: held)
     page.go_back()   # 답을 기다리는 동안 모델 화면으로
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     held[0].fulfill(json=fake(asks[0])[1])
     page.wait_for_function(f"localStorage.getItem({json.dumps(STORE_KEY)}) !== null")
     assert page.evaluate("location.hash") == "#model/washer"   # 지금 화면과 주소는 그대로
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     saved = saved_conversations(page)
     assert [t["question_masked"] for t in saved[0]["turns"]] == ["가린:가짜 질문 1"]
     page.go_back()   # 카테고리 화면의 최근 대화 카드로 그 대화를 연다
@@ -623,7 +624,7 @@ def test_same_model_card_again_opens_new_chat(open_page):
     send(page, "가짜 질문 1")
     wait_turns(page, 1)
     page.go_back()
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     page.locator(".model-card").nth(1).click()   # 같은 모델을 다시 고르면 새 대화
     expect(page.locator("#chat-title")).to_have_text(TITLES["washer-lg-fx25"])
     expect(page.locator(".turn")).to_have_count(0)
@@ -806,7 +807,7 @@ def test_drawer_opens_from_menu_on_topbar_screens_modal_and_esc_returns_focus(op
     expect(drawer).to_be_hidden()
     expect(menu).to_be_focused()
     page.get_by_role("button", name="세탁기").click()
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     open_drawer(page)   # 모델 화면에서도
     page.keyboard.press("Escape")
     open_chat(page, "washer-lg-fx25")
@@ -1661,7 +1662,7 @@ def test_drawer_back_while_waiting(open_page):
     held[0].fulfill(json=fake(asks[0])[1])
     page.wait_for_function(f"localStorage.getItem({json.dumps(STORE_KEY)}) !== null")
     assert page.evaluate("location.hash") == "#model/washer"
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(WASHERS)
     expect(page.get_by_text("가짜 답입니다(테스트): 가짜 질문 1")).to_be_hidden()   # 모델 고르기 화면에 답이 그려지지 않음
     saved = saved_conversations(page)
     assert [t["question_masked"] for t in saved[0]["turns"]] == ["가린:가짜 질문 1"]

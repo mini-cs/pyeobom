@@ -10,7 +10,7 @@ FIELDS = {"id", "doc_type", "title", "source_url", "scope_note", "model_ids", "f
 
 def test_documents_have_required_fields():
     docs = load_documents()
-    assert len(docs) == 11 and len({d["id"] for d in docs}) == 11   # 설명서 3 + 가이드 8 (결정기록 014)
+    assert len(docs) == 12 and len({d["id"] for d in docs}) == 12   # 설명서 3 + 가이드 8 (결정기록 014) + 2차 비교용 설명서 1
     for d in docs:
         assert FIELDS <= d.keys(), d["id"]
         assert d["doc_type"] in {"manual", "guide"} and d["source_url"].startswith("https://")
