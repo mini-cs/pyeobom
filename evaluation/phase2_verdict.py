@@ -18,6 +18,8 @@ def validate_confirm_set(rows: list[dict], page_count: int) -> list[str]:
             problems.append(f"{qid}: kind는 사용법·에러 코드 중 하나")
         if not SOURCE_RE.fullmatch(r.get("source") or ""):
             problems.append(f"{qid}: source는 manual 또는 guide:<doc_id>")
+        elif r.get("kind") == "사용법" and r.get("source") != "manual":
+            problems.append(f"{qid}: 사용법 질문은 설명서(manual)에서만")
         if not PAGES_RE.fullmatch(r.get("expected_pages") or ""):
             problems.append(f"{qid}: expected_pages가 비었거나 형식이 아님(예: 12;13)")
         elif r.get("source") == "manual" and not all(1 <= int(p) <= page_count for p in r["expected_pages"].split(";")):
@@ -25,12 +27,12 @@ def validate_confirm_set(rows: list[dict], page_count: int) -> list[str]:
     errors = sum(r.get("kind") == "에러 코드" for r in rows)
     if errors not in (0, 2):
         problems.append(f"에러 코드 질문은 0개 또는 2개: {errors}개")
-    # 앞·중간·뒤 고르게: 설명서(manual) 사용법 질문의 첫 정답 쪽으로 1/3을 나눈다
+    # 앞·중간·뒤 고르게: 설명서(manual) 사용법 질문의 정답 쪽 중 가장 앞 쪽으로 1/3을 나눈다(적는 순서와 무관)
     thirds = [0, 0, 0]
     for r in rows:
         pages = r.get("expected_pages") or ""
         if r.get("kind") == "사용법" and r.get("source") == "manual" and PAGES_RE.fullmatch(pages):
-            first = int(pages.split(";")[0])
+            first = min(int(p) for p in pages.split(";"))
             if 1 <= first <= page_count:
                 thirds[(first - 1) * 3 // page_count] += 1
     for name, n in zip(("앞", "중간", "뒤"), thirds):
