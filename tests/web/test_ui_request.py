@@ -29,7 +29,7 @@ NO_MODEL = "내 모델이 없어요"
 DRYER_EMPTY = "아직 등록된 건조기 모델이 없어요."
 LOGIN_REASON = "모델이 추가되면 메일로 알려 드릴게요. 받을 이메일을 확인할게요"
 PRIVACY = ("이메일과 요청 내용(가전 종류·브랜드·모델명)을 저장해요. 모델이 추가되면 알려 드리는 데만 써요. "
-           "지우고 싶으면 알림 메일에 답장해 주세요. 2차 테스트 기간의 계정과 요청은 데모데이가 끝나면 지워요.")
+           "지우고 싶으면 pyeobom@gmail.com으로 알려 주세요. 2차 테스트 기간의 계정과 요청은 데모데이가 끝나면 지워요.")  # 2026-11-25 처리방침과 맞춤
 ALREADY_EXISTS = "이미 있어요"
 ASK_NOW = "바로 질문하기"
 ALREADY_REQUESTED = "이미 요청하셨어요"
@@ -878,3 +878,30 @@ def test_switching_appliance_clears_request_inputs(open_app):
     expect(page.locator("#request-kind")).to_have_text("세탁기")
     expect(page.locator("#request-brand")).to_have_value("")
     expect(page.locator("#request-model")).to_have_value("")
+
+
+# ── 개인정보 처리방침 링크(2026-11-25 사용자 결정: 구글 로그인 공개 전 처리방침 페이지) ──
+
+POLICY = "개인정보 처리방침"
+
+
+def test_login_sheet_privacy_notice_links_to_policy(open_app):
+    page, _ = open_app()
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    sheet = login_sheet(page)
+    expect(sheet.get_by_text(PRIVACY)).to_be_visible()
+    link = sheet.get_by_role("link", name=POLICY)
+    expect(link).to_be_visible()
+    assert link.get_attribute("href") == "/privacy.html"
+
+
+def test_landing_and_drawer_footers_link_to_policy(open_app):
+    page, _ = open_app()
+    landing = page.locator('[data-screen="landing"]')
+    expect(landing.get_by_role("link", name=POLICY)).to_have_attribute("href", "/privacy.html")
+    page.get_by_role("link", name="시작하기").click()
+    page.get_by_role("button", name="지난 대화").click()
+    drawer = page.get_by_role("dialog", name="지난 대화")
+    expect(drawer.get_by_role("link", name=POLICY)).to_be_visible()
+    expect(drawer.get_by_role("link", name=POLICY)).to_have_attribute("href", "/privacy.html")
