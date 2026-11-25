@@ -748,3 +748,42 @@ def test_switch_popup_backdrop_click_closes_without_closedby(open_app):
     page.mouse.click(5, 5)
     expect(confirm).to_be_hidden()
     expect(switch).to_be_focused()
+
+
+# ── 첫 화면 숨김(auth-return)이 늘 풀리는지(2026-11-25 Step 6 확인) ──
+LANDING_H1 = "가전 설명서, 대신 펴 봐 드려요"
+
+
+def assert_not_blank(page, title):
+    expect(page.get_by_role("heading", level=1)).to_have_text(title)
+    assert page.evaluate("document.documentElement.classList.contains('auth-return')") is False
+
+
+def test_code_without_saved_path_shows_landing(open_app):
+    # a. 주소에 코드는 있는데 기억한 경로가 없을 때: 첫 화면이 보인다
+    page, fake = open_app()
+    page.goto("/?code=fake-auth-code")
+    assert_not_blank(page, LANDING_H1)
+
+
+def test_google_exchange_failure_keeps_request_screen_behind_sheet(open_app):
+    # b. 교환 실패: 시트 뒤 화면도 비지 않는다(기억한 요청 화면)
+    page, fake = open_app()
+    fake.token = (400, {"error": "invalid_grant", "error_description": "가짜 실패(테스트)"})
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    leave_for_google(page)
+    page.goto("/?code=fake-auth-code")
+    expect(login_sheet(page).get_by_text(LOGIN_FAILED)).to_be_visible()
+    assert_not_blank(page, REQUEST_H1)
+
+
+@pytest.mark.parametrize("broken", ["public-config", "supabase-js"])
+def test_google_return_without_supabase_still_shows_screen(open_app, broken):
+    # c. 공개 설정이나 supabase.js를 받지 못할 때도 화면이 비지 않는다
+    page, fake = open_app(config_status=503 if broken == "public-config" else 200)
+    if broken == "supabase-js":
+        page.context.route("**/vendor/supabase.js", lambda route: route.abort())
+    page.evaluate("sessionStorage.setItem('pyeobom.returnTo', '#request/dryer')")
+    page.goto("/?code=fake-auth-code")
+    assert_not_blank(page, REQUEST_H1)
