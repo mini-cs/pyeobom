@@ -87,7 +87,8 @@ Refs: Task <번호>, docs/기획서.md <절>
 ```
 
 - type: `feat` · `fix` · `test` · `refactor` · `docs` · `chore`
-- scope: `setup`, `input-guard`, `catalog`, `ingest`, `retrieval`, `answer`, `ask`, `ui`, `deploy`, `evaluation`, `measure`, `docs`
+- scope: `setup`, `input-guard`, `catalog`, `ingest`, `retrieval`, `answer`, `ask`, `request`, `ui`, `deploy`, `evaluation`, `measure`, `docs`
+  - `request`: 모델 요청(요청 표·RLS·알림, 2차 Task 4~7)
 - 하지 않는 것: "수정"·"update"처럼 알 수 없는 제목, 여러 기능을 한 커밋에 섞기, 비밀 값·설명서 본문을 메시지에 쓰기
 - 커밋 전에 `git diff --staged`를 보고 제목·본문을 작성해 사용자에게 보여 준 뒤 커밋한다
 
