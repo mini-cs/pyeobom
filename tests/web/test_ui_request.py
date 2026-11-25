@@ -44,16 +44,20 @@ def _b64(data: dict) -> str:
     return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
 
 
-# 모양만 JWT인 가짜 토큰(서명 없음). 서버가 확인하지 않는 가짜 Supabase에만 쓴다
-FAKE_TOKEN = (f"{_b64({'alg': 'HS256', 'typ': 'JWT'})}."
-              f"{_b64({'sub': USER_ID, 'email': EMAIL, 'role': 'authenticated', 'aud': 'authenticated', 'exp': 4102444800})}"
-              ".fake-signature")
+# 모양만 JWT인 가짜 토큰(서명 없음). 서버가 확인하지 않는 가짜 Supabase에만 쓴다. amr은 지금 로그인 방식(맨 앞이 최근)
+def make_token(email=EMAIL, method="otp"):
+    payload = {"sub": USER_ID, "email": email, "role": "authenticated", "aud": "authenticated", "exp": 4102444800,
+               "amr": [{"method": method, "timestamp": 1764040000}]}
+    return f"{_b64({'alg': 'HS256', 'typ': 'JWT'})}.{_b64(payload)}.fake-signature"
+
+
+FAKE_TOKEN = make_token()
 USER = {"id": USER_ID, "aud": "authenticated", "role": "authenticated", "email": EMAIL,
         "app_metadata": {"provider": "email"}, "user_metadata": {}, "created_at": "2026-11-25T00:00:00Z"}
 
 
-def session_body(email=EMAIL):
-    return {"access_token": FAKE_TOKEN, "token_type": "bearer", "expires_in": 3600,
+def session_body(email=EMAIL, method="otp"):
+    return {"access_token": make_token(email, method), "token_type": "bearer", "expires_in": 3600,
             "expires_at": int(time.time()) + 3600, "refresh_token": "fake-refresh-token", "user": {**USER, "email": email}}
 
 
@@ -94,7 +98,7 @@ class FakeSupabase:
                 return 200, session_body(body.get("email") or EMAIL)
             return 403, {"code": 403, "error_code": "otp_expired", "msg": "Token has expired or is invalid"}
         if path.startswith("/auth/v1/token"):
-            return 200, session_body()
+            return 200, session_body(method="oauth")   # 구글(PKCE) 교환
         if path.startswith("/auth/v1/user"):
             return 200, USER
         if path.startswith("/auth/v1/logout"):
@@ -418,11 +422,11 @@ def test_request_screen_shows_notification_email(open_app):
 def test_switch_account_opens_sheet_without_logout_and_close_keeps_account(open_app):
     page, fake = open_app()
     open_request_form(page, fake)
-    account_box(page).get_by_role("button", name="계정 바꾸기").click()
+    start_switch(page)   # 2026-11-25 덧붙임 2: 확인 창을 거친다
     sheet = login_sheet(page)
     expect(sheet).to_be_visible()
     expect(sheet.get_by_label("이메일")).to_be_visible()   # 1단계
-    expect(sheet.get_by_text(LOGIN_REASON)).to_be_visible()
+    expect(sheet.get_by_text(SWITCH_GUIDE)).to_be_visible()   # 바꾸기 모양의 맨 위 안내
     sheet.get_by_role("button", name="닫기").click()
     expect(sheet).to_be_hidden()
     expect(account_box(page).get_by_text(EMAIL)).to_be_visible()   # 닫으면 원래 계정 그대로
@@ -432,7 +436,7 @@ def test_switch_account_opens_sheet_without_logout_and_close_keeps_account(open_
 def test_switch_account_to_other_email_updates_box(open_app):
     page, fake = open_app()
     open_request_form(page, fake)
-    account_box(page).get_by_role("button", name="계정 바꾸기").click()
+    start_switch(page)   # 2026-11-25 덧붙임 2: 확인 창을 거친다
     log_in_with_code(page, fake, OTHER_EMAIL)
     expect(page.get_by_role("heading", level=1)).to_have_text(REQUEST_H1)
     expect(account_box(page).get_by_text(OTHER_EMAIL)).to_be_visible()
@@ -457,3 +461,111 @@ def test_drawer_account_row_at_bottom_shows_email_and_logout(open_app):
         page.get_by_role("button", name="지난 대화").click()
     expect(row.get_by_role("button", name="로그인")).to_be_visible()   # 같은 자리에 로그인
     expect(row.get_by_text(EMAIL)).to_have_count(0)
+
+
+# ── 로그인 방식 표시(L1)·계정 바꾸기 확인 창(S1), 설계 덧붙임 2026-11-25 ──
+SWITCH_TITLE = "다른 계정으로 바꿀까요?"
+SWITCH_TEXT = "바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요."
+SWITCH_SHEET_TITLE = "다른 계정으로 로그인"
+SWITCH_GUIDE = "새 계정으로 로그인하면 알림을 그 메일로 보내 드려요"
+
+
+def switch_confirm(page):
+    return page.get_by_role("group", name=SWITCH_TITLE)
+
+
+def start_switch(page):
+    account_box(page).get_by_role("button", name="계정 바꾸기").click()
+    switch_confirm(page).get_by_role("button", name="바꾸기", exact=True).click()
+
+
+def drawer_row(page):
+    page.get_by_role("button", name="지난 대화").click()
+    return page.locator("#drawer .drawer-account")
+
+
+def test_email_code_login_shows_method_in_box_and_drawer(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    expect(account_box(page)).to_contain_text("알림 받을 메일 · 메일 코드 계정")
+    row = drawer_row(page)
+    expect(row.get_by_text("메일 코드 계정")).to_be_visible()
+    color = row.get_by_text("메일 코드 계정").evaluate("(e) => getComputedStyle(e).color")
+    assert color == "rgb(107, 107, 107)", color   # --color-text-muted
+
+
+def test_google_login_shows_google_method(open_app):
+    page, fake = open_app()
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    login_sheet(page).get_by_role("button", name="Google로 계속하기").click()
+    page.wait_for_url(re.compile(r"^https://supabase\.test/auth/v1/authorize"))
+    page.goto("/?code=fake-auth-code")
+    expect(page.get_by_role("heading", level=1)).to_have_text(REQUEST_H1)
+    expect(account_box(page)).to_contain_text("알림 받을 메일 · Google 계정")
+    expect(drawer_row(page).get_by_text("Google 계정")).to_be_visible()
+
+
+def test_switch_confirm_shows_current_account_and_cancel_keeps_it(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    switch = account_box(page).get_by_role("button", name="계정 바꾸기")
+    switch.click()
+    confirm = switch_confirm(page)
+    expect(confirm).to_be_visible()
+    expect(confirm).to_contain_text("지금 계정 · 메일 코드 계정")
+    expect(confirm.get_by_text(EMAIL)).to_be_visible()
+    expect(confirm.get_by_text(SWITCH_TEXT)).to_be_visible()
+    assert confirm.evaluate("(c) => c.contains(document.activeElement)")   # 열리면 창 안으로 포커스
+    confirm.get_by_role("button", name="취소").click()
+    expect(confirm).to_be_hidden()
+    expect(login_sheet(page)).to_be_hidden()
+    expect(switch).to_be_focused()
+    expect(account_box(page).get_by_text(EMAIL)).to_be_visible()
+    switch.click()   # Esc도 같다
+    expect(confirm).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(confirm).to_be_hidden()
+    expect(switch).to_be_focused()
+    assert not [c for c in fake.calls if c["path"].startswith("/auth/v1/logout")]
+
+
+def test_switch_opens_blank_switch_sheet_without_logout(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    start_switch(page)
+    sheet = page.get_by_role("dialog", name=SWITCH_SHEET_TITLE)
+    expect(sheet).to_be_visible()
+    expect(sheet.get_by_text(SWITCH_GUIDE)).to_be_visible()
+    expect(sheet.get_by_text(LOGIN_REASON)).to_be_hidden()
+    expect(sheet.get_by_label("이메일")).to_have_value("")   # 이전 로그인 메일이 채워지지 않음
+    expect(sheet.get_by_role("button", name="Google로 계속하기")).to_be_visible()
+    expect(sheet.get_by_text(PRIVACY)).to_be_visible()
+    sheet.get_by_role("button", name="닫기").click()
+    expect(account_box(page)).to_contain_text("알림 받을 메일 · 메일 코드 계정")   # 닫으면 지금 계정 그대로
+    expect(account_box(page).get_by_text(EMAIL)).to_be_visible()
+    assert not [c for c in fake.calls if c["path"].startswith("/auth/v1/logout")]
+
+
+def test_switch_to_google_updates_method(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    start_switch(page)
+    page.get_by_role("dialog", name=SWITCH_SHEET_TITLE).get_by_role("button", name="Google로 계속하기").click()
+    page.wait_for_url(re.compile(r"^https://supabase\.test/auth/v1/authorize"))
+    page.goto("/?code=fake-auth-code")
+    expect(account_box(page)).to_contain_text("알림 받을 메일 · Google 계정")
+
+
+def test_first_login_sheet_keeps_title_reason_and_starts_blank(open_app):
+    page, fake = open_app()
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    sheet = page.get_by_role("dialog", name="로그인", exact=True)
+    expect(sheet).to_be_visible()
+    expect(sheet.get_by_text(LOGIN_REASON)).to_be_visible()
+    expect(sheet.get_by_text(SWITCH_GUIDE)).to_be_hidden()
+    sheet.get_by_label("이메일").fill(EMAIL)
+    sheet.get_by_role("button", name="닫기").click()
+    page.get_by_role("button", name=NO_MODEL).click()
+    expect(sheet.get_by_label("이메일")).to_have_value("")   # 새로 열면 비어 있음
