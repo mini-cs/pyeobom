@@ -20,3 +20,6 @@ docs/superpowers/plans/2026-11-23-embedding-large-retry-plan.md text eol=lf
 docs/superpowers/specs/2026-11-17-phase2-model-request-design.md text eol=lf
 # 2차 확인 질문 세트는 SHA-256을 적어 두므로 줄 끝을 LF로
 evaluation/phase2/*-confirm.csv text eol=lf
+# 2차 Task 6: 받은 그대로 두고 SHA-256을 README에 적은 외부 파일(supabase-js 사본, Google G 아이콘)은 줄 끝을 LF로
+public/vendor/supabase.js text eol=lf
+public/icons/google-g-neutral.svg text eol=lf

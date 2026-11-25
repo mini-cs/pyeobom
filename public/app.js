@@ -5,11 +5,13 @@ import { EXAMPLES } from "./js/examples.js";
 import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
 import { parentHash } from "./js/nav.js";
+import { findExistingModel, LOGIN_REQUIRED, requestErrorMessage, requestRow, UNAVAILABLE, validateRequest } from "./js/request.js";
+import { initAuth, isOtpCode } from "./js/auth.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
 const MODELS_ERROR = "모델 목록을 불러오지 못했어요. 새로고침해 주세요";
-const APPLIANCES = { washer: "세탁기", aircon: "에어컨" };
+const APPLIANCES = { washer: "세탁기", dryer: "건조기", aircon: "에어컨" };
 const RECENT_LIMIT = { landing: 1, category: 3 };  // 설계 2절 ①·②, 계획 기본값 5
 
 const $ = (id) => document.getElementById(id);
@@ -60,6 +62,7 @@ function parseRoute(hash) {
     const [name, a, b] = hash.replace(/^#/, "").split("/").map(decodeURIComponent);
     if (name === "category") return { screen: "category" };
     if (name === "model" && APPLIANCES[a]) return { screen: "model", appliance: a };
+    if (name === "request" && APPLIANCES[a]) return { screen: "request", appliance: a };
     if (name === "chat" && a) return { screen: "chat", modelId: a, conversationId: b };
   } catch { /* 잘못된 % 표기는 랜딩으로 */ }
   return { screen: "landing" };
@@ -87,7 +90,9 @@ async function render(focus) {
   if (route.screen === "model") {
     ui.modelTitle.textContent = `${APPLIANCES[route.appliance]} 모델을 골라 주세요`;
     ui.modelCards.replaceChildren();
+    $("no-model-error").hidden = true;
   }
+  if (route.screen === "request") prepareRequest(route.appliance);
   show(route.screen, focus);
   if (route.screen === "category") updateDots();
   const models = await modelsReady;
@@ -96,6 +101,9 @@ async function render(focus) {
     renderRecent($(`${route.screen}-recent`), RECENT_LIMIT[route.screen], models);
   } else if (route.screen === "model") {
     renderModelCards(route.appliance, models);
+  } else if (route.screen === "request") {
+    showRequestHint(route.appliance, models);
+    requireLogin(location.hash);
   } else {
     const model = models.find((m) => m.id === route.modelId);
     if (model) openChat(model, route.conversationId);
@@ -201,11 +209,17 @@ window.addEventListener("resize", () => { if (!ui.tiles.closest(".screen").hidde
 
 // ── 모델 카드 ──
 function renderModelCards(appliance, models) {
+  const mine = models.filter((m) => m.appliance === appliance);
+  $("ai-note").hidden = mine.length === 0;  // 그림이 없으면 그림 안내도 없다
   if (!models.length) {
     ui.modelCards.replaceChildren(el("li", "empty", MODELS_ERROR));
     return;
   }
-  ui.modelCards.replaceChildren(...models.filter((m) => m.appliance === appliance).map((m) => {
+  if (!mine.length) {  // 건조기처럼 아직 모델이 없는 종류: 아래 "내 모델이 없어요"로 요청한다
+    ui.modelCards.replaceChildren(el("li", "empty", `아직 등록된 ${APPLIANCES[appliance]} 모델이 없어요.`));
+    return;
+  }
+  ui.modelCards.replaceChildren(...mine.map((m) => {
     const a = el("a", "model-card");
     a.href = `#chat/${encodeURIComponent(m.id)}`;
     const img = el("img", "model-illust");
@@ -630,8 +644,10 @@ ui.menu.addEventListener("click", async () => {
   drawerModels = await modelsReady;
   renderDrawer();
   updateBack();
+  $("drawer-login-error").hidden = true;
   if (!drawer.box.open) drawer.box.showModal();
   drawer.title.focus();
+  updateAccount();  // 공개 설정·Supabase는 서랍을 열 때 처음 부른다(첫 화면에서는 부르지 않음)
 });
 $("drawer-close").addEventListener("click", () => drawer.box.close());
 drawer.box.addEventListener("click", (e) => {  // 대화 카드·새 대화는 주소로 이동
@@ -662,6 +678,216 @@ $("delete-ok").addEventListener("click", () => {
   drawer.title.focus();
 });
 
+// ── 2차 내 모델 요청(계획 Task 6): 로그인은 요청할 때만(로그인 벽 없음). 첫 화면에서는 Supabase를 부르지 않는다 ──
+const RETURN_KEY = "pyeobom.returnTo";  // 구글로 떠나기 전 경로(#request/<가전>)만 둔다. 이메일은 두지 않는다
+const req = {
+  kind: $("request-kind"), form: $("request-form"), brand: $("request-brand"), model: $("request-model"),
+  hint: $("request-hint"), error: $("request-error"), submit: $("request-submit"),
+  exists: $("request-exists"), existsName: $("request-exists-name"), done: $("request-done"),
+};
+let requestAppliance = null;
+let existingModel = null;
+
+function prepareRequest(appliance) {  // 입력한 값은 그대로 두고 안내만 지운다(로그인하고 돌아와도 이어서 쓰게)
+  requestAppliance = appliance;
+  req.kind.textContent = APPLIANCES[appliance];
+  req.error.hidden = req.exists.hidden = req.done.hidden = true;
+}
+
+// 모델명 찾는 법은 1.5차 모델 카드의 안내를 다시 쓴다. 모델이 없는 종류(건조기)는 세탁기 안내(둘 다 본체 라벨)
+function showRequestHint(appliance, models) {
+  const source = models.find((m) => m.appliance === appliance) ?? models.find((m) => m.appliance === "washer");
+  req.hint.hidden = !source;
+  if (source) req.hint.replaceChildren(el("strong", null, "모델명 찾는 법 "), source.model_name_hint);
+}
+
+// 안내 글자는 보일 때만 넣는다(숨은 같은 문장이 여러 곳에 남지 않게)
+function showError(box, message) {
+  box.textContent = message;
+  box.hidden = false;
+}
+const showRequestError = (message) => showError(req.error, message);
+
+async function requireLogin(hash) {
+  const auth = await initAuth();
+  if (!auth) showRequestError(UNAVAILABLE);
+  else if (!(await auth.session())) openLogin({ reason: true, then: hash });
+}
+
+$("no-model").addEventListener("click", async () => {
+  const appliance = parseRoute(location.hash).appliance;
+  $("no-model-error").hidden = true;
+  const auth = await initAuth();
+  if (!auth) {
+    showError($("no-model-error"), UNAVAILABLE);
+    return;
+  }
+  const target = `#request/${appliance}`;
+  if (await auth.session()) location.hash = target;
+  else openLogin({ reason: true, then: target });
+});
+
+req.form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  req.error.hidden = req.exists.hidden = req.done.hidden = true;
+  const input = { appliance: requestAppliance, brand: req.brand.value, modelText: req.model.value };
+  const invalid = validateRequest(input);
+  if (invalid) return showRequestError(invalid);
+  existingModel = findExistingModel(await modelsReady, requestAppliance, input.modelText);
+  if (existingModel) {  // 이미 있는 모델은 요청을 넣지 않고 바로 질문하게 한다
+    req.existsName.textContent = existingModel.name;
+    req.exists.hidden = false;
+    return;
+  }
+  const auth = await initAuth();
+  if (!auth) return showRequestError(UNAVAILABLE);
+  req.submit.disabled = true;
+  let result;
+  try {
+    result = await auth.client.from("model_requests").insert(requestRow(input));
+  } catch {
+    result = { status: 0, error: {} };
+  } finally {
+    req.submit.disabled = false;
+  }
+  if (!result.error) {
+    req.form.reset();
+    req.done.hidden = false;
+    return;
+  }
+  const message = requestErrorMessage(result);
+  if (message === LOGIN_REQUIRED) openLogin({ reason: true, then: location.hash });
+  else showRequestError(message);
+});
+$("request-ask").addEventListener("click", () => { location.hash = chatHash(existingModel.id); });
+
+// ── 로그인 시트(덧붙임 D-3·D-4): ① 이메일 → 코드 보내기 또는 구글 ② 코드 입력 ──
+const WRONG_CODE = "코드가 맞지 않아요. 다시 확인해 주세요";
+const RESEND_WAIT = "잠시 뒤에 다시 보낼 수 있어요";
+const SEND_FAILED = "메일을 보내지 못했어요. 잠시 뒤 다시 시도해 주세요";
+const login = {
+  box: $("login-sheet"), reason: $("login-reason"), emailForm: $("login-email-form"), email: $("login-email"),
+  emailError: $("login-email-error"), codeForm: $("login-code-form"), code: $("login-code"), codeError: $("login-code-error"),
+  sentEmail: $("login-sent-email"), resent: $("login-resent"),
+};
+let loginThen = null;  // 로그인한 뒤 갈 주소(요청 화면). 서랍에서 열면 없음
+let sentTo = "";
+
+function loginStep(n) {
+  login.emailForm.hidden = n !== 1;
+  login.codeForm.hidden = n !== 2;
+  login.emailError.hidden = login.codeError.hidden = login.resent.hidden = true;
+  (n === 1 ? login.email : login.code).focus();
+}
+
+const loginError = showError;
+
+async function whileBusy(box, work) {
+  const buttons = [...box.querySelectorAll("button")];
+  const active = document.activeElement;  // 잠긴 버튼에서 포커스가 body로 떨어지므로 끝나면 돌려준다
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    return await work();
+  } finally {
+    buttons.forEach((b) => { b.disabled = false; });
+    if (buttons.includes(active)) active.focus();
+  }
+}
+
+function openLogin({ reason = false, then = null } = {}) {
+  loginThen = then;
+  login.reason.hidden = !reason;
+  if (!login.box.open) login.box.showModal();
+  loginStep(1);
+}
+
+const sendError = (error) => (error.status === 429 ? RESEND_WAIT : SEND_FAILED);  // 같은 사람 60초에 1번(429)
+
+login.emailForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = login.email.value.trim();
+  if (!email || !login.email.checkValidity()) return loginError(login.emailError, "이메일 주소를 확인해 주세요");
+  const auth = await initAuth();
+  if (!auth) return loginError(login.emailError, UNAVAILABLE);
+  const error = await whileBusy(login.emailForm, () => auth.sendCode(email));
+  if (error) return loginError(login.emailError, sendError(error));
+  sentTo = email;
+  login.sentEmail.textContent = email;
+  login.code.value = "";
+  loginStep(2);
+});
+
+login.codeForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  login.resent.hidden = true;
+  const code = login.code.value.replace(/\s/g, "");
+  if (!isOtpCode(code)) return loginError(login.codeError, "숫자 6~10자리 코드를 넣어 주세요");
+  const auth = await initAuth();
+  if (!auth) return loginError(login.codeError, UNAVAILABLE);
+  const error = await whileBusy(login.codeForm, () => auth.verifyCode(sentTo, code));
+  if (error) return loginError(login.codeError, error.status && error.status < 500 ? WRONG_CODE : UNAVAILABLE);
+  login.box.close();
+  updateAccount();
+  if (!loginThen) return;
+  if (location.hash === loginThen) render(true);
+  else location.hash = loginThen;
+});
+
+$("login-resend").addEventListener("click", async () => {
+  login.codeError.hidden = login.resent.hidden = true;
+  const auth = await initAuth();
+  const error = auth ? await whileBusy(login.codeForm, () => auth.sendCode(sentTo)) : { status: 0 };
+  if (error) loginError(login.codeError, sendError(error));
+  else login.resent.hidden = false;
+});
+$("login-edit").addEventListener("click", () => loginStep(1));
+$("login-close").addEventListener("click", () => login.box.close());
+
+$("login-google").addEventListener("click", async () => {
+  const auth = await initAuth();
+  if (!auth) return loginError(login.emailError, UNAVAILABLE);
+  try { sessionStorage.setItem(RETURN_KEY, loginThen ?? location.hash); } catch { /* 저장 못 하면 돌아와서 첫 화면 */ }
+  // 돌아올 주소는 # 없는 사이트 주소(PKCE의 ?code=와 우리 # 경로가 섞이지 않게)
+  const { error } = await auth.google(`${location.origin}/`);
+  if (error) loginError(login.emailError, UNAVAILABLE);
+});
+
+// 서랍의 로그인·로그아웃(덧붙임 D-2): 로그인하면 같은 자리에 로그아웃
+async function updateAccount() {
+  const auth = await initAuth();
+  const session = auth ? await auth.session() : null;
+  $("drawer-login").hidden = Boolean(session);
+  $("drawer-logout").hidden = !session;
+}
+$("drawer-login").addEventListener("click", async () => {
+  $("drawer-login-error").hidden = true;
+  if (!(await initAuth())) {
+    showError($("drawer-login-error"), UNAVAILABLE);
+    return;
+  }
+  drawer.box.close();
+  openLogin();
+});
+$("drawer-logout").addEventListener("click", async () => {
+  const auth = await initAuth();
+  await auth?.signOut();
+  await updateAccount();
+  $("drawer-login").focus();
+});
+
+// 구글에서 돌아오면(?code=) 세션으로 바꾼 뒤 떠나기 전 경로로. 경로는 우리 주소 형식일 때만 쓴다
+async function finishGoogleLogin() {
+  let back = null;
+  try {
+    back = sessionStorage.getItem(RETURN_KEY);
+    sessionStorage.removeItem(RETURN_KEY);
+  } catch { /* 저장소를 못 쓰면 첫 화면 */ }
+  const auth = await initAuth();
+  const session = auth ? await auth.session() : null;  // detectSessionInUrl이 code를 세션으로 바꾼 뒤에 돌아온다
+  history.replaceState(null, "", location.pathname);  // 주소의 code는 지운다
+  if (session && back && parseRoute(back).screen !== "landing") location.hash = back;
+}
+
 // 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다
 history.replaceState(null, "", location.pathname + location.search);
 window.addEventListener("hashchange", () => {
@@ -669,3 +895,4 @@ window.addEventListener("hashchange", () => {
   render(true);
 });
 render(false);
+if (new URLSearchParams(location.search).has("code")) finishGoogleLogin();

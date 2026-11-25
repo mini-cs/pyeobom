@@ -45,6 +45,20 @@ STATES = {
     # 2026-11-11 근거 접기 확인용(조건 4의 15개 뒤에 덧붙임): 근거 펼침, 공식 링크 표시
     "chat-evidence-open": ["chat", "ask:found", "evidence"],
     "chat-doc-links": ["chat", "ask:found", "evidence", "links"],
+    # 2026-11-25 2차 Task 6: 건조기 빈 목록·로그인 시트·요청 화면. 가짜 Supabase(SUPABASE)로만 돌아 로컬에서만 잰다
+    "model-dryer": ["model:건조기"],
+    "login-sheet": ["model:건조기", "nomodel"],
+    "login-code": ["model:건조기", "nomodel", "email"],
+    "request-form": ["model:건조기", "nomodel", "email", "code"],
+    "request-done": ["model:건조기", "nomodel", "email", "code", "request"],
+}
+LOCAL_ONLY = {"model-dryer", "login-sheet", "login-code", "request-form", "request-done"}
+SUPABASE = "https://supabase.test"   # 가짜 주소. 실제 Supabase·메일은 부르지 않는다
+FAKE_SESSION = {  # 모양만 맞춘 가짜 세션(토큰은 서명 없는 가짜)
+    "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJleHAiOjQxMDI0NDQ4MDB9.fake",
+    "token_type": "bearer", "expires_in": 3600, "expires_at": 4102444800, "refresh_token": "fake-refresh-token",
+    "user": {"id": "00000000-0000-4000-8000-000000000001", "aud": "authenticated", "role": "authenticated",
+             "email": "tester@example.com", "app_metadata": {}, "user_metadata": {}, "created_at": "2026-11-25T00:00:00Z"},
 }
 NO_SAVE = "Storage.prototype.setItem = function () { throw new DOMException('측정용 공간 부족', 'QuotaExceededError'); };"
 FIXTURES = {"found": "ask_found.json", "not_found": "ask_not_found.json", "other_brand": "ask_other_brand.json"}
@@ -126,7 +140,7 @@ def _prepare(page, base, steps, replies):
             page.locator("#tiles").wait_for()
             if action != "category":
                 page.get_by_role("button", name=arg or "세탁기").click()
-                page.locator(".model-card").first.wait_for()
+                page.locator("#model-cards li").first.wait_for()   # 모델 카드 또는 "아직 등록된 … 없어요"
             if action == "chat":
                 page.locator(".model-card").first.click()
                 page.locator(".suggestion").first.wait_for()
@@ -149,11 +163,39 @@ def _prepare(page, base, steps, replies):
         elif action == "links":
             page.locator(".turn .offer").last.click()
             page.locator(".turn .doc-links a").first.wait_for()
+        elif action == "nomodel":
+            page.get_by_role("button", name="내 모델이 없어요").click()
+            page.locator("#login-email").wait_for()
+        elif action == "email":
+            page.fill("#login-email", "tester@example.com")
+            page.get_by_role("button", name="코드 보내기").click()
+            page.locator("#login-code").wait_for()
+        elif action == "code":
+            page.fill("#login-code", "123456")
+            page.get_by_role("button", name="확인").click()
+            page.locator("#request-brand").wait_for()
+        elif action == "request":
+            page.fill("#request-brand", "가짜브랜드")
+            page.fill("#request-model", "DV90-FAKE1")
+            page.get_by_role("button", name="요청하기").click()
+            page.locator("#request-done").wait_for()
         elif action == "delete-all":
             page.get_by_role("button", name="전체 삭제").click()
             page.locator("#delete-confirm").wait_for()
     if "nosave" in steps:
         page.locator("#save-note").wait_for()
+
+
+def _fake_supabase(route):
+    req = route.request
+    cors = {"access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS",
+            "access-control-allow-headers": req.headers.get("access-control-request-headers", "*")}
+    if req.method == "OPTIONS":
+        return route.fulfill(status=204, headers=cors)
+    path = req.url.split("supabase.test", 1)[1]
+    body = FAKE_SESSION if path.startswith("/auth/v1/verify") else ([] if path.startswith("/rest/") else {})
+    status = 201 if path.startswith("/rest/") and req.method == "POST" else 200
+    route.fulfill(status=status, headers=cors, json=body)
 
 
 def context_headers(url: str | None, secret: str | None) -> dict:
@@ -180,7 +222,13 @@ def run(url: str | None = None) -> dict:
             load_env()
         headers = context_headers(url, os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET"))
         for state, steps in STATES.items():
+            if url and state in LOCAL_ONLY:
+                continue
             context = browser.new_context(viewport={"width": 360, "height": 740}, extra_http_headers=headers)
+            if state in LOCAL_ONLY:
+                context.route("**/api/public-config", lambda route: route.fulfill(
+                    json={"supabase_url": SUPABASE, "supabase_anon_key": "sb_publishable_fake-public-key"}))
+                context.route(f"{SUPABASE}/**", _fake_supabase)
             replies, held = [], []
             context.route("**/api/ask", _ask_handler(replies, held))
             if models is not None:

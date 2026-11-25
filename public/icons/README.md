@@ -1,0 +1,4 @@
+# public/icons
+
+- Tabler Icons(MIT, `LICENSE`): npm `@tabler/icons@3.19.0`의 `icons/outline/*.svg`(결정기록 024). 2차 Task 6에서 같은 꾸러미의 `wash-tumble-dry.svg`(건조기 타일)를 더함(2026-11-25, unpkg에서 받음, 고치지 않음)
+- `google-g-neutral.svg`: Google 로그인 버튼 지침(https://developers.google.com/identity/branding-guidelines)의 "Download Pre-Approved Brand Icons" 공식 자산 `signin-assets.zip`(https://developers.google.com/static/identity/images/signin-assets.zip, 2026-11-25 받음, zip SHA-256 `ba884069e12093b06bcfd776915081254a7c95094b80d50be2c5dc6bac1c1da1`) 안의 `Android + Web/SVG/Neutral/Theme=Neutral, Show text=No, Shape=Square, Platform=Android+Web.svg`를 이름만 바꿔 그대로 둠(크기 40×40·색·내용 고치지 않음). SHA-256 `99fab3fa571a27e7a5e01b781cade619f94bab0cd0aa179f56e093b1492880cd`. 압축 파일에 G 로고만 든 파일이 없어 Neutral 아이콘(바탕 `#F2F2F2` 둥근 사각형 안의 G)을 고름(사용자 결정 2026-11-25). Google 상표이며 Google 로그인 버튼에만 쓴다

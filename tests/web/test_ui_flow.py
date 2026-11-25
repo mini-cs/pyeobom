@@ -1215,8 +1215,8 @@ def test_focus_ring_gray_gap_on_surface_elements_white_gap_on_buttons(open_page)
     go_category(page)
     tab_to(page, ".tile")
     assert ring(page) == RING_SURFACE
-    page.keyboard.press("ArrowRight")
-    page.keyboard.press("ArrowRight")   # 더 추가 예정(aria-disabled)도 같은 면
+    for _ in range(3):   # 건조기가 생겨 타일 4개: 세 번 넘겨야 더 추가 예정
+        page.keyboard.press("ArrowRight")   # 더 추가 예정(aria-disabled)도 같은 면
     assert page.evaluate("document.activeElement.textContent.trim()") == "더 추가 예정" and ring(page) == RING_SURFACE
     page.get_by_role("button", name="세탁기").click()
     expect(page.locator(".model-card").first).to_be_visible()
