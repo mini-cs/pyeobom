@@ -534,14 +534,29 @@ a.icon-button { text-decoration: none; }
   border-top: 1px solid var(--color-border);
 }
 .drawer-account + .drawer-footer { margin-top: 0; }  /* 아래로 미는 여백은 계정 줄이 가진다 */
-/* 계정 바꾸기 확인 창(S1, 가이드 6절 19): 서랍 전체 삭제 확인 창(.confirm)과 같은 부품. 지금 계정은 그 안의 흰 작은 상자 */
-.confirm-title { font-weight: var(--weight-semibold); }
+/* 계정 바꾸기 확인 팝업(S1, 가이드 6절 19, 2026-11-25 덧붙임 3): 서랍·시트와 같은 막 위 가운데 흰 면. 지금 계정은 회색 작은 상자 */
+.popup {
+  width: calc(100% - var(--space-8)); max-width: 400px;
+  margin: auto; padding: 0; border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg); color: var(--color-text);
+  overscroll-behavior: contain;
+}
+.popup[open] { animation: popup-in var(--motion-fast); }
+.popup::backdrop { background: var(--color-scrim); }
+@keyframes popup-in { from { opacity: 0; transform: scale(0.96); } }
+.popup-body { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); line-height: var(--leading-ui); }
+.popup-body h2 { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
+.popup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .switch-current {
   display: flex; flex-direction: column; min-width: 0;
   padding: var(--space-2) var(--space-3);
-  background: var(--color-bg); border-radius: var(--radius-sm);
-  line-height: var(--leading-ui);
+  background: var(--color-surface); border-radius: var(--radius-sm);
 }
+/* 회색 알약([취소]): 검은 알약과 같은 크기, 면만 회색. 회색 면 요소라 포커스 링 틈도 회색 */
+.pill.pill-quiet { background: var(--color-surface); color: var(--color-text); }
+.pill.pill-quiet:hover, .pill.pill-quiet:active { background: var(--color-border); }
+.pill-quiet:focus-visible { box-shadow: var(--focus-ring-surface); }
 .drawer-account .form-error { flex-basis: 100%; }
 .account-avatar {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
@@ -553,7 +568,7 @@ a.icon-button { text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .pill, .send, .fold .icon, .switch-dot { transition: none; }
-  .drawer[open], .sheet[open] { animation: none; }
+  .drawer[open], .sheet[open], .popup[open] { animation: none; }
   .field label { transition: none; }
   .tiles, .suggestions { scroll-behavior: auto; }
   .progress::after { animation: none; width: 100%; }

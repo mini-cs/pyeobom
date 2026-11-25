@@ -692,7 +692,7 @@ function prepareRequest(appliance) {  // 입력한 값은 그대로 두고 안�
   requestAppliance = appliance;
   req.kind.textContent = APPLIANCES[appliance];
   req.error.hidden = req.exists.hidden = req.done.hidden = true;
-  $("switch-confirm").hidden = true;
+  if ($("switch-confirm").open) $("switch-confirm").close();
 }
 
 // 모델명 찾는 법은 1.5차 모델 카드의 안내를 다시 쓴다. 모델이 없는 종류(건조기)는 세탁기 안내(둘 다 본체 라벨)
@@ -725,26 +725,21 @@ async function requireLogin(hash) {
 }
 const withMethod = (label, method) => (method ? `${label} · ${method}` : label);
 
-// 계정 바꾸기(S1): 확인 창 → [바꾸기]면 로그아웃 없이 빈 로그인 창. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 지금 계정 그대로
+// 계정 바꾸기(S1): 막 위 확인 팝업 → [바꾸기]면 로그아웃 없이 빈 로그인 창. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 지금 계정 그대로
 const switchConfirm = $("switch-confirm");
 $("account-switch").addEventListener("click", () => {
   $("switch-current-label").textContent = withMethod("지금 계정", currentAccount.method);
   $("switch-current-email").textContent = currentAccount.email;
-  switchConfirm.hidden = false;
+  switchConfirm.showModal();  // Esc·막 누르기(closedby="any")는 브라우저가 닫는다
   $("switch-cancel").focus();
 });
-function closeSwitchConfirm() {
-  switchConfirm.hidden = true;
-  $("account-switch").focus();
-}
-$("switch-cancel").addEventListener("click", closeSwitchConfirm);
-switchConfirm.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  e.preventDefault();
-  closeSwitchConfirm();
-});
+// 막 누르기를 브라우저가 지원하지 않을 때: 팝업 안쪽 상자 밖(= 막)을 누르면 닫는다
+switchConfirm.addEventListener("click", (e) => { if (e.target === switchConfirm) switchConfirm.close(); });
+switchConfirm.addEventListener("close", () => $("account-switch").focus());
+$("switch-cancel").addEventListener("click", () => switchConfirm.close());
 $("switch-ok").addEventListener("click", () => {
-  closeSwitchConfirm();  // 시트를 닫으면 포커스가 [계정 바꾸기]로 돌아오게 먼저 옮긴다
+  switchConfirm.close();
+  $("account-switch").focus();  // 시트를 닫으면 포커스가 [계정 바꾸기]로 돌아오게 시트를 열기 전에 옮긴다
   openLogin({ mode: "switch", then: location.hash });
 });
 

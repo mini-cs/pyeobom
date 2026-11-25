@@ -98,6 +98,20 @@
     </div>
   </dialog>
 
+  <!-- 계정 바꾸기 확인 팝업(S1, 2026-11-25 덧붙임 3): 막 위 가운데. Esc·[취소]·막 누르기는 닫고, [바꾸기]면 로그아웃 없이 빈 로그인 창 -->
+  <dialog class="popup" id="switch-confirm" aria-labelledby="switch-confirm-title" closedby="any">
+    <div class="popup-body">
+      <h2 id="switch-confirm-title">다른 계정으로 바꿀까요?</h2>
+      <p class="switch-current"><span class="account-label" id="switch-current-label">지금 계정</span>
+        <strong class="account-email" id="switch-current-email"></strong></p>
+      <p>바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요.</p>
+      <div class="popup-actions">
+        <button type="button" class="pill pill-quiet" id="switch-cancel">취소</button>
+        <button type="button" class="pill" id="switch-ok">바꾸기</button>
+      </div>
+    </div>
+  </dialog>
+
   <main>
     <!-- ① 랜딩: 처음 열면 주소와 상관없이 이 화면 -->
     <section class="screen landing" data-screen="landing">
@@ -167,17 +181,6 @@
           <strong class="account-email" id="request-email"></strong></p>
         <button type="button" class="account-switch" id="account-switch" aria-label="계정 바꾸기" title="계정 바꾸기">
           <span class="switch-dot"><span class="icon icon-switch" aria-hidden="true"></span></span></button>
-      </div>
-      <!-- 계정 바꾸기 확인 창(S1, 2026-11-25): 서랍 "전체 삭제" 확인 창과 같은 부품. [바꾸기]면 로그아웃 없이 빈 로그인 창 -->
-      <div class="confirm" id="switch-confirm" role="group" aria-labelledby="switch-confirm-title" hidden>
-        <p class="confirm-title" id="switch-confirm-title">다른 계정으로 바꿀까요?</p>
-        <p class="switch-current"><span class="account-label" id="switch-current-label">지금 계정</span>
-          <strong class="account-email" id="switch-current-email"></strong></p>
-        <p>바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요.</p>
-        <div class="confirm-actions">
-          <button type="button" class="text-button" id="switch-cancel">취소</button>
-          <button type="button" class="pill" id="switch-ok">바꾸기</button>
-        </div>
       </div>
       <form class="request-form" id="request-form" novalidate>
         <div class="field">
