@@ -52,6 +52,7 @@ def complete_json(messages: list[dict], settings: Settings, client=None, usage: 
                 max_output_tokens=settings.max_output_tokens,
                 reasoning={"effort": settings.reasoning_effort},
                 text={"format": ANSWER_FORMAT},
+                store=False,  # 개인정보 처리방침: OpenAI에 응답을 저장하지 않음(기본 true면 30일)
             )
             if usage is not None and getattr(resp, "usage", None):
                 for key in ("input_tokens", "output_tokens"):
