@@ -534,7 +534,14 @@ a.icon-button { text-decoration: none; }
   border-top: 1px solid var(--color-border);
 }
 .drawer-account + .drawer-footer { margin-top: 0; }  /* 아래로 미는 여백은 계정 줄이 가진다 */
-.drawer-account .account-email { flex: 1; min-width: 0; }
+/* 계정 바꾸기 확인 창(S1, 가이드 6절 19): 서랍 전체 삭제 확인 창(.confirm)과 같은 부품. 지금 계정은 그 안의 흰 작은 상자 */
+.confirm-title { font-weight: var(--weight-semibold); }
+.switch-current {
+  display: flex; flex-direction: column; min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg); border-radius: var(--radius-sm);
+  line-height: var(--leading-ui);
+}
 .drawer-account .form-error { flex-basis: 100%; }
 .account-avatar {
   flex: none; display: inline-flex; align-items: center; justify-content: center;

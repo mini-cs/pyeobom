@@ -2,6 +2,21 @@
 // 처음 화면에서는 아무것도 부르지 않는다. supabase-js는 public/vendor/supabase.js(UMD, window.supabase)
 export const isOtpCode = (text) => /^\d{6,10}$/.test(String(text ?? ""));  // 덧붙임 A-2: 숫자 6~10자리, 길이 고정 안 함
 
+// 지금 로그인 방식(L1): 세션 토큰의 amr(가장 최근 방식이 맨 앞, Supabase 문서 auth-mfa). app_metadata.provider·providers는
+// 처음 가입 방식·묶인 방식 목록이라 같은 메일로 두 방식이 묶이면 지금 방식을 모른다. 표시용이라 서명은 확인하지 않는다.
+// oauth는 구글만 켜 두었으므로 "Google 계정"
+const METHODS = { oauth: "Google 계정", otp: "메일 코드 계정", magiclink: "메일 코드 계정", "email/signup": "메일 코드 계정" };
+export function signInMethod(session) {
+  try {
+    const part = String(session?.access_token ?? "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(part), (c) => c.charCodeAt(0))));
+    for (const entry of claims.amr ?? []) {
+      if (METHODS[entry?.method]) return METHODS[entry.method];
+    }
+  } catch { /* 토큰 모양이 다르면 표시하지 않는다 */ }
+  return null;
+}
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     if (globalThis.supabase) return resolve();

@@ -6,7 +6,7 @@ import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
 import { parentHash } from "./js/nav.js";
 import { findExistingModel, LOGIN_REQUIRED, requestErrorMessage, requestRow, UNAVAILABLE, validateRequest } from "./js/request.js";
-import { initAuth, isOtpCode } from "./js/auth.js";
+import { initAuth, isOtpCode, signInMethod } from "./js/auth.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
@@ -692,6 +692,7 @@ function prepareRequest(appliance) {  // 입력한 값은 그대로 두고 안�
   requestAppliance = appliance;
   req.kind.textContent = APPLIANCES[appliance];
   req.error.hidden = req.exists.hidden = req.done.hidden = true;
+  $("switch-confirm").hidden = true;
 }
 
 // 모델명 찾는 법은 1.5차 모델 카드의 안내를 다시 쓴다. 모델이 없는 종류(건조기)는 세탁기 안내(둘 다 본체 라벨)
@@ -708,17 +709,44 @@ function showError(box, message) {
 }
 const showRequestError = (message) => showError(req.error, message);
 
-// 요청 화면: 로그인한 메일(= 알림 받을 메일)을 보이고, 로그인 전이면 시트를 연다
+// 요청 화면: 로그인한 메일(= 알림 받을 메일)과 로그인 방식(L1)을 보이고, 로그인 전이면 시트를 연다
+let currentAccount = { email: "", method: null };
 async function requireLogin(hash) {
   const auth = await initAuth();
   const session = auth ? await auth.session() : null;
   $("request-account").hidden = !session;
-  if (session) $("request-email").textContent = session.user?.email ?? "";
+  if (session) {
+    currentAccount = { email: session.user?.email ?? "", method: signInMethod(session) };
+    $("request-account-label").textContent = withMethod("알림 받을 메일", currentAccount.method);
+    $("request-email").textContent = currentAccount.email;
+  }
   if (!auth) showRequestError(UNAVAILABLE);
   else if (!session) openLogin({ reason: true, then: hash });
 }
-// 계정 바꾸기: 로그아웃하지 않고 시트만 연다. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 원래 계정 그대로
-$("account-switch").addEventListener("click", () => openLogin({ reason: true, then: location.hash }));
+const withMethod = (label, method) => (method ? `${label} · ${method}` : label);
+
+// 계정 바꾸기(S1): 확인 창 → [바꾸기]면 로그아웃 없이 빈 로그인 창. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 지금 계정 그대로
+const switchConfirm = $("switch-confirm");
+$("account-switch").addEventListener("click", () => {
+  $("switch-current-label").textContent = withMethod("지금 계정", currentAccount.method);
+  $("switch-current-email").textContent = currentAccount.email;
+  switchConfirm.hidden = false;
+  $("switch-cancel").focus();
+});
+function closeSwitchConfirm() {
+  switchConfirm.hidden = true;
+  $("account-switch").focus();
+}
+$("switch-cancel").addEventListener("click", closeSwitchConfirm);
+switchConfirm.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  e.preventDefault();
+  closeSwitchConfirm();
+});
+$("switch-ok").addEventListener("click", () => {
+  closeSwitchConfirm();  // 시트를 닫으면 포커스가 [계정 바꾸기]로 돌아오게 먼저 옮긴다
+  openLogin({ mode: "switch", then: location.hash });
+});
 
 $("no-model").addEventListener("click", async () => {
   const appliance = parseRoute(location.hash).appliance;
@@ -771,8 +799,10 @@ $("request-ask").addEventListener("click", () => { location.hash = chatHash(exis
 const WRONG_CODE = "코드가 맞지 않아요. 다시 확인해 주세요";
 const RESEND_WAIT = "잠시 뒤에 다시 보낼 수 있어요";
 const SEND_FAILED = "메일을 보내지 못했어요. 잠시 뒤 다시 시도해 주세요";
+const LOGIN_REASON = "모델이 추가되면 메일로 알려 드릴게요. 받을 이메일을 확인할게요";
+const SWITCH_GUIDE = "새 계정으로 로그인하면 알림을 그 메일로 보내 드려요";
 const login = {
-  box: $("login-sheet"), reason: $("login-reason"), emailForm: $("login-email-form"), email: $("login-email"),
+  box: $("login-sheet"), title: $("login-title"), reason: $("login-reason"), emailForm: $("login-email-form"), email: $("login-email"),
   emailError: $("login-email-error"), codeForm: $("login-code-form"), code: $("login-code"), codeError: $("login-code-error"),
   sentEmail: $("login-sent-email"), resent: $("login-resent"),
 };
@@ -800,9 +830,14 @@ async function whileBusy(box, work) {
   }
 }
 
-function openLogin({ reason = false, then = null } = {}) {
+// mode "switch"(계정 바꾸기)는 제목·맨 위 안내만 다르다. 새로 열면 이메일 칸은 늘 비운다([수정]으로 돌아올 때만 남김)
+function openLogin({ reason = false, then = null, mode = "login" } = {}) {
+  const switching = mode === "switch";
   loginThen = then;
-  login.reason.hidden = !reason;
+  login.title.textContent = switching ? "다른 계정으로 로그인" : "로그인";
+  login.reason.textContent = switching ? SWITCH_GUIDE : LOGIN_REASON;
+  login.reason.hidden = !(reason || switching);
+  login.email.value = "";
   if (!login.box.open) login.box.showModal();
   loginStep(1);
 }
@@ -863,9 +898,12 @@ async function updateAccount() {
   const auth = await initAuth();
   const session = auth ? await auth.session() : null;
   const email = session?.user?.email ?? "";
+  const method = session ? signInMethod(session) : null;
   $("drawer-avatar").textContent = email.charAt(0).toUpperCase();  // 프로필 사진 대신 메일 첫 글자(장식)
   $("drawer-email").textContent = email;
-  $("drawer-avatar").hidden = $("drawer-email").hidden = $("drawer-logout").hidden = !session;
+  $("drawer-method").textContent = method ?? "";
+  $("drawer-method").hidden = !method;
+  $("drawer-avatar").hidden = $("drawer-account-text").hidden = $("drawer-logout").hidden = !session;
   $("drawer-login").hidden = Boolean(session);
 }
 $("drawer-login").addEventListener("click", async () => {

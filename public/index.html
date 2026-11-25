@@ -50,7 +50,8 @@
            로그인하면 첫 글자 동그라미 + 메일 + 로그아웃, 로그인 전이면 같은 자리에 로그인 -->
       <div class="drawer-account">
         <span class="account-avatar" id="drawer-avatar" aria-hidden="true" hidden></span>
-        <strong class="account-email" id="drawer-email" hidden></strong>
+        <span class="account-text" id="drawer-account-text" hidden><strong class="account-email" id="drawer-email"></strong>
+          <span class="account-label" id="drawer-method" hidden></span></span>
         <button type="button" class="text-button" id="drawer-login">로그인</button>
         <button type="button" class="text-button" id="drawer-logout" hidden>로그아웃</button>
         <p class="form-error" id="drawer-login-error" role="alert" hidden></p>
@@ -162,10 +163,21 @@
       <!-- 알림 받을 메일(A1·V3, 2026-11-25): 바꾸기는 로그아웃 없이 로그인 시트만 연다 -->
       <div class="account-box" id="request-account" hidden>
         <span class="icon icon-mail" aria-hidden="true"></span>
-        <p class="account-text"><span class="account-label">알림 받을 메일</span>
+        <p class="account-text"><span class="account-label" id="request-account-label">알림 받을 메일</span>
           <strong class="account-email" id="request-email"></strong></p>
         <button type="button" class="account-switch" id="account-switch" aria-label="계정 바꾸기" title="계정 바꾸기">
           <span class="switch-dot"><span class="icon icon-switch" aria-hidden="true"></span></span></button>
+      </div>
+      <!-- 계정 바꾸기 확인 창(S1, 2026-11-25): 서랍 "전체 삭제" 확인 창과 같은 부품. [바꾸기]면 로그아웃 없이 빈 로그인 창 -->
+      <div class="confirm" id="switch-confirm" role="group" aria-labelledby="switch-confirm-title" hidden>
+        <p class="confirm-title" id="switch-confirm-title">다른 계정으로 바꿀까요?</p>
+        <p class="switch-current"><span class="account-label" id="switch-current-label">지금 계정</span>
+          <strong class="account-email" id="switch-current-email"></strong></p>
+        <p>바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요.</p>
+        <div class="confirm-actions">
+          <button type="button" class="text-button" id="switch-cancel">취소</button>
+          <button type="button" class="pill" id="switch-ok">바꾸기</button>
+        </div>
       </div>
       <form class="request-form" id="request-form" novalidate>
         <div class="field">
