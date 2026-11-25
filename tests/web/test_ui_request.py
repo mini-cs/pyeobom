@@ -204,7 +204,14 @@ def test_request_requires_login_then_returns_to_form(open_app):
     privacy_top = sheet.get_by_text(PRIVACY).bounding_box()["y"]
     assert reason_top < privacy_top
     expect(sheet.get_by_text("또는", exact=True)).to_be_visible()
-    expect(sheet.get_by_role("button", name="Google로 계속하기")).to_be_visible()
+    google = sheet.get_by_role("button", name="Google로 계속하기")
+    expect(google).to_be_visible()
+    # G 아이콘(회색 배경을 뺀 공식 G)은 버튼 둥근 테두리 안쪽에 있다: 위·아래·왼쪽 모두 테두리에서 떨어짐
+    icon = google.locator("img")
+    assert icon.get_attribute("src") == "/icons/google-g.svg"
+    expect(icon).to_have_js_property("complete", True)
+    b, i = google.bounding_box(), icon.bounding_box()
+    assert i["x"] - b["x"] >= 8 and i["y"] > b["y"] and i["y"] + i["height"] < b["y"] + b["height"], (b, i)
     log_in_with_code(page, fake)
     expect(page.get_by_role("heading", level=1)).to_have_text(REQUEST_H1)
     assert page.evaluate("location.hash") == "#request/dryer"
@@ -243,6 +250,11 @@ def test_request_success_message(open_app):
     open_request_form(page, fake)
     fill_request(page, "가짜브랜드", "DV90-FAKE2")
     expect(page.get_by_text(RECEIVED)).to_be_visible()
+    # 요청이 끝나면 [요청하기]는 잠기지 않고 다시 눌리는 상태, 색도 평소 검은 버튼(마우스를 치운 뒤)
+    submit = page.locator('[data-screen="request"]').get_by_role("button", name="요청하기")
+    expect(submit).to_be_enabled()
+    page.mouse.move(0, 0)
+    expect(submit).to_have_css("background-color", "rgb(17, 17, 17)")
 
 
 def test_duplicate_request_message(open_app):
