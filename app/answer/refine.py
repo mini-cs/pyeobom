@@ -73,6 +73,7 @@ def refine_question(question: str, product: str, model_name: str, settings: Sett
             max_output_tokens=settings.refine_max_output_tokens,
             reasoning={"effort": settings.refine_reasoning_effort},
             text={"format": REFINE_FORMAT},
+            store=False,  # 개인정보 처리방침: 지금은 꺼져 있어도 켜면 사용자 질문이 가는 호출
         )
     except (TimeoutError, openai.APITimeoutError):
         return RefineResult(question, False, "timeout")
