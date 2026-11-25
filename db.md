@@ -110,8 +110,9 @@ RLS를 켰다. 정책은 둘뿐이다.
 
 | 항목 | 값 |
 |---|---|
-| 표·이벤트 | `public.model_requests`의 INSERT, UPDATE (웹훅 2개) |
-| 주소 | 운영 주소의 `/api/notify` (실제 값은 병합 뒤 U7에서 등록) |
+| 표·이벤트 | `public.model_requests`의 INSERT, UPDATE (웹훅 1개(이벤트 INSERT·UPDATE), 이름 `notify_model_requests`) |
+| 주소 | POST https://pyeobom.help/api/notify (U7에서 등록, 2026-11-25) |
+| 시간 제한 | 5000ms |
 | 머리글 | `x-pyeobom-webhook-secret: <NOTIFY_WEBHOOK_SECRET>` (값은 Vercel·Supabase에만, 여기에 적지 않음) |
 | 본문 | Supabase 데이터베이스 웹훅 형식 `type`·`table`·`schema`·`record`·`old_record` |
 
@@ -120,6 +121,7 @@ RLS를 켰다. 정책은 둘뿐이다.
 - 401: 머리글 비밀 값이 없거나 틀림, 또는 서버에 비밀 값이 설정되지 않음(본문을 읽지 않음). 400: 본문이 JSON 객체가 아니거나 필요한 필드가 빠짐. 502: 메일을 보내지 못함(Resend·관리 API 실패, 10초 시간 초과, 설정 없음).
 - 다시 보내기: 표 화면에서 status를 "확인 중"으로 되돌렸다가 다시 "추가됨"·"추가 어려움"으로 바꾼다(같은 값으로 다시 저장하면 보내지 않음). `not_deployed`였으면 배포가 끝난 뒤 같은 방법으로.
 - 로그에는 요청 id·status·결과만 남는다(메일·모델명·user_id·키 없음).
+- 응답 기록은 SQL 편집기에서 `net._http_response`로 확인한다(상태 코드·시간 초과 여부).
 
 ### 메일 한도 (공식 문서 확인: 채팅 Claude, 2026-11-25)
 
