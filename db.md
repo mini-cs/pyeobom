@@ -44,6 +44,7 @@
 
 - 넣기는 세 열만 받는다. 화면은 이 세 열만 보내야 한다(Task 6). `user_id`·`status`·`reason`·`model_id`·`created_at`을 보내면 열 권한 오류로 거부된다. 그래서 사용자가 상태를 `추가됨`으로 넣거나 `created_at`을 과거로 넣어 하루 제한을 피할 수 없다
 - `service_role`에는 이 파일에서 따로 권한을 주거나 빼지 않았다(지금 쓰는 곳 없음, Task 7·8에서 필요하면 그때 정함)
+- 운영 DB 조회(2026-11-25, 채팅 Claude가 읽기만): `service_role`은 이 표에 `REFERENCES`·`TRIGGER`·`TRUNCATE`만 있고 `SELECT`·`UPDATE`가 없다(Supabase 기본값으로 보임). Task 7·8에서 서버가 이 표를 읽거나 고치게 되면 그때 권한을 준다
 - identity 열의 시퀀스 권한은 주지 않았고, 넣기 테스트가 통과해 필요 없음을 확인했다
 
 ### RLS 정책
@@ -84,6 +85,13 @@ RLS를 켰다. 정책은 둘뿐이다.
 `tests/requests/test_rls_live.py`(integration, 실제 Supabase, OpenAI 비용 0). 가짜 시험 사용자(`fake-rls-…@example.com`)를 관리 API로 만들고, 끝나면 테스트가 만든 사용자만 지운다.
 
 - `test_user_sees_only_own_requests`, `test_user_cannot_update_or_delete`, `test_insert_with_status_added_is_rejected`, `test_duplicate_model_key_is_rejected`, `test_sixth_request_in_24h_is_rejected`, `test_model_key_matches_cases_live`
+
+## Supabase 보안 점검 경고와 판단 (2026-11-25)
+
+| 경고 | 판단 |
+|---|---|
+| `public.rls_auto_enable()`: 이벤트 트리거 `ensure_rls`가 쓰는 `SECURITY DEFINER` 함수. 이 프로젝트가 만들지 않았고, 만든 쪽은 확인하지 못함 | 지금은 그대로 둔다 |
+| 유출 비밀번호 막기(leaked password protection) 꺼짐 | 비밀번호 로그인을 쓰지 않아(이메일 코드·구글) 해당 없음 |
 
 ## 웹훅 (Task 7에서 채움)
 
