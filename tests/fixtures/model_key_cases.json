@@ -1,0 +1,10 @@
+[
+  {"input": "wf21t6000kw", "key": "WF21T6000KW", "case": "소문자"},
+  {"input": "AB 12", "key": "AB12", "case": "공백"},
+  {"input": "CD-34", "key": "CD34", "case": "하이픈"},
+  {"input": "EF.56", "key": "EF56", "case": "점"},
+  {"input": "GH/78", "key": "GH78", "case": "슬래시"},
+  {"input": "JK90*", "key": "JK90", "case": "별표"},
+  {"input": "그랑데 lm12", "key": "그랑데LM12", "case": "한글·공백·소문자"},
+  {"input": " np-34.5/q* ", "key": "NP345Q", "case": "앞뒤 공백·여러 기호 섞임"}
+]
