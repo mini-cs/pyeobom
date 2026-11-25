@@ -1,19 +1,15 @@
 """화면 흐름(랜딩 → 카테고리 → 모델) Playwright 테스트. 로컬 정적 서버에서 열고 /api/*는 가로챈다(AI 비용 없음)."""
 import json
 import re
-import threading
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import expect
 
 from app.answer.check import GUIDE_WARNING
 from app.catalog.routes import list_models
 
 pytestmark = pytest.mark.ui
 
-PUBLIC = Path(__file__).resolve().parents[2] / "public"
 MODELS = list_models()  # 실제 /api/models와 같은 공개 필드만
 NAMES = {m["id"]: m["name"] for m in MODELS}  # 화면 이름(코드 없음). 코드는 모델 선택 카드에만
 TITLES = {m["id"]: m.get("short_name") or m["name"] for m in MODELS}  # 채팅 위쪽 막대 이름(short_name ?? name)
@@ -22,40 +18,6 @@ LANDING_H1 = "가전 설명서, 대신 펴 봐 드려요"
 CATEGORY_H1 = "어떤 가전이 궁금하세요?"
 AI_NOTE = "제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요."
 STORE_KEY = "pyeobom.conversations"
-
-
-class _Handler(SimpleHTTPRequestHandler):
-    # 윈도 레지스트리의 MIME 값에 휘둘리지 않게 고정(JS 모듈은 JavaScript 형식이어야 불러와짐)
-    extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
-                      ".js": "text/javascript", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(PUBLIC), **kwargs)
-
-    def log_message(self, *args):
-        pass
-
-
-@pytest.fixture(scope="module")
-def base_url():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}"
-    server.shutdown()
-    server.server_close()
-
-
-@pytest.fixture(scope="module")
-def playwright():
-    with sync_playwright() as p:   # 한 스레드에 하나만 열 수 있어 브라우저들이 함께 쓴다
-        yield p
-
-
-@pytest.fixture(scope="module")
-def browser(playwright):
-    b = playwright.chromium.launch()
-    yield b
-    b.close()
 
 
 def _conversation(i, model_id):
@@ -198,16 +160,19 @@ def test_category_tiles_arrow_keys_disabled_tile_and_dots(open_page):
     page = open_page()
     go_category(page)
     washer = page.get_by_role("button", name="세탁기")
+    dryer = page.get_by_role("button", name="건조기")   # 2차 Task 6: 세탁기 다음에 건조기
     aircon = page.get_by_role("button", name="에어컨")
     soon = page.get_by_role("button", name="더 추가 예정")
     expect(page.locator("#tile-dots .dot").first).to_be_visible()
     # 비활성 점은 누르는 버튼이라 흰 바탕과 3:1 이상인 #8C8C8C(가이드 --color-dot)
     inactive = page.locator('#tile-dots .dot[aria-current="false"]').first
     assert inactive.evaluate("(d) => getComputedStyle(d, '::before').backgroundColor") == "rgb(140, 140, 140)"
-    # 처음에는 마지막 타일이 반쯤 보인다(폭 360px): 왼쪽 끝은 화면 안, 오른쪽 끝은 화면 밖
-    box = soon.bounding_box()
+    # 처음에는 세 번째 타일이 반쯤 보인다(폭 360px): 왼쪽 끝은 화면 안, 오른쪽 끝은 화면 밖(건조기가 생겨 타일 4개)
+    box = aircon.bounding_box()
     assert box["x"] < 360 < box["x"] + box["width"]
     washer.focus()
+    page.keyboard.press("ArrowRight")
+    expect(dryer).to_be_focused()
     page.keyboard.press("ArrowRight")
     expect(aircon).to_be_focused()
     page.keyboard.press("ArrowRight")
@@ -1103,12 +1068,12 @@ def test_tiles_fixed_width_fit_on_pc_without_dots_and_scroll_with_dots_on_phone(
     page = open_page()
     go_category(page)
     phone = tile_layout(page)   # 360px: 넘기기 + 점
-    assert phone["sw"] > phone["cw"] and phone["widths"] == [128, 128, 128], phone
+    assert phone["sw"] > phone["cw"] and phone["widths"] == [128] * 4, phone
     expect(page.locator("#tile-dots .dot").first).to_be_visible()
-    page.set_viewport_size({"width": 1280, "height": 800})   # PC(내용 폭 640px): 3개가 다 보이고 점은 숨김
+    page.set_viewport_size({"width": 1280, "height": 800})   # PC(내용 폭 640px): 4개가 다 보이고 점은 숨김
     expect(page.locator("#tile-dots")).to_be_hidden()
     pc = tile_layout(page)
-    assert pc["sw"] <= pc["cw"] and pc["widths"] == [128, 128, 128], pc
+    assert pc["sw"] <= pc["cw"] and pc["widths"] == [128] * 4, pc
 
 
 def test_long_tile_name_wraps_inside_tile_without_breaking_words(open_page):
@@ -1127,7 +1092,7 @@ def test_long_tile_name_wraps_inside_tile_without_breaking_words(open_page):
         const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size;
         const boxes = [...document.querySelectorAll('.tile')].map((e) => e.getBoundingClientRect());
         return {words, lines, sw: tile.scrollWidth, cw: tile.clientWidth,
-                width: boxes[2].width, heights: boxes.map((b) => Math.round(b.height))}; }""")
+                width: boxes[3].width, heights: boxes.map((b) => Math.round(b.height))}; }""")
     assert result["lines"] > 1 and set(result["words"]) == {1}, result   # 줄은 바뀌되 단어 중간에서 끊지 않는다
     assert result["sw"] <= result["cw"] and result["width"] == 128, result   # 칸 밖으로 넘치지 않는다
     assert len(set(result["heights"])) == 1, result   # 같은 줄 타일 높이는 같다
