@@ -91,6 +91,14 @@ RLS를 켰다. 정책은 둘뿐이다.
 
 `unique (user_id, model_key)` 때문에 "추가 어려움"으로 닫힌 요청과 같은 모델명은 같은 사람이 다시 요청할 수 없다(화면은 "이미 요청하셨어요"). 다시 받으려면 운영자가 Supabase 표 화면에서 그 행을 지운다. 그러면 같은 사람이 다시 요청할 수 있다.
 
+### 운영 방법: 삭제 요청과 데모데이 뒤 정리 (2026-11-25, 개인정보 처리방침 5절)
+
+- 삭제 요청(pyeobom@gmail.com으로 로그인한 이메일 주소를 받음)을 받으면 두 가지를 지운다.
+  1. 계정: 사용자가 SQL 편집기에서 그 이메일의 `auth.users` 행을 지운다. 요청(`model_requests`)은 `on delete cascade`로 함께 지워진다.
+  2. 운영자 메일함(pyeobom@gmail.com)에서 그 사람과 관련된 알림 메일과 답장 메일을 지운다.
+- 데모데이 뒤 2차 테스트 기간의 계정·요청 정리도 같은 방법으로 한다(계정 삭제 + 운영자 메일함의 관련 메일 삭제).
+- 이미 발급된 로그인 토큰은 계정을 지워도 만료 전까지는 유효하다(Supabase 문서 managing-user-data).
+
 ### 확인한 테스트
 
 `tests/requests/test_rls_live.py`(integration, 실제 Supabase, OpenAI 비용 0). 가짜 시험 사용자(`fake-rls-…@example.com`)를 관리 API로 만들고, 끝나면 테스트가 만든 사용자만 지운다.
