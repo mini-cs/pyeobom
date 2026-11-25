@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -9,6 +11,10 @@ from app.notify.routes import router as notify_router
 
 
 def create_app() -> FastAPI:
+    # httpx·httpcore는 INFO로 요청 주소를 남긴다. 관리 API 주소에 user_id가 들어가므로 WARNING 위만 남긴다(2차 Task 7 고침).
+    # create_app은 Vercel 진입점(index.py)이 늘 부른다
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     app = FastAPI(title="펴봄")
 
     @app.get("/api/health")
