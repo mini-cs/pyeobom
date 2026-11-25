@@ -78,7 +78,18 @@ RLS를 켰다. 정책은 둘뿐이다.
 | 세 열 밖의 값을 보냄 | 열 권한(`42501`) |
 | 로그인 안 함 | 권한 없음(`anon`) |
 
-괄호 안은 Postgres 오류 코드다. Data API가 이것을 어떤 HTTP 상태로 돌려주는지는 Task 6에서 확인한다(지금 테스트는 "400 이상"만 본다).
+괄호 안은 Postgres 오류 코드다. Data API(PostgREST)가 돌려주는 HTTP 상태와 화면 문구는 아래와 같다(PostgREST v14 오류 문서로 확인, 2026-11-25 Task 6. 앞서 "Task 6에서 확인한다"고 적었던 것을 채움).
+
+| 오류 코드 | HTTP 상태 | 화면 |
+|---|---|---|
+| `23505` 같은 모델명 다시 요청 | 409 | "이미 요청하셨어요" |
+| `P0001` 24시간 6번째(하루 제한 트리거) | 400 | "오늘은 요청을 더 받을 수 없어요. 내일 다시 요청해 주세요" |
+| `42501` 권한 없음(세 열 밖의 값·다른 사람 행 등) | 로그인 상태 403, 로그인 전 401 | 403은 "잠시 쓸 수 없어요", 401은 로그인 시트 |
+| `PGRST301`·`PGRST303` 토큰 문제(만료 등) | 401 | 로그인 시트 |
+
+### 운영 방법: 같은 모델 다시 요청
+
+`unique (user_id, model_key)` 때문에 "추가 어려움"으로 닫힌 요청과 같은 모델명은 같은 사람이 다시 요청할 수 없다(화면은 "이미 요청하셨어요"). 다시 받으려면 운영자가 Supabase 표 화면에서 그 행을 지운다. 그러면 같은 사람이 다시 요청할 수 있다.
 
 ### 확인한 테스트
 
@@ -93,6 +104,25 @@ RLS를 켰다. 정책은 둘뿐이다.
 | `public.rls_auto_enable()`: 이벤트 트리거 `ensure_rls`가 쓰는 `SECURITY DEFINER` 함수. 이 프로젝트가 만들지 않았고, 만든 쪽은 확인하지 못함 | 지금은 그대로 둔다 |
 | 유출 비밀번호 막기(leaked password protection) 꺼짐 | 비밀번호 로그인을 쓰지 않아(이메일 코드·구글) 해당 없음 |
 
-## 웹훅 (Task 7에서 채움)
+## 웹훅 (Task 7)
 
-요청이 들어오거나(INSERT) 상태가 바뀌면(UPDATE) 데이터베이스 웹훅이 알림 주소(`/api/notify`)를 부르고, 운영자·요청자에게 메일이 간다. 웹훅 설정과 보내는 값은 Task 7에서 이 절에 적는다.
+요청이 들어오거나(INSERT) 상태가 바뀌면(UPDATE) 데이터베이스 웹훅이 알림 주소(`/api/notify`)를 부르고, 운영자·요청자에게 메일이 간다(`app/notify/`).
+
+| 항목 | 값 |
+|---|---|
+| 표·이벤트 | `public.model_requests`의 INSERT, UPDATE (웹훅 2개) |
+| 주소 | 운영 주소의 `/api/notify` (실제 값은 병합 뒤 U7에서 등록) |
+| 머리글 | `x-pyeobom-webhook-secret: <NOTIFY_WEBHOOK_SECRET>` (값은 Vercel·Supabase에만, 여기에 적지 않음) |
+| 본문 | Supabase 데이터베이스 웹훅 형식 `type`·`table`·`schema`·`record`·`old_record` |
+
+- 보내는 규칙: INSERT → 운영자 메일. UPDATE → 상태가 바뀌었고 새 상태가 "추가됨"·"추가 어려움"일 때만 요청자 메일(답장 주소는 운영자). "추가됨"인데 그 `model_id`가 이 배포의 `data/models.json`에 없으면 보내지 않는다.
+- 응답: 200 `{"sent": "operator" | "requester" | "none", "reason": …}`. `reason`은 `inserted`·`status_changed`·`status_unchanged`·`status_not_final`·`not_deployed`·`other_table`·`ignored_type`.
+- 401: 머리글 비밀 값이 없거나 틀림, 또는 서버에 비밀 값이 설정되지 않음(본문을 읽지 않음). 400: 본문이 JSON 객체가 아니거나 필요한 필드가 빠짐. 502: 메일을 보내지 못함(Resend·관리 API 실패, 10초 시간 초과, 설정 없음).
+- 다시 보내기: 표 화면에서 status를 "확인 중"으로 되돌렸다가 다시 "추가됨"·"추가 어려움"으로 바꾼다(같은 값으로 다시 저장하면 보내지 않음). `not_deployed`였으면 배포가 끝난 뒤 같은 방법으로.
+- 로그에는 요청 id·status·결과만 남는다(메일·모델명·user_id·키 없음).
+
+### 메일 한도 (공식 문서 확인: 채팅 Claude, 2026-11-25)
+
+- Resend 무료: 하루 100통(UTC 기준 하루, 보낸 메일과 받은 메일을 합산, SMTP도 같은 한도). 넘으면 429이고 다시 보내 주지 않는다.
+- Supabase 사용자 지정 SMTP: 기본 시간당 30통.
+- 로그인 코드 메일(Supabase → Resend SMTP), 알림 메일(Resend API), Task 11의 받기 확인이 같은 100통을 나눠 쓴다 → Task 11 계획 때 다시 본다.
