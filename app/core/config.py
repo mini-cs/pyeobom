@@ -32,6 +32,14 @@ class Settings:
     refine_reasoning_effort: str = "none"
     refine_timeout_s: float = 3.0
     refine_max_output_tokens: int = 300
+    # 2차 요청 흐름(Task 5). 화면에 내려가는 것은 supabase_url·supabase_anon_key 둘뿐(/api/public-config)
+    supabase_url: str = ""
+    supabase_anon_key: str = ""  # 공개 키(sb_publishable_…)
+    supabase_service_key: str = ""  # 서버 전용(sb_secret_…)
+    resend_api_key: str = ""
+    notify_webhook_secret: str = ""
+    operator_email: str = ""
+    mail_from: str = ""
 
 
 @lru_cache
@@ -62,4 +70,11 @@ def get_settings() -> Settings:
         refine_reasoning_effort=env("REFINE_REASONING_EFFORT") or "none",
         refine_timeout_s=float(env("REFINE_TIMEOUT_S") or 3),
         refine_max_output_tokens=int(env("REFINE_MAX_OUTPUT_TOKENS") or 300),
+        supabase_url=env("SUPABASE_URL", ""),
+        supabase_anon_key=env("SUPABASE_ANON_KEY", ""),
+        supabase_service_key=env("SUPABASE_SERVICE_KEY", ""),
+        resend_api_key=env("RESEND_API_KEY", ""),
+        notify_webhook_secret=env("NOTIFY_WEBHOOK_SECRET", ""),
+        operator_email=env("OPERATOR_EMAIL", ""),
+        mail_from=env("MAIL_FROM", ""),
     )
