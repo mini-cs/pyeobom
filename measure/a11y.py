@@ -55,6 +55,8 @@ STATES = {
     "drawer-account": ["model:건조기", "nomodel", "email", "code", "account-drawer"],
     # 2026-11-25 Task 6 덧붙임 2: 계정 바꾸기 확인 창
     "switch-confirm": ["model:건조기", "nomodel", "email", "code", "switch"],
+    # 2026-11-25 개인정보 처리방침 페이지(정적 파일, Supabase 없음)
+    "privacy": ["privacy"],
 }
 LOCAL_ONLY = {"model-dryer", "login-sheet", "login-code", "request-form", "request-done", "drawer-account", "switch-confirm"}
 SUPABASE = "https://supabase.test"   # 가짜 주소. 실제 Supabase·메일은 부르지 않는다
@@ -189,6 +191,9 @@ def _prepare(page, base, steps, replies):
         elif action == "account-drawer":
             page.get_by_role("button", name="지난 대화").click()
             page.locator("#drawer-email").wait_for()
+        elif action == "privacy":
+            page.goto(base.rstrip("/") + "/privacy.html")
+            page.get_by_role("heading", level=1).wait_for()
         elif action == "delete-all":
             page.get_by_role("button", name="전체 삭제").click()
             page.locator("#delete-confirm").wait_for()

@@ -112,3 +112,9 @@ def test_reports_token_usage_when_asked(fake_client):
     usage = {}
     assert complete_json(MSGS, settings(), fake_client, usage=usage) == "ok-json"
     assert usage == {"input_tokens": 1200, "output_tokens": 80}
+
+
+def test_answer_call_is_not_stored_at_openai(fake_client):
+    # 개인정보 처리방침(2026-11-25): Responses API store 기본값 true(30일 보관)를 끈다
+    complete_json(MSGS, settings(), fake_client)
+    assert fake_client.kwargs["store"] is False

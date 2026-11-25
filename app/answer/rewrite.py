@@ -64,6 +64,7 @@ def rewrite_question(question: str, history: list[dict], model_name: str, settin
             max_output_tokens=settings.rewrite_max_output_tokens,
             reasoning={"effort": settings.rewrite_reasoning_effort},
             text={"format": REWRITE_FORMAT},
+            store=False,  # 개인정보 처리방침: 앞 대화가 든 호출도 OpenAI에 저장하지 않음
         )
     except (TimeoutError, openai.APITimeoutError):
         return RewriteResult(question, False, "timeout")

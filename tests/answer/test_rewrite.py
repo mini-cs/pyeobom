@@ -119,3 +119,10 @@ def test_rewrite_uses_its_own_reasoning_effort():
     client = FakeClient('{"standalone_question": "x"}')
     rewrite_question("그건요?", HISTORY, "m", S, client=client)  # S의 답변 추론 강도는 기본 low
     assert client.calls[0]["reasoning"] == {"effort": "none"}
+
+
+def test_rewrite_call_is_not_stored_at_openai():
+    # 개인정보 처리방침(2026-11-25): 앞 대화가 든 바꾸기 호출도 OpenAI에 저장하지 않는다
+    client = FakeClient('{"standalone_question": "통살균 코스는 얼마나 걸려요?"}')
+    rewrite_question("그건 얼마나 걸려요?", HISTORY, "m", S, client=client)
+    assert client.calls[0]["store"] is False
