@@ -6,7 +6,7 @@ import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
 import { parentHash } from "./js/nav.js";
 import { findExistingModel, LOGIN_REQUIRED, requestErrorMessage, requestRow, UNAVAILABLE, validateRequest } from "./js/request.js";
-import { initAuth, isOtpCode, signInMethod } from "./js/auth.js";
+import { initAuth, isOtpCode, onAuthChange, signInMethod } from "./js/auth.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
@@ -711,18 +711,57 @@ const showRequestError = (message) => showError(req.error, message);
 
 // 요청 화면: 로그인한 메일(= 알림 받을 메일)과 로그인 방식(L1)을 보이고, 로그인 전이면 시트를 연다
 let currentAccount = { email: "", method: null };
+let googleReturn = null;  // 구글에서 돌아오는 중이면 세션 교환을 기다리는 약속(성공 여부)
+
+function showAccount(session) {
+  currentAccount = { email: session.user?.email ?? "", method: signInMethod(session) };
+  $("request-account").hidden = $("account-switch").hidden = false;
+  $("request-account-label").textContent = withMethod("알림 받을 메일", currentAccount.method);
+  $("request-email").textContent = currentAccount.email;
+}
+
+// 로그아웃되면 화면 어디에도 이전 메일이 남지 않게 지운다
+function clearAccount() {
+  currentAccount = { email: "", method: null };
+  $("request-account").hidden = true;
+  for (const id of ["request-email", "switch-current-email", "login-sent-email"]) $(id).textContent = "";
+  $("login-email").value = "";
+}
+
 async function requireLogin(hash) {
+  if (googleReturn) {  // 교환이 끝날 때까지 "로그인 확인 중…"
+    $("request-account").hidden = false;
+    $("account-switch").hidden = true;
+    $("request-account-label").textContent = "알림 받을 메일";
+    $("request-email").textContent = "로그인 확인 중…";
+    if (!(await googleReturn)) {  // 실패는 finishGoogleLogin이 시트와 문구로 알린다
+      clearAccount();
+      return;
+    }
+  }
   const auth = await initAuth();
   const session = auth ? await auth.session() : null;
-  $("request-account").hidden = !session;
-  if (session) {
-    currentAccount = { email: session.user?.email ?? "", method: signInMethod(session) };
-    $("request-account-label").textContent = withMethod("알림 받을 메일", currentAccount.method);
-    $("request-email").textContent = currentAccount.email;
-  }
+  if (session) showAccount(session);
+  else clearAccount();
   if (!auth) showRequestError(UNAVAILABLE);
   else if (!session) openLogin({ reason: true, then: hash });
 }
+
+// 로그인 상태가 바뀌면(로그아웃·토큰 만료·새 로그인) 요청 화면 상자와 서랍을 함께 고친다.
+// 요청 화면에서 로그아웃되면 그 가전의 모델 화면([내 모델이 없어요])으로 돌아가고 입력값을 지운다
+onAuthChange((event, session) => {
+  updateAccount();
+  const route = parseRoute(location.hash);
+  if (event === "SIGNED_OUT") {
+    clearAccount();
+    if (route.screen === "request") {
+      req.form.reset();
+      location.hash = `#model/${route.appliance}`;
+    }
+  } else if (session && route.screen === "request" && !googleReturn) {
+    showAccount(session);
+  }
+});
 const withMethod = (label, method) => (method ? `${label} · ${method}` : label);
 
 // 계정 바꾸기(S1): 막 위 확인 팝업 → [바꾸기]면 로그아웃 없이 빈 로그인 창. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 지금 계정 그대로
@@ -733,8 +772,6 @@ $("account-switch").addEventListener("click", () => {
   switchConfirm.showModal();  // Esc·막 누르기(closedby="any")는 브라우저가 닫는다
   $("switch-cancel").focus();
 });
-// 막 누르기를 브라우저가 지원하지 않을 때: 팝업 안쪽 상자 밖(= 막)을 누르면 닫는다
-switchConfirm.addEventListener("click", (e) => { if (e.target === switchConfirm) switchConfirm.close(); });
 switchConfirm.addEventListener("close", () => $("account-switch").focus());
 $("switch-cancel").addEventListener("click", () => switchConfirm.close());
 $("switch-ok").addEventListener("click", () => {
@@ -917,24 +954,42 @@ $("drawer-logout").addEventListener("click", async () => {
   $("drawer-login").focus();
 });
 
-// 구글에서 돌아오면(?code=) 세션으로 바꾼 뒤 떠나기 전 경로로. 경로는 우리 주소 형식일 때만 쓴다
+// 구글에서 돌아오면(?code=) 경로는 시작할 때 이미 복원했다(아래). 여기서는 세션 교환을 기다리고, 실패면 시트와 문구
+const LOGIN_FAILED = "로그인하지 못했어요. 다시 시도해 주세요";
 async function finishGoogleLogin() {
-  let back = null;
-  try {
-    back = sessionStorage.getItem(RETURN_KEY);
-    sessionStorage.removeItem(RETURN_KEY);
-  } catch { /* 저장소를 못 쓰면 첫 화면 */ }
   const auth = await initAuth();
   const session = auth ? await auth.session() : null;  // detectSessionInUrl이 code를 세션으로 바꾼 뒤에 돌아온다
-  history.replaceState(null, "", location.pathname);  // 주소의 code는 지운다
-  if (session && back && parseRoute(back).screen !== "landing") location.hash = back;
+  history.replaceState(null, "", location.pathname + location.hash);  // 주소의 code는 지운다(성공이면 supabase-js도 지움)
+  googleReturn = null;
+  updateAccount();
+  if (!session) {
+    openLogin({ reason: parseRoute(location.hash).screen === "request", then: location.hash || null });
+    showError(login.emailError, LOGIN_FAILED);
+  }
+  return Boolean(session);
 }
 
-// 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다
-history.replaceState(null, "", location.pathname + location.search);
+// 막(바깥)을 누르면 닫는다. closedby="any"를 모르는 브라우저(사파리 등)에서도 같게: 창 안쪽 상자 밖을 누르면 대상이 dialog 자신
+for (const box of [drawer.box, login.box, switchConfirm]) {
+  box.addEventListener("click", (e) => { if (e.target === box) box.close(); });
+}
+
+// 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다.
+// 단, 구글에서 돌아온 주소(?code=)에 떠나기 전 경로가 있으면 첫 화면을 그리기 전에 그 경로로 바로 간다
+const authCode = new URLSearchParams(location.search).has("code");
+let returnPath = "";
+if (authCode) {
+  try {
+    returnPath = sessionStorage.getItem(RETURN_KEY) ?? "";
+    sessionStorage.removeItem(RETURN_KEY);
+  } catch { /* 저장소를 못 쓰면 첫 화면 */ }
+  if (parseRoute(returnPath).screen === "landing") returnPath = "";  // 우리 주소 형식일 때만
+  googleReturn = finishGoogleLogin();
+}
+history.replaceState(null, "", location.pathname + location.search + returnPath);
 window.addEventListener("hashchange", () => {
   if (drawer.box.open) updateBack();  // 서랍이 열린 채 브라우저 뒤로·앞으로
   render(true);
 });
 render(false);
-if (new URLSearchParams(location.search).has("code")) finishGoogleLogin();
+document.documentElement.classList.remove("auth-return");

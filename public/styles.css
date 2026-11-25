@@ -85,6 +85,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .composer-box:has(textarea:focus-visible) { box-shadow: var(--focus-ring-surface); }
 
 [hidden] { display: none !important; }  /* display를 준 요소도 hidden이면 숨긴다 */
+.auth-return [data-screen="landing"] { display: none !important; }  /* 구글에서 돌아오는 순간 첫 화면이 깜빡이지 않게(index.html) */
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;

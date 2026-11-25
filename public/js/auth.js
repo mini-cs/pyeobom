@@ -37,6 +37,10 @@ async function create() {
   const client = globalThis.supabase.createClient(url, key, {
     auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
   });
+  // 콜백 안에서 바로 다른 Supabase 호출을 하지 않게 다음 차례로 미룬다
+  client.auth.onAuthStateChange((event, session) => {
+    setTimeout(() => listeners.forEach((f) => f(event, session)), 0);
+  });
   return {
     client,
     async session() {
@@ -58,6 +62,12 @@ async function create() {
       return client.auth.signOut();
     },
   };
+}
+
+// 로그인 상태가 바뀌면(로그아웃·토큰 만료·새 로그인) 알린다. Supabase를 만들기 전에도 등록할 수 있다
+const listeners = [];
+export function onAuthChange(callback) {
+  listeners.push(callback);
 }
 
 let pending = null;

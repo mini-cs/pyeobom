@@ -11,6 +11,8 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
+  <!-- 구글 로그인에서 돌아오는 중(?code=)이면 첫 화면을 그리지 않는다. app.js가 돌아갈 화면을 정한 뒤 푼다 -->
+  <script>if (/[?&]code=/.test(location.search)) document.documentElement.classList.add("auth-return");</script>
 </head>
 <body>
   <header class="topbar" id="topbar" hidden>
