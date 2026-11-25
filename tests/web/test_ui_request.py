@@ -578,6 +578,8 @@ def test_switch_confirm_is_modal_popup_with_equal_buttons(open_app):
     account_box(page).get_by_role("button", name="계정 바꾸기").click()
     confirm = switch_confirm(page)
     expect(confirm).to_be_visible()
+    # 팝업이 나타나는 움직임이 끝난 뒤 잰다(움직이는 중에 둘을 따로 재면 위치가 어긋남)
+    page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
     assert confirm.evaluate("(d) => d.tagName === 'DIALOG' && d.open && d.matches(':modal')")
     # 뒤 화면은 누를 수 없다: 브랜드 칸 자리를 누르면 막(팝업 dialog)이 받는다
     box = page.locator("#request-brand").bounding_box()
