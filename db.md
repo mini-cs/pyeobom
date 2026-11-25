@@ -95,7 +95,7 @@ RLS를 켰다. 정책은 둘뿐이다.
 
 `tests/requests/test_rls_live.py`(integration, 실제 Supabase, OpenAI 비용 0). 가짜 시험 사용자(`fake-rls-…@example.com`)를 관리 API로 만들고, 끝나면 테스트가 만든 사용자만 지운다.
 
-- `test_user_sees_only_own_requests`, `test_user_cannot_update_or_delete`, `test_insert_with_status_added_is_rejected`, `test_duplicate_model_key_is_rejected`, `test_sixth_request_in_24h_is_rejected`, `test_model_key_matches_cases_live`
+- `test_user_sees_only_own_requests`, `test_user_cannot_update_or_delete`, `test_insert_with_status_added_is_rejected`, `test_duplicate_model_key_is_rejected`(409·`23505`), `test_sixth_request_in_24h_is_rejected`(400·`P0001`), `test_model_key_matches_cases_live`, `test_insert_for_other_user_is_rejected`(403·`42501`), `test_anon_cannot_read_requests`(401·`42501`)
 
 ## Supabase 보안 점검 경고와 판단 (2026-11-25)
 

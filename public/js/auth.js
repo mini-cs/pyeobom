@@ -58,8 +58,8 @@ async function create() {
     google(redirectTo) {
       return client.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
     },
-    signOut() {
-      return client.auth.signOut();
+    signOut() {  // 이 기기만(다른 기기 세션은 그대로). 실패하면 { error }
+      return client.auth.signOut({ scope: "local" });
     },
   };
 }

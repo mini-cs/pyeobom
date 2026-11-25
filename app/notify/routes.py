@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.catalog.registry import load_models
 from app.core.config import get_settings
@@ -75,15 +76,30 @@ async def notify(request: Request, deps: NotifyDeps = Depends(get_notify_deps)):
     record = body.get("record") or {}
     request_id, status = record.get("id"), record.get("status")
     sent, reason, user_id = _decide(body, deps)
+    try:  # 문구를 먼저 만든다: 필요한 필드가 빠졌으면 500이 아니라 400(메일·조회 없음)
+        message = None
+        if sent == "operator":
+            message = operator_message(record)
+        elif sent == "requester":
+            message = requester_message(record)
+            if not user_id:
+                raise KeyError("user_id")
+    except (KeyError, TypeError):
+        return JSONResponse(status_code=400, content={"error_code": "INVALID_REQUEST", "message": "필요한 값이 빠졌어요"})
     operator = get_settings().operator_email
     try:
+        if sent != "none" and not operator:
+            raise MailError("not_configured")
+        # 메일 보내기·관리 API 조회는 동기 httpx(최대 10초)라 스레드에서 돌려 서버(이벤트 루프)를 막지 않는다
         if sent == "operator":
-            deps.send_mail(operator, *operator_message(record))
+            await run_in_threadpool(deps.send_mail, operator, *message)
         elif sent == "requester":
-            deps.send_mail(deps.get_user_email(user_id), *requester_message(record), reply_to=operator)
+            email = await run_in_threadpool(deps.get_user_email, user_id)
+            await run_in_threadpool(deps.send_mail, email, *message, reply_to=operator)
     except MailError as e:
-        # 로그에는 요청 id·status·결과만(이메일·모델명·키 없음). MailError 메시지에도 주소를 넣지 않는다
+        # 로그에는 요청 id·status·결과만(이메일·모델명·키 없음). MailError 메시지에도 주소를 넣지 않는다(정해진 코드만)
         log.error("notify 실패: request_id=%s status=%s result=mail_failed(%s)", request_id, status, e)
-        return JSONResponse(status_code=502, content={"error_code": "MAIL_FAILED", "message": "메일을 보내지 못했어요"})
+        return JSONResponse(status_code=502,
+                            content={"error_code": "MAIL_FAILED", "message": "메일을 보내지 못했어요", "reason": str(e)})
     log.info("notify: request_id=%s status=%s result=%s(%s)", request_id, status, sent, reason)
     return {"sent": sent, "reason": reason}

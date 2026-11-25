@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
   <!-- 구글 로그인에서 돌아오는 중(?code=)이면 첫 화면을 그리지 않는다. app.js가 돌아갈 화면을 정한 뒤 푼다 -->
-  <script>if (/[?&]code=/.test(location.search)) document.documentElement.classList.add("auth-return");</script>
+  <script>if (/[?&](code|error)=/.test(location.search)) document.documentElement.classList.add("auth-return");</script>
 </head>
 <body>
   <header class="topbar" id="topbar" hidden>
@@ -101,12 +101,12 @@
   </dialog>
 
   <!-- 계정 바꾸기 확인 팝업(S1, 2026-11-25 덧붙임 3): 막 위 가운데. Esc·[취소]·막 누르기는 닫고, [바꾸기]면 로그아웃 없이 빈 로그인 창 -->
-  <dialog class="popup" id="switch-confirm" aria-labelledby="switch-confirm-title" closedby="any">
+  <dialog class="popup" id="switch-confirm" aria-labelledby="switch-confirm-title" aria-describedby="switch-current switch-confirm-desc" closedby="any">
     <div class="popup-body">
       <h2 id="switch-confirm-title">다른 계정으로 바꿀까요?</h2>
-      <p class="switch-current"><span class="account-label" id="switch-current-label">지금 계정</span>
+      <p class="switch-current" id="switch-current"><span class="account-label" id="switch-current-label">지금 계정</span>
         <strong class="account-email" id="switch-current-email"></strong></p>
-      <p>바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요.</p>
+      <p id="switch-confirm-desc">바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요.</p>
       <div class="popup-actions">
         <button type="button" class="pill pill-quiet" id="switch-cancel">취소</button>
         <button type="button" class="pill" id="switch-ok">바꾸기</button>

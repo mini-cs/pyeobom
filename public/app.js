@@ -688,7 +688,8 @@ const req = {
 let requestAppliance = null;
 let existingModel = null;
 
-function prepareRequest(appliance) {  // 입력한 값은 그대로 두고 안내만 지운다(로그인하고 돌아와도 이어서 쓰게)
+function prepareRequest(appliance) {  // 같은 가전이면 입력한 값은 그대로 두고 안내만 지운다(로그인하고 돌아와도 이어서 쓰게)
+  if (appliance !== requestAppliance) req.form.reset();  // 다른 가전이면 앞 가전의 브랜드·모델명을 지운다
   requestAppliance = appliance;
   req.kind.textContent = APPLIANCES[appliance];
   req.error.hidden = req.exists.hidden = req.done.hidden = true;
@@ -734,8 +735,11 @@ async function requireLogin(hash) {
     $("account-switch").hidden = true;
     $("request-account-label").textContent = "알림 받을 메일";
     $("request-email").textContent = "로그인 확인 중…";
-    if (!(await googleReturn)) {  // 실패는 finishGoogleLogin이 시트와 문구로 알린다
-      clearAccount();
+    if (!(await googleReturn)) {  // 실패는 finishGoogleLogin·failGoogleLogin이 시트와 문구로 알린다
+      const auth = await initAuth();
+      const session = auth ? await auth.session() : null;
+      if (session) showAccount(session);  // 계정 바꾸기 중 실패면 이전 계정 그대로
+      else clearAccount();
       return;
     }
   }
@@ -864,6 +868,8 @@ async function whileBusy(box, work) {
 
 // mode "switch"(계정 바꾸기)는 제목·맨 위 안내만 다르다. 새로 열면 이메일 칸은 늘 비운다([수정]으로 돌아올 때만 남김)
 function openLogin({ reason = false, then = null, mode = "login" } = {}) {
+  // 이미 열려 있으면 다시 초기화하지 않는다: 구글 실패 문구를 띄운 뒤 요청 화면이 늦게(모델 목록을 받은 뒤) 시트를 열어도 문구가 남게
+  if (login.box.open) return;
   const switching = mode === "switch";
   loginThen = then;
   login.title.textContent = switching ? "다른 계정으로 로그인" : "로그인";
@@ -947,26 +953,47 @@ $("drawer-login").addEventListener("click", async () => {
   drawer.box.close();
   openLogin();
 });
+const LOGOUT_FAILED = "로그아웃하지 못했어요. 다시 시도해 주세요";
 $("drawer-logout").addEventListener("click", async () => {
+  $("drawer-login-error").hidden = true;
   const auth = await initAuth();
-  await auth?.signOut();
+  try {
+    await auth?.signOut();  // scope local은 이 기기의 세션부터 지운 뒤 서버에 알린다(서버만 실패하면 이 기기는 로그아웃됨)
+  } catch { /* 세션을 지우지 못했으면 아래에서 남은 세션으로 안다 */ }
+  if (!auth || (await auth.session())) {  // 이 기기에 세션이 남아 있으면 실패: 계정 줄은 그대로 두고 알린다
+    showError($("drawer-login-error"), LOGOUT_FAILED);
+    return;
+  }
   await updateAccount();
-  $("drawer-login").focus();
+  $("drawer-login").focus();  // 숨은 [로그아웃] 대신 같은 자리에 보이는 [로그인]으로
 });
 
 // 구글에서 돌아오면(?code=) 경로는 시작할 때 이미 복원했다(아래). 여기서는 세션 교환을 기다리고, 실패면 시트와 문구
 const LOGIN_FAILED = "로그인하지 못했어요. 다시 시도해 주세요";
+// 성공은 세션이 있는지가 아니라 교환 결과로 본다: 계정 바꾸기 중 실패면 이전 세션이 남아 있다
 async function finishGoogleLogin() {
   const auth = await initAuth();
-  const session = auth ? await auth.session() : null;  // detectSessionInUrl이 code를 세션으로 바꾼 뒤에 돌아온다
+  const exchange = auth ? await auth.client.auth.initialize() : { error: true };  // detectSessionInUrl의 교환 결과
+  const session = auth ? await auth.session() : null;
   history.replaceState(null, "", location.pathname + location.hash);  // 주소의 code는 지운다(성공이면 supabase-js도 지움)
   googleReturn = null;
   updateAccount();
-  if (!session) {
-    openLogin({ reason: parseRoute(location.hash).screen === "request", then: location.hash || null });
-    showError(login.emailError, LOGIN_FAILED);
-  }
-  return Boolean(session);
+  const ok = !exchange.error && Boolean(session);
+  if (!ok) showGoogleFailure();
+  return ok;
+}
+
+// 구글 창에서 취소하면 ?error=로 돌아온다: Supabase는 부르지 않고 시트와 실패 문구만(첫 화면을 그린 뒤)
+async function failGoogleLogin() {
+  await Promise.resolve();
+  googleReturn = null;
+  showGoogleFailure();
+  return false;
+}
+
+function showGoogleFailure() {
+  openLogin({ reason: parseRoute(location.hash).screen === "request", then: location.hash || null });
+  showError(login.emailError, LOGIN_FAILED);
 }
 
 // 막(바깥)을 누르면 닫는다. closedby="any"를 모르는 브라우저(사파리 등)에서도 같게: 창 안쪽 상자 밖을 누르면 대상이 dialog 자신
@@ -976,17 +1003,20 @@ for (const box of [drawer.box, login.box, switchConfirm]) {
 
 // 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다.
 // 단, 구글에서 돌아온 주소(?code=)에 떠나기 전 경로가 있으면 첫 화면을 그리기 전에 그 경로로 바로 간다
-const authCode = new URLSearchParams(location.search).has("code");
+const authParams = new URLSearchParams(location.search);
+const authCode = authParams.has("code");
+const authError = !authCode && authParams.has("error");  // 구글 창에서 취소 등
 let returnPath = "";
-if (authCode) {
+if (authCode || authError) {
   try {
     returnPath = sessionStorage.getItem(RETURN_KEY) ?? "";
     sessionStorage.removeItem(RETURN_KEY);
   } catch { /* 저장소를 못 쓰면 첫 화면 */ }
   if (parseRoute(returnPath).screen === "landing") returnPath = "";  // 우리 주소 형식일 때만
-  googleReturn = finishGoogleLogin();
+  googleReturn = authCode ? finishGoogleLogin() : failGoogleLogin();
 }
-history.replaceState(null, "", location.pathname + location.search + returnPath);
+// 오류로 돌아왔으면 주소의 오류 값은 지운다(code는 교환 뒤 finishGoogleLogin이 지움)
+history.replaceState(null, "", location.pathname + (authError ? "" : location.search) + returnPath);
 window.addEventListener("hashchange", () => {
   if (drawer.box.open) updateBack();  // 서랍이 열린 채 브라우저 뒤로·앞으로
   render(true);

@@ -810,10 +810,11 @@ def test_logout_uses_local_scope_and_focuses_login(open_app):
 
 
 def test_logout_failure_shows_message_and_keeps_account(open_app):
-    # ② 로그아웃 실패면 서랍에 문구, 계정 그대로
+    # ② 이 기기에서 로그아웃하지 못하면(세션 저장소를 지우지 못함) 서랍에 문구, 계정 그대로.
+    # scope local은 서버에 묻기 전에 이 기기의 세션부터 지우므로 서버 500만으로는 실패가 아니다(supabase-js 2.119.2 _signOut)
     page, fake = open_app()
     open_request_form(page, fake)
-    fake.logout = (500, {"code": 500, "error_code": "unexpected_failure", "msg": "가짜 실패(테스트)"})
+    page.evaluate("() => { Storage.prototype.removeItem = function () { throw new Error('가짜 저장소 오류(테스트)'); }; }")
     row = drawer_row(page)
     row.get_by_role("button", name="로그아웃").click()
     expect(row.get_by_text(LOGOUT_FAILED)).to_be_visible()
