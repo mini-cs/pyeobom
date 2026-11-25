@@ -4,6 +4,7 @@
   --color-text: #111111;
   --color-text-muted: #6B6B6B;
   --color-border: #DADADA;
+  --color-border-strong: #8C8C8C;
   --color-dot: #8C8C8C;
   --color-action: #111111;
   --color-action-hover: #333333;
@@ -84,6 +85,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .composer-box:has(textarea:focus-visible) { box-shadow: var(--focus-ring-surface); }
 
 [hidden] { display: none !important; }  /* display를 준 요소도 hidden이면 숨긴다 */
+.auth-return [data-screen="landing"] { display: none !important; }  /* 구글에서 돌아오는 순간 첫 화면이 깜빡이지 않게(index.html) */
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -105,6 +107,9 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .icon-flag { --icon: url("/icons/flag.svg"); }
 .icon-lock { --icon: url("/icons/lock.svg"); }
 .icon-washer { --icon: url("/icons/wash-machine.svg"); }
+.icon-dryer { --icon: url("/icons/wash-tumble-dry.svg"); }
+.icon-mail { --icon: url("/icons/mail.svg"); }
+.icon-switch { --icon: url("/icons/arrows-exchange.svg"); }
 .icon-aircon { --icon: url("/icons/air-conditioning.svg"); }
 .icon-dots { --icon: url("/icons/dots.svg"); }
 .icon-chevron { --icon: url("/icons/chevron-right.svg"); }
@@ -420,9 +425,152 @@ a.icon-button { text-decoration: none; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .drawer-footer { margin-top: auto; }
 
+/* ── 2차 내 모델 요청(계획 Task 6) ── */
+.request-entry { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.request-kind { line-height: var(--leading-ui); }
+.request-kind strong { font-weight: var(--weight-semibold); }
+.request-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.request-exists {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface); border-radius: var(--radius-md);
+  line-height: var(--leading-ui);
+}
+.request-exists strong { font-weight: var(--weight-semibold); }
+
+/* 흰 테두리 입력칸(2026-11-25 사용자 결정, 가이드 6절 14): 실제 <label>이 비었고 포커스 없으면 칸 안, 아니면 테두리 선 위로.
+   평소 테두리 --color-border-strong(흰 바탕 3.36:1), 포커스 때 본문색 + 포커스 링 */
+.field { position: relative; }
+.field input {
+  display: block; width: 100%; min-height: 48px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg); color: var(--color-text);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-pill);
+  font: inherit; font-size: var(--text-md); line-height: var(--leading-ui);
+}
+.field input::placeholder { color: transparent; }  /* placeholder=" "는 비었는지 알려고만 둔다(라벨로 쓰지 않음) */
+.field input:focus { border-color: var(--color-text); }
+.field label {
+  position: absolute; left: var(--space-3); top: 50%;
+  transform: translateY(-50%);
+  padding: 0 var(--space-1);
+  background: var(--color-bg); color: var(--color-text-muted);
+  font-size: var(--text-md); line-height: var(--leading-ui);
+  pointer-events: none;
+  transition: top var(--motion-fast), font-size var(--motion-fast);
+}
+.field:focus-within label, .field input:not(:placeholder-shown) + label { top: 0; font-size: var(--text-xs); }
+.field:focus-within label { color: var(--color-text); }
+
+/* 로그인 시트: 아래에서 올라오는 판(서랍과 같은 막·움직임 속도) */
+.sheet {
+  inset: auto 0 0 0;
+  width: 100%; max-width: var(--content-max);
+  max-height: calc(100% - var(--space-8));
+  margin: auto auto 0; padding: 0; border: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--color-bg); color: var(--color-text);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.sheet[open] { animation: sheet-in var(--motion-slide); }
+.sheet::backdrop { background: var(--color-scrim); }
+@keyframes sheet-in { from { transform: translateY(100%); } }
+.sheet-body {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-2) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.sheet-head h2 { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
+.sheet-head .icon-button { margin-left: 0; margin-right: calc(-1 * var(--space-3)); }
+.sheet-reason { line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
+.sheet-step { display: flex; flex-direction: column; gap: var(--space-3); }
+.sheet-step .text-button { align-self: center; }
+.sent-to { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); line-height: var(--leading-ui); }
+.sent-to strong { font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.divider { display: flex; align-items: center; gap: var(--space-3); color: var(--color-text-muted); font-size: var(--text-sm); line-height: var(--leading-ui); }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--color-border); }
+/* Google 버튼(2026-11-25 사용자 결정): 흰 면 + --color-border 테두리 + 공식 G(회색 배경 사각만 뺌) 왼쪽 + 글자 가운데.
+   글자가 있는 컨트롤이라 테두리 1.40:1이어도 된다(가이드 2절의 W3C 인용) */
+.google-button {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  min-height: calc(var(--tap-min) + var(--space-1));
+  padding: var(--space-1) var(--space-8);
+  background: var(--color-bg); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: var(--radius-pill);
+  font-size: var(--text-md); line-height: var(--leading-ui); font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.google-button:hover { background: var(--color-surface); }
+.google-button:disabled { color: var(--color-text-muted); cursor: progress; }
+.google-button img { position: absolute; left: var(--space-2); top: 50%; transform: translateY(-50%); }  /* 둥근 테두리에서 떨어지게 */
+/* 계정 상자(A1·V3, 가이드 6절 17): 안내 상자와 같은 모서리·여백. 오른쪽 동그라미 아이콘 버튼이 계정 바꾸기 */
+.account-box {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface); border-radius: var(--radius-sm);
+}
+.account-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: var(--leading-ui); }
+.account-label { font-size: var(--text-note); color: var(--color-text-muted); }
+.account-email { font-weight: var(--weight-semibold); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.account-switch {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--tap-min); height: var(--tap-min); margin-right: calc(-1 * var(--space-1));
+  padding: 0; background: none; color: var(--color-text);
+  border: 0; border-radius: var(--radius-pill); cursor: pointer;
+}
+.account-switch:focus-visible { box-shadow: var(--focus-ring-surface); }
+.switch-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  background: var(--color-bg); border-radius: var(--radius-pill);
+  transition: background var(--motion-fast);
+}
+.account-switch:hover .switch-dot, .account-switch:active .switch-dot { background: var(--color-border); }
+
+/* 서랍 계정 줄(C2, 가이드 6절 18): 하단 고지 바로 위, 위에 구분선 */
+.drawer-account {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  margin-top: auto; padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+.drawer-account + .drawer-footer { margin-top: 0; }  /* 아래로 미는 여백은 계정 줄이 가진다 */
+/* 계정 바꾸기 확인 팝업(S1, 가이드 6절 19, 2026-11-25 덧붙임 3): 서랍·시트와 같은 막 위 가운데 흰 면. 지금 계정은 회색 작은 상자 */
+.popup {
+  width: calc(100% - var(--space-8)); max-width: 400px;
+  margin: auto; padding: 0; border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg); color: var(--color-text);
+  overscroll-behavior: contain;
+}
+.popup[open] { animation: popup-in var(--motion-fast); }
+.popup::backdrop { background: var(--color-scrim); }
+@keyframes popup-in { from { opacity: 0; transform: scale(0.96); } }
+.popup-body { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); line-height: var(--leading-ui); }
+.popup-body h2 { font-size: var(--text-lg); line-height: var(--leading-ui); font-weight: var(--weight-semibold); }
+.popup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.switch-current {
+  display: flex; flex-direction: column; min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface); border-radius: var(--radius-sm);
+}
+/* 회색 알약([취소]): 검은 알약과 같은 크기, 면만 회색. 회색 면 요소라 포커스 링 틈도 회색 */
+.pill.pill-quiet { background: var(--color-surface); color: var(--color-text); }
+.pill.pill-quiet:hover, .pill.pill-quiet:active { background: var(--color-border); }
+.pill-quiet:focus-visible { box-shadow: var(--focus-ring-surface); }
+.drawer-account .form-error { flex-basis: 100%; }
+.account-avatar {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: var(--color-action); color: var(--color-on-action);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm); line-height: 1; font-weight: var(--weight-semibold);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .pill, .send, .fold .icon { transition: none; }
-  .drawer[open] { animation: none; }
+  .pill, .send, .fold .icon, .switch-dot { transition: none; }
+  .drawer[open], .sheet[open], .popup[open] { animation: none; }
+  .field label { transition: none; }
   .tiles, .suggestions { scroll-behavior: auto; }
   .progress::after { animation: none; width: 100%; }
 }

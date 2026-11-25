@@ -64,3 +64,34 @@ def test_refine_settings_from_env(monkeypatch):  # 첫 질문 다듬기(v1.96): 
     s = get_settings()
     assert (s.refine_model, s.refine_reasoning_effort, s.refine_timeout_s, s.refine_max_output_tokens) == ("gpt-6-luna", "low", 2.5, 200)
     get_settings.cache_clear()
+
+
+SUPABASE_MAIL_ENV = {  # 2차 Task 5: 값은 모두 가짜
+    "SUPABASE_URL": "https://fake-project.supabase.co",
+    "SUPABASE_ANON_KEY": "sb_publishable_fake-public-key",
+    "SUPABASE_SERVICE_KEY": "sb_secret_fake-server-key",
+    "RESEND_API_KEY": "re_fake-resend-key",
+    "NOTIFY_WEBHOOK_SECRET": "fake-webhook-secret",
+    "OPERATOR_EMAIL": "operator@example.com",
+    "MAIL_FROM": "펴봄 <noreply@mail.pyeobom.help>",
+}
+
+
+def test_supabase_and_mail_settings_from_env(monkeypatch):
+    for key, value in SUPABASE_MAIL_ENV.items():
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+    s = get_settings()
+    assert (s.supabase_url, s.supabase_anon_key, s.supabase_service_key, s.resend_api_key, s.notify_webhook_secret,
+            s.operator_email, s.mail_from) == tuple(SUPABASE_MAIL_ENV.values())
+    get_settings.cache_clear()
+
+
+def test_supabase_and_mail_settings_default_empty(monkeypatch):
+    for key in SUPABASE_MAIL_ENV:
+        monkeypatch.delenv(key, raising=False)
+    get_settings.cache_clear()
+    s = get_settings()
+    assert (s.supabase_url, s.supabase_anon_key, s.supabase_service_key, s.resend_api_key, s.notify_webhook_secret,
+            s.operator_email, s.mail_from) == ("",) * 7
+    get_settings.cache_clear()

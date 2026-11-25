@@ -5,11 +5,13 @@ import { EXAMPLES } from "./js/examples.js";
 import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
 import { parentHash } from "./js/nav.js";
+import { findExistingModel, LOGIN_REQUIRED, requestErrorMessage, requestRow, UNAVAILABLE, validateRequest } from "./js/request.js";
+import { initAuth, isOtpCode, onAuthChange, signInMethod } from "./js/auth.js";
 
 const MAX_LEN = 500;
 const NETWORK_ERROR = "일시적인 문제가 생겼어요. 잠시 후 다시 시도해 주세요";
 const MODELS_ERROR = "모델 목록을 불러오지 못했어요. 새로고침해 주세요";
-const APPLIANCES = { washer: "세탁기", aircon: "에어컨" };
+const APPLIANCES = { washer: "세탁기", dryer: "건조기", aircon: "에어컨" };
 const RECENT_LIMIT = { landing: 1, category: 3 };  // 설계 2절 ①·②, 계획 기본값 5
 
 const $ = (id) => document.getElementById(id);
@@ -60,6 +62,7 @@ function parseRoute(hash) {
     const [name, a, b] = hash.replace(/^#/, "").split("/").map(decodeURIComponent);
     if (name === "category") return { screen: "category" };
     if (name === "model" && APPLIANCES[a]) return { screen: "model", appliance: a };
+    if (name === "request" && APPLIANCES[a]) return { screen: "request", appliance: a };
     if (name === "chat" && a) return { screen: "chat", modelId: a, conversationId: b };
   } catch { /* 잘못된 % 표기는 랜딩으로 */ }
   return { screen: "landing" };
@@ -87,7 +90,9 @@ async function render(focus) {
   if (route.screen === "model") {
     ui.modelTitle.textContent = `${APPLIANCES[route.appliance]} 모델을 골라 주세요`;
     ui.modelCards.replaceChildren();
+    $("no-model-error").hidden = true;
   }
+  if (route.screen === "request") prepareRequest(route.appliance);
   show(route.screen, focus);
   if (route.screen === "category") updateDots();
   const models = await modelsReady;
@@ -96,6 +101,9 @@ async function render(focus) {
     renderRecent($(`${route.screen}-recent`), RECENT_LIMIT[route.screen], models);
   } else if (route.screen === "model") {
     renderModelCards(route.appliance, models);
+  } else if (route.screen === "request") {
+    showRequestHint(route.appliance, models);
+    requireLogin(location.hash);
   } else {
     const model = models.find((m) => m.id === route.modelId);
     if (model) openChat(model, route.conversationId);
@@ -201,11 +209,17 @@ window.addEventListener("resize", () => { if (!ui.tiles.closest(".screen").hidde
 
 // ── 모델 카드 ──
 function renderModelCards(appliance, models) {
+  const mine = models.filter((m) => m.appliance === appliance);
+  $("ai-note").hidden = mine.length === 0;  // 그림이 없으면 그림 안내도 없다
   if (!models.length) {
     ui.modelCards.replaceChildren(el("li", "empty", MODELS_ERROR));
     return;
   }
-  ui.modelCards.replaceChildren(...models.filter((m) => m.appliance === appliance).map((m) => {
+  if (!mine.length) {  // 건조기처럼 아직 모델이 없는 종류: 아래 "내 모델이 없어요"로 요청한다
+    ui.modelCards.replaceChildren(el("li", "empty", `아직 등록된 ${APPLIANCES[appliance]} 모델이 없어요.`));
+    return;
+  }
+  ui.modelCards.replaceChildren(...mine.map((m) => {
     const a = el("a", "model-card");
     a.href = `#chat/${encodeURIComponent(m.id)}`;
     const img = el("img", "model-illust");
@@ -630,8 +644,10 @@ ui.menu.addEventListener("click", async () => {
   drawerModels = await modelsReady;
   renderDrawer();
   updateBack();
+  $("drawer-login-error").hidden = true;
   if (!drawer.box.open) drawer.box.showModal();
   drawer.title.focus();
+  updateAccount();  // 공개 설정·Supabase는 서랍을 열 때 처음 부른다(첫 화면에서는 부르지 않음)
 });
 $("drawer-close").addEventListener("click", () => drawer.box.close());
 drawer.box.addEventListener("click", (e) => {  // 대화 카드·새 대화는 주소로 이동
@@ -662,10 +678,348 @@ $("delete-ok").addEventListener("click", () => {
   drawer.title.focus();
 });
 
-// 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다
-history.replaceState(null, "", location.pathname + location.search);
+// ── 2차 내 모델 요청(계획 Task 6): 로그인은 요청할 때만(로그인 벽 없음). 첫 화면에서는 Supabase를 부르지 않는다 ──
+const RETURN_KEY = "pyeobom.returnTo";  // 구글로 떠나기 전 경로(#request/<가전>)만 둔다. 이메일은 두지 않는다
+const req = {
+  kind: $("request-kind"), form: $("request-form"), brand: $("request-brand"), model: $("request-model"),
+  hint: $("request-hint"), error: $("request-error"), submit: $("request-submit"),
+  exists: $("request-exists"), existsName: $("request-exists-name"), done: $("request-done"),
+};
+let requestAppliance = null;
+let existingModel = null;
+
+function prepareRequest(appliance) {  // 같은 가전이면 입력한 값은 그대로 두고 안내만 지운다(로그인하고 돌아와도 이어서 쓰게)
+  if (appliance !== requestAppliance) req.form.reset();  // 다른 가전이면 앞 가전의 브랜드·모델명을 지운다
+  requestAppliance = appliance;
+  req.kind.textContent = APPLIANCES[appliance];
+  req.error.hidden = req.exists.hidden = req.done.hidden = true;
+  if ($("switch-confirm").open) $("switch-confirm").close();
+}
+
+// 모델명 찾는 법은 1.5차 모델 카드의 안내를 다시 쓴다. 모델이 없는 종류(건조기)는 세탁기 안내(둘 다 본체 라벨)
+function showRequestHint(appliance, models) {
+  const source = models.find((m) => m.appliance === appliance) ?? models.find((m) => m.appliance === "washer");
+  req.hint.hidden = !source;
+  if (source) req.hint.replaceChildren(el("strong", null, "모델명 찾는 법 "), source.model_name_hint);
+}
+
+// 안내 글자는 보일 때만 넣는다(숨은 같은 문장이 여러 곳에 남지 않게)
+function showError(box, message) {
+  box.textContent = message;
+  box.hidden = false;
+}
+const showRequestError = (message) => showError(req.error, message);
+
+// 요청 화면: 로그인한 메일(= 알림 받을 메일)과 로그인 방식(L1)을 보이고, 로그인 전이면 시트를 연다
+let currentAccount = { email: "", method: null };
+let googleReturn = null;  // 구글에서 돌아오는 중이면 세션 교환을 기다리는 약속(성공 여부)
+
+function showAccount(session) {
+  currentAccount = { email: session.user?.email ?? "", method: signInMethod(session) };
+  $("request-account").hidden = $("account-switch").hidden = false;
+  $("request-account-label").textContent = withMethod("알림 받을 메일", currentAccount.method);
+  $("request-email").textContent = currentAccount.email;
+}
+
+// 로그아웃되면 화면 어디에도 이전 메일이 남지 않게 지운다
+function clearAccount() {
+  currentAccount = { email: "", method: null };
+  $("request-account").hidden = true;
+  for (const id of ["request-email", "switch-current-email", "login-sent-email"]) $(id).textContent = "";
+  $("login-email").value = "";
+}
+
+async function requireLogin(hash) {
+  if (googleReturn) {  // 교환이 끝날 때까지 "로그인 확인 중…"
+    $("request-account").hidden = false;
+    $("account-switch").hidden = true;
+    $("request-account-label").textContent = "알림 받을 메일";
+    $("request-email").textContent = "로그인 확인 중…";
+    if (!(await googleReturn)) {  // 실패는 finishGoogleLogin·failGoogleLogin이 시트와 문구로 알린다
+      const auth = await initAuth();
+      const session = auth ? await auth.session() : null;
+      if (session) showAccount(session);  // 계정 바꾸기 중 실패면 이전 계정 그대로
+      else clearAccount();
+      return;
+    }
+  }
+  const auth = await initAuth();
+  const session = auth ? await auth.session() : null;
+  if (session) showAccount(session);
+  else clearAccount();
+  if (!auth) showRequestError(UNAVAILABLE);
+  else if (!session) openLogin({ reason: true, then: hash });
+}
+
+// 로그인 상태가 바뀌면(로그아웃·토큰 만료·새 로그인) 요청 화면 상자와 서랍을 함께 고친다.
+// 요청 화면에서 로그아웃되면 그 가전의 모델 화면([내 모델이 없어요])으로 돌아가고 입력값을 지운다
+onAuthChange((event, session) => {
+  updateAccount();
+  const route = parseRoute(location.hash);
+  if (event === "SIGNED_OUT") {
+    clearAccount();
+    if (route.screen === "request") {
+      req.form.reset();
+      location.hash = `#model/${route.appliance}`;
+    }
+  } else if (session && route.screen === "request" && !googleReturn) {
+    showAccount(session);
+  }
+});
+const withMethod = (label, method) => (method ? `${label} · ${method}` : label);
+
+// 계정 바꾸기(S1): 막 위 확인 팝업 → [바꾸기]면 로그아웃 없이 빈 로그인 창. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 지금 계정 그대로
+const switchConfirm = $("switch-confirm");
+$("account-switch").addEventListener("click", () => {
+  $("switch-current-label").textContent = withMethod("지금 계정", currentAccount.method);
+  $("switch-current-email").textContent = currentAccount.email;
+  switchConfirm.showModal();  // Esc·막 누르기(closedby="any")는 브라우저가 닫는다
+  $("switch-cancel").focus();
+});
+switchConfirm.addEventListener("close", () => $("account-switch").focus());
+$("switch-cancel").addEventListener("click", () => switchConfirm.close());
+$("switch-ok").addEventListener("click", () => {
+  switchConfirm.close();
+  $("account-switch").focus();  // 시트를 닫으면 포커스가 [계정 바꾸기]로 돌아오게 시트를 열기 전에 옮긴다
+  openLogin({ mode: "switch", then: location.hash });
+});
+
+$("no-model").addEventListener("click", async () => {
+  const appliance = parseRoute(location.hash).appliance;
+  $("no-model-error").hidden = true;
+  const auth = await initAuth();
+  if (!auth) {
+    showError($("no-model-error"), UNAVAILABLE);
+    return;
+  }
+  const target = `#request/${appliance}`;
+  if (await auth.session()) location.hash = target;
+  else openLogin({ reason: true, then: target });
+});
+
+req.form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  req.error.hidden = req.exists.hidden = req.done.hidden = true;
+  const input = { appliance: requestAppliance, brand: req.brand.value, modelText: req.model.value };
+  const invalid = validateRequest(input);
+  if (invalid) return showRequestError(invalid);
+  existingModel = findExistingModel(await modelsReady, requestAppliance, input.modelText);
+  if (existingModel) {  // 이미 있는 모델은 요청을 넣지 않고 바로 질문하게 한다
+    req.existsName.textContent = existingModel.name;
+    req.exists.hidden = false;
+    return;
+  }
+  const auth = await initAuth();
+  if (!auth) return showRequestError(UNAVAILABLE);
+  req.submit.disabled = true;
+  let result;
+  try {
+    result = await auth.client.from("model_requests").insert(requestRow(input));
+  } catch {
+    result = { status: 0, error: {} };
+  } finally {
+    req.submit.disabled = false;
+  }
+  if (!result.error) {
+    req.form.reset();
+    req.done.hidden = false;
+    return;
+  }
+  const message = requestErrorMessage(result);
+  if (message === LOGIN_REQUIRED) openLogin({ reason: true, then: location.hash });
+  else showRequestError(message);
+});
+$("request-ask").addEventListener("click", () => { location.hash = chatHash(existingModel.id); });
+
+// ── 로그인 시트(덧붙임 D-3·D-4): ① 이메일 → 코드 보내기 또는 구글 ② 코드 입력 ──
+const WRONG_CODE = "코드가 맞지 않아요. 다시 확인해 주세요";
+const RESEND_WAIT = "잠시 뒤에 다시 보낼 수 있어요";
+const SEND_FAILED = "메일을 보내지 못했어요. 잠시 뒤 다시 시도해 주세요";
+const LOGIN_REASON = "모델이 추가되면 메일로 알려 드릴게요. 받을 이메일을 확인할게요";
+const SWITCH_GUIDE = "새 계정으로 로그인하면 알림을 그 메일로 보내 드려요";
+const login = {
+  box: $("login-sheet"), title: $("login-title"), reason: $("login-reason"), emailForm: $("login-email-form"), email: $("login-email"),
+  emailError: $("login-email-error"), codeForm: $("login-code-form"), code: $("login-code"), codeError: $("login-code-error"),
+  sentEmail: $("login-sent-email"), resent: $("login-resent"),
+};
+let loginThen = null;  // 로그인한 뒤 갈 주소(요청 화면). 서랍에서 열면 없음
+let sentTo = "";
+
+function loginStep(n) {
+  login.emailForm.hidden = n !== 1;
+  login.codeForm.hidden = n !== 2;
+  login.emailError.hidden = login.codeError.hidden = login.resent.hidden = true;
+  (n === 1 ? login.email : login.code).focus();
+}
+
+const loginError = showError;
+
+async function whileBusy(box, work) {
+  const buttons = [...box.querySelectorAll("button")];
+  const active = document.activeElement;  // 잠긴 버튼에서 포커스가 body로 떨어지므로 끝나면 돌려준다
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    return await work();
+  } finally {
+    buttons.forEach((b) => { b.disabled = false; });
+    if (buttons.includes(active)) active.focus();
+  }
+}
+
+// mode "switch"(계정 바꾸기)는 제목·맨 위 안내만 다르다. 새로 열면 이메일 칸은 늘 비운다([수정]으로 돌아올 때만 남김)
+function openLogin({ reason = false, then = null, mode = "login" } = {}) {
+  // 이미 열려 있으면 다시 초기화하지 않는다: 구글 실패 문구를 띄운 뒤 요청 화면이 늦게(모델 목록을 받은 뒤) 시트를 열어도 문구가 남게
+  if (login.box.open) return;
+  const switching = mode === "switch";
+  loginThen = then;
+  login.title.textContent = switching ? "다른 계정으로 로그인" : "로그인";
+  login.reason.textContent = switching ? SWITCH_GUIDE : LOGIN_REASON;
+  login.reason.hidden = !(reason || switching);
+  login.email.value = "";
+  if (!login.box.open) login.box.showModal();
+  loginStep(1);
+}
+
+const sendError = (error) => (error.status === 429 ? RESEND_WAIT : SEND_FAILED);  // 같은 사람 60초에 1번(429)
+
+login.emailForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = login.email.value.trim();
+  if (!email || !login.email.checkValidity()) return loginError(login.emailError, "이메일 주소를 확인해 주세요");
+  const auth = await initAuth();
+  if (!auth) return loginError(login.emailError, UNAVAILABLE);
+  const error = await whileBusy(login.emailForm, () => auth.sendCode(email));
+  if (error) return loginError(login.emailError, sendError(error));
+  sentTo = email;
+  login.sentEmail.textContent = email;
+  login.code.value = "";
+  loginStep(2);
+});
+
+login.codeForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  login.resent.hidden = true;
+  const code = login.code.value.replace(/\s/g, "");
+  if (!isOtpCode(code)) return loginError(login.codeError, "숫자 6~10자리 코드를 넣어 주세요");
+  const auth = await initAuth();
+  if (!auth) return loginError(login.codeError, UNAVAILABLE);
+  const error = await whileBusy(login.codeForm, () => auth.verifyCode(sentTo, code));
+  if (error) return loginError(login.codeError, error.status && error.status < 500 ? WRONG_CODE : UNAVAILABLE);
+  login.box.close();
+  updateAccount();
+  if (!loginThen) return;
+  if (location.hash === loginThen) render(true);
+  else location.hash = loginThen;
+});
+
+$("login-resend").addEventListener("click", async () => {
+  login.codeError.hidden = login.resent.hidden = true;
+  const auth = await initAuth();
+  const error = auth ? await whileBusy(login.codeForm, () => auth.sendCode(sentTo)) : { status: 0 };
+  if (error) loginError(login.codeError, sendError(error));
+  else login.resent.hidden = false;
+});
+$("login-edit").addEventListener("click", () => loginStep(1));
+$("login-close").addEventListener("click", () => login.box.close());
+
+$("login-google").addEventListener("click", async () => {
+  const auth = await initAuth();
+  if (!auth) return loginError(login.emailError, UNAVAILABLE);
+  try { sessionStorage.setItem(RETURN_KEY, loginThen ?? location.hash); } catch { /* 저장 못 하면 돌아와서 첫 화면 */ }
+  // 돌아올 주소는 # 없는 사이트 주소(PKCE의 ?code=와 우리 # 경로가 섞이지 않게)
+  const { error } = await auth.google(`${location.origin}/`);
+  if (error) loginError(login.emailError, UNAVAILABLE);
+});
+
+// 서랍의 로그인·로그아웃(덧붙임 D-2): 로그인하면 같은 자리에 로그아웃
+async function updateAccount() {
+  const auth = await initAuth();
+  const session = auth ? await auth.session() : null;
+  const email = session?.user?.email ?? "";
+  const method = session ? signInMethod(session) : null;
+  $("drawer-avatar").textContent = email.charAt(0).toUpperCase();  // 프로필 사진 대신 메일 첫 글자(장식)
+  $("drawer-email").textContent = email;
+  $("drawer-method").textContent = method ?? "";
+  $("drawer-method").hidden = !method;
+  $("drawer-avatar").hidden = $("drawer-account-text").hidden = $("drawer-logout").hidden = !session;
+  $("drawer-login").hidden = Boolean(session);
+}
+$("drawer-login").addEventListener("click", async () => {
+  $("drawer-login-error").hidden = true;
+  if (!(await initAuth())) {
+    showError($("drawer-login-error"), UNAVAILABLE);
+    return;
+  }
+  drawer.box.close();
+  openLogin();
+});
+const LOGOUT_FAILED = "로그아웃하지 못했어요. 다시 시도해 주세요";
+$("drawer-logout").addEventListener("click", async () => {
+  $("drawer-login-error").hidden = true;
+  const auth = await initAuth();
+  try {
+    await auth?.signOut();  // scope local은 이 기기의 세션부터 지운 뒤 서버에 알린다(서버만 실패하면 이 기기는 로그아웃됨)
+  } catch { /* 세션을 지우지 못했으면 아래에서 남은 세션으로 안다 */ }
+  if (!auth || (await auth.session())) {  // 이 기기에 세션이 남아 있으면 실패: 계정 줄은 그대로 두고 알린다
+    showError($("drawer-login-error"), LOGOUT_FAILED);
+    return;
+  }
+  await updateAccount();
+  $("drawer-login").focus();  // 숨은 [로그아웃] 대신 같은 자리에 보이는 [로그인]으로
+});
+
+// 구글에서 돌아오면(?code=) 경로는 시작할 때 이미 복원했다(아래). 여기서는 세션 교환을 기다리고, 실패면 시트와 문구
+const LOGIN_FAILED = "로그인하지 못했어요. 다시 시도해 주세요";
+// 성공은 세션이 있는지가 아니라 교환 결과로 본다: 계정 바꾸기 중 실패면 이전 세션이 남아 있다
+async function finishGoogleLogin() {
+  const auth = await initAuth();
+  const exchange = auth ? await auth.client.auth.initialize() : { error: true };  // detectSessionInUrl의 교환 결과
+  const session = auth ? await auth.session() : null;
+  history.replaceState(null, "", location.pathname + location.hash);  // 주소의 code는 지운다(성공이면 supabase-js도 지움)
+  googleReturn = null;
+  updateAccount();
+  const ok = !exchange.error && Boolean(session);
+  if (!ok) showGoogleFailure();
+  return ok;
+}
+
+// 구글 창에서 취소하면 ?error=로 돌아온다: Supabase는 부르지 않고 시트와 실패 문구만(첫 화면을 그린 뒤)
+async function failGoogleLogin() {
+  await Promise.resolve();
+  googleReturn = null;
+  showGoogleFailure();
+  return false;
+}
+
+function showGoogleFailure() {
+  openLogin({ reason: parseRoute(location.hash).screen === "request", then: location.hash || null });
+  showError(login.emailError, LOGIN_FAILED);
+}
+
+// 막(바깥)을 누르면 닫는다. closedby="any"를 모르는 브라우저(사파리 등)에서도 같게: 창 안쪽 상자 밖을 누르면 대상이 dialog 자신
+for (const box of [drawer.box, login.box, switchConfirm]) {
+  box.addEventListener("click", (e) => { if (e.target === box) box.close(); });
+}
+
+// 처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3). 주소의 #도 지워 뒤로 가기가 랜딩으로 오게 한다.
+// 단, 구글에서 돌아온 주소(?code=)에 떠나기 전 경로가 있으면 첫 화면을 그리기 전에 그 경로로 바로 간다
+const authParams = new URLSearchParams(location.search);
+const authCode = authParams.has("code");
+const authError = !authCode && authParams.has("error");  // 구글 창에서 취소 등
+let returnPath = "";
+if (authCode || authError) {
+  try {
+    returnPath = sessionStorage.getItem(RETURN_KEY) ?? "";
+    sessionStorage.removeItem(RETURN_KEY);
+  } catch { /* 저장소를 못 쓰면 첫 화면 */ }
+  if (parseRoute(returnPath).screen === "landing") returnPath = "";  // 우리 주소 형식일 때만
+  googleReturn = authCode ? finishGoogleLogin() : failGoogleLogin();
+}
+// 오류로 돌아왔으면 주소의 오류 값은 지운다(code는 교환 뒤 finishGoogleLogin이 지움)
+history.replaceState(null, "", location.pathname + (authError ? "" : location.search) + returnPath);
 window.addEventListener("hashchange", () => {
   if (drawer.box.open) updateBack();  // 서랍이 열린 채 브라우저 뒤로·앞으로
   render(true);
 });
 render(false);
+document.documentElement.classList.remove("auth-return");

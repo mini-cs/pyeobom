@@ -11,6 +11,8 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
+  <!-- 구글 로그인에서 돌아오는 중(?code=)이면 첫 화면을 그리지 않는다. app.js가 돌아갈 화면을 정한 뒤 푼다 -->
+  <script>if (/[?&](code|error)=/.test(location.search)) document.documentElement.classList.add("auth-return");</script>
 </head>
 <body>
   <header class="topbar" id="topbar" hidden>
@@ -46,7 +48,69 @@
           <button type="button" class="pill" id="delete-ok">모두 지우기</button>
         </div>
       </div>
+      <!-- 2차: 로그인은 요청할 때만 필요하다(로그인 벽 없음, 덧붙임 D-1·D-2). 서랍 맨 아래 계정 줄(C2, 2026-11-25):
+           로그인하면 첫 글자 동그라미 + 메일 + 로그아웃, 로그인 전이면 같은 자리에 로그인 -->
+      <div class="drawer-account">
+        <span class="account-avatar" id="drawer-avatar" aria-hidden="true" hidden></span>
+        <span class="account-text" id="drawer-account-text" hidden><strong class="account-email" id="drawer-email"></strong>
+          <span class="account-label" id="drawer-method" hidden></span></span>
+        <button type="button" class="text-button" id="drawer-login">로그인</button>
+        <button type="button" class="text-button" id="drawer-logout" hidden>로그아웃</button>
+        <p class="form-error" id="drawer-login-error" role="alert" hidden></p>
+      </div>
       <p class="small-note drawer-footer">비영리 학습용 포트폴리오예요.<br> 설명서 저작권은 각 제조사에 있어요.</p>
+    </div>
+  </dialog>
+
+  <!-- 2차 로그인 시트(덧붙임 D-3·D-4): ① 이메일 → 코드 보내기, 또는 구글 ② 코드 입력. 요청할 때와 서랍 [로그인]에서 연다 -->
+  <dialog class="sheet" id="login-sheet" aria-labelledby="login-title" closedby="any">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2 id="login-title" tabindex="-1">로그인</h2>
+        <button type="button" class="icon-button" id="login-close" aria-label="닫기"><span class="icon icon-x" aria-hidden="true"></span></button>
+      </div>
+      <p class="sheet-reason" id="login-reason" hidden>모델이 추가되면 메일로 알려 드릴게요. 받을 이메일을 확인할게요</p>
+      <form class="sheet-step" id="login-email-form" novalidate>
+        <div class="field">
+          <input id="login-email" name="email" type="email" autocomplete="email" inputmode="email" spellcheck="false" placeholder=" ">
+          <label for="login-email">이메일</label>
+        </div>
+        <p class="form-error" id="login-email-error" role="alert" hidden></p>
+        <button type="submit" class="pill">코드 보내기</button>
+        <p class="divider"><span>또는</span></p>
+        <!-- G 로고: Google 공식 자산(signin-assets.zip) Neutral 아이콘에서 회색 배경 사각만 뺀 것(public/icons/README.md) -->
+        <button type="button" class="google-button" id="login-google">
+          <img src="/icons/google-g.svg" alt="" width="40" height="40">Google로 계속하기</button>
+      </form>
+      <form class="sheet-step" id="login-code-form" novalidate hidden>
+        <p class="sent-to"><span>코드를 보냈어요 <strong id="login-sent-email"></strong></span>
+          <button type="button" class="text-button" id="login-edit">수정</button></p>
+        <div class="field">
+          <input id="login-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="10" spellcheck="false" placeholder=" ">
+          <label for="login-code">인증 코드</label>
+        </div>
+        <p class="form-error" id="login-code-error" role="alert" hidden></p>
+        <button type="submit" class="pill">확인</button>
+        <button type="button" class="text-button" id="login-resend">코드 다시 보내기</button>
+        <p class="card-meta" id="login-resent" role="status" hidden>코드를 다시 보냈어요</p>
+      </form>
+      <p class="notice"><span class="icon icon-lock" aria-hidden="true"></span>
+        <span><strong>개인정보 안내</strong> <span>이메일과 요청 내용(가전 종류·브랜드·모델명)을 저장해요. 모델이 추가되면 알려 드리는 데만 써요. 지우고 싶으면 알림 메일에 답장해 주세요. 2차 테스트 기간의 계정과 요청은 데모데이가 끝나면 지워요.</span></span></p>
+    </div>
+  </dialog>
+
+  <!-- 계정 바꾸기 확인 팝업(S1, 2026-11-25 덧붙임 3): 막 위 가운데. Esc·[취소]·막 누르기는 닫고, [바꾸기]면 로그아웃 없이 빈 로그인 창 -->
+  <dialog class="popup" id="switch-confirm" aria-labelledby="switch-confirm-title" aria-describedby="switch-current switch-confirm-desc" closedby="any">
+    <div class="popup-body">
+      <h2 id="switch-confirm-title">다른 계정으로 바꿀까요?</h2>
+      <p class="switch-current" id="switch-current"><span class="account-label" id="switch-current-label">지금 계정</span>
+        <strong class="account-email" id="switch-current-email"></strong></p>
+      <p id="switch-confirm-desc">바꾸면 앞으로 알림은 새 계정 메일로 가요. 지금까지 한 요청은 지금 계정에 남아요.</p>
+      <div class="popup-actions">
+        <button type="button" class="pill pill-quiet" id="switch-cancel">취소</button>
+        <button type="button" class="pill" id="switch-ok">바꾸기</button>
+      </div>
     </div>
   </dialog>
 
@@ -82,6 +146,8 @@
         <div class="tiles" id="tiles" role="group" aria-label="가전 종류">
           <button type="button" class="tile" data-appliance="washer">
             <span class="icon icon-washer" aria-hidden="true"></span>세탁기</button>
+          <button type="button" class="tile" data-appliance="dryer">
+            <span class="icon icon-dryer" aria-hidden="true"></span>건조기</button>
           <button type="button" class="tile" data-appliance="aircon">
             <span class="icon icon-aircon" aria-hidden="true"></span>에어컨</button>
           <button type="button" class="tile" aria-disabled="true">
@@ -99,7 +165,45 @@
     <section class="screen" data-screen="model" hidden>
       <h1 tabindex="-1" id="model-title">모델을 골라 주세요</h1>
       <ul class="model-cards" id="model-cards"></ul>
-      <p class="small-note">제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요.</p>
+      <div class="request-entry">
+        <button type="button" class="offer" id="no-model">내 모델이 없어요</button>
+        <p class="form-error" id="no-model-error" role="alert" hidden></p>
+      </div>
+      <p class="small-note" id="ai-note">제품 그림은 AI로 그린 일러스트예요. 실제 제품과 다를 수 있어요.</p>
+    </section>
+
+    <!-- 2차: 내 모델 요청(계획 Task 6). 넣기는 세 열(가전 종류·브랜드·모델명)만 보낸다(db.md) -->
+    <section class="screen" data-screen="request" hidden>
+      <h1 tabindex="-1">내 모델 요청하기</h1>
+      <p class="request-kind"><span class="muted">가전 종류</span> <strong id="request-kind"></strong></p>
+      <!-- 알림 받을 메일(A1·V3, 2026-11-25): 바꾸기는 로그아웃 없이 로그인 시트만 연다 -->
+      <div class="account-box" id="request-account" hidden>
+        <span class="icon icon-mail" aria-hidden="true"></span>
+        <p class="account-text"><span class="account-label" id="request-account-label">알림 받을 메일</span>
+          <strong class="account-email" id="request-email"></strong></p>
+        <button type="button" class="account-switch" id="account-switch" aria-label="계정 바꾸기" title="계정 바꾸기">
+          <span class="switch-dot"><span class="icon icon-switch" aria-hidden="true"></span></span></button>
+      </div>
+      <form class="request-form" id="request-form" novalidate>
+        <div class="field">
+          <input id="request-brand" name="brand" type="text" maxlength="20" autocomplete="off" placeholder=" ">
+          <label for="request-brand">브랜드</label>
+        </div>
+        <div class="field">
+          <input id="request-model" name="model_text" type="text" maxlength="40" autocomplete="off"
+                 autocapitalize="characters" spellcheck="false" placeholder=" " aria-describedby="request-hint">
+          <label for="request-model">모델명</label>
+        </div>
+        <p class="card-meta" id="request-hint"></p>
+        <p class="form-error" id="request-error" role="alert" hidden></p>
+        <button type="submit" class="pill" id="request-submit">요청하기</button>
+      </form>
+      <div class="request-exists" id="request-exists" role="status" hidden>
+        <p><strong>이미 있어요</strong> <span id="request-exists-name"></span></p>
+        <button type="button" class="pill" id="request-ask">바로 질문하기</button>
+      </div>
+      <p class="notice" id="request-done" role="status" hidden><span class="icon icon-info" aria-hidden="true"></span>
+        <span>요청을 받았어요. 추가되면 메일로 알려 드릴게요.</span></p>
     </section>
 
     <!-- ④ 채팅(설계 2절 ④): 대화 목록, 대화가 없을 때 추천 카드, 아래 고정 입력창 -->

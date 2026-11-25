@@ -3,3 +3,4 @@ openai==3.41.0
 psycopg[binary]==3.3.6
 pgvector==0.5.1
 langfuse==5.2.0
+httpx==0.28.1
