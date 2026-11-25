@@ -69,6 +69,14 @@ class FakeSupabase:
         self.down = False   # True면 연결 끊김(요청을 abort)
         self.otp = [(200, {})]   # 코드 보내기 응답(앞에서부터 하나씩, 마지막 것은 계속)
         self.insert = (201, [{"id": 1, "user_id": USER_ID, "category": "dryer", "status": "대기"}])
+        self.token = None   # 구글 PKCE 교환 응답. None이면 구글 계정 세션
+        self.hold_token = False   # True면 교환 응답을 붙잡아 둔다(테스트가 release로 보냄)
+        self.held = []
+
+    def release(self):
+        for route, cors in self.held:
+            route.fulfill(status=200, headers=cors, json=session_body(method="oauth"))
+        self.held = []
 
     def posts(self, path):
         return [c for c in self.calls if c["method"] == "POST" and c["path"].startswith(path)]
@@ -85,6 +93,9 @@ class FakeSupabase:
         self.calls.append({"method": req.method, "path": path, "body": body, "headers": req.headers})
         if self.down:
             return route.abort()
+        if path.startswith("/auth/v1/token") and self.hold_token:
+            self.held.append((route, cors))
+            return None
         status, data = self._answer(req.method, path, body)
         if isinstance(data, str):
             return route.fulfill(status=status, headers=cors, content_type="text/html", body=data)
@@ -98,7 +109,7 @@ class FakeSupabase:
                 return 200, session_body(body.get("email") or EMAIL)
             return 403, {"code": 403, "error_code": "otp_expired", "msg": "Token has expired or is invalid"}
         if path.startswith("/auth/v1/token"):
-            return 200, session_body(method="oauth")   # 구글(PKCE) 교환
+            return self.token or (200, session_body(method="oauth"))   # 구글(PKCE) 교환
         if path.startswith("/auth/v1/user"):
             return 200, USER
         if path.startswith("/auth/v1/logout"):
@@ -607,3 +618,133 @@ def test_switch_confirm_backdrop_click_closes_and_keeps_account(open_app):
     expect(switch).to_be_focused()
     expect(account_box(page).get_by_text(EMAIL)).to_be_visible()
     assert not [c for c in fake.calls if c["path"].startswith("/auth/v1/logout")]
+
+
+# ── Task 6 고침(2026-11-25): ①로그아웃 뒤 요청 화면 ②구글 로그인 뒤 첫 화면 깜빡임 ③바깥 누르기 ──
+LOGIN_FAILED = "로그인하지 못했어요. 다시 시도해 주세요"
+CHECKING = "로그인 확인 중…"
+# 문서마다 화면을 그리기 직전(requestAnimationFrame)에 첫 화면이 보였는지 적는다
+RECORD_LANDING = """
+window.__landingSeen = false;
+(function tick() {
+  const s = document.querySelector('[data-screen="landing"]');
+  if (s && s.checkVisibility()) window.__landingSeen = true;
+  requestAnimationFrame(tick);
+})();
+"""
+
+
+def wait_still(page):
+    page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
+
+
+def leave_for_google(page, sheet_name="로그인"):
+    page.get_by_role("dialog", name=sheet_name).get_by_role("button", name="Google로 계속하기").click()
+    page.wait_for_url(re.compile(r"^https://supabase\.test/auth/v1/authorize"))
+
+
+def test_logout_on_request_screen_returns_to_model_screen(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    page.locator("#request-brand").fill("가짜브랜드")
+    row = drawer_row(page)
+    row.get_by_role("button", name="로그아웃").click()
+    expect(row.get_by_role("button", name="로그인")).to_be_visible()
+    expect(page).to_have_url(re.compile(r"#model/dryer$"))
+    page.keyboard.press("Escape")
+    expect(page.get_by_role("heading", level=1)).to_have_text("건조기 모델을 골라 주세요")
+    expect(page.get_by_role("button", name=NO_MODEL)).to_be_visible()
+    assert EMAIL not in page.content()   # 화면(DOM) 어디에도 이전 메일이 없다
+    assert page.locator("#request-brand").input_value() == ""   # 입력값도 지운다
+
+
+def test_google_return_goes_straight_to_request_screen(open_app):
+    page, fake = open_app(init=RECORD_LANDING)
+    fake.hold_token = True
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    leave_for_google(page)
+    page.goto("/?code=fake-auth-code")
+    expect(page.get_by_role("heading", level=1)).to_have_text(REQUEST_H1)
+    expect(account_box(page)).to_contain_text(CHECKING)   # 세션이 준비될 때까지
+    wait_until(page, lambda: fake.held)
+    fake.release()
+    expect(account_box(page)).to_contain_text("알림 받을 메일 · Google 계정")
+    expect(account_box(page).get_by_text(EMAIL)).to_be_visible()
+    assert page.evaluate("window.__landingSeen") is False   # 첫 화면은 한 번도 보이지 않았다
+    assert "code=" not in page.url and page.url.endswith("#request/dryer")
+
+
+def test_google_exchange_failure_opens_sheet_with_message(open_app):
+    page, fake = open_app()
+    fake.token = (400, {"error": "invalid_grant", "error_description": "가짜 실패(테스트)"})
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    leave_for_google(page)
+    page.goto("/?code=fake-auth-code")
+    sheet = login_sheet(page)
+    expect(sheet).to_be_visible()
+    expect(sheet.get_by_text(LOGIN_FAILED)).to_be_visible()
+
+
+def test_google_from_drawer_returns_to_same_screen(open_app):
+    page, fake = open_app(init=RECORD_LANDING)
+    go_model_screen(page, "세탁기")
+    page.get_by_role("button", name="지난 대화").click()
+    page.locator("#drawer").get_by_role("button", name="로그인").click()
+    leave_for_google(page)
+    page.goto("/?code=fake-auth-code")
+    expect(page.get_by_role("heading", level=1)).to_have_text("세탁기 모델을 골라 주세요")
+    assert page.evaluate("window.__landingSeen") is False
+
+
+def wait_until(page, check):
+    for _ in range(100):
+        if check():
+            return
+        page.wait_for_timeout(20)
+    raise AssertionError("기다린 조건이 오지 않음")
+
+
+NO_CLOSEDBY = "document.querySelectorAll('dialog').forEach((d) => d.removeAttribute('closedby'))"   # closedby를 모르는 브라우저처럼
+
+
+def test_drawer_backdrop_click_closes_without_closedby(open_app):
+    page, _ = open_app()
+    go_model_screen(page, "세탁기")
+    page.evaluate(NO_CLOSEDBY)
+    page.get_by_role("button", name="지난 대화").click()
+    drawer = page.locator("#drawer")
+    expect(drawer).to_be_visible()
+    wait_still(page)
+    page.mouse.click(350, 400)   # 서랍(폭 316px) 오른쪽 막
+    expect(drawer).to_be_hidden()
+    expect(page.locator("#drawer-open")).to_be_focused()
+
+
+def test_login_sheet_backdrop_click_closes_without_closedby(open_app):
+    page, _ = open_app()
+    go_model_screen(page, "건조기")
+    page.evaluate(NO_CLOSEDBY)
+    opener = page.get_by_role("button", name=NO_MODEL)
+    opener.click()
+    sheet = login_sheet(page)
+    expect(sheet).to_be_visible()
+    wait_still(page)
+    page.mouse.click(180, 20)   # 시트 위 막
+    expect(sheet).to_be_hidden()
+    expect(opener).to_be_focused()
+
+
+def test_switch_popup_backdrop_click_closes_without_closedby(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    page.evaluate(NO_CLOSEDBY)
+    switch = account_box(page).get_by_role("button", name="계정 바꾸기")
+    switch.click()
+    confirm = switch_confirm(page)
+    expect(confirm).to_be_visible()
+    wait_still(page)
+    page.mouse.click(5, 5)
+    expect(confirm).to_be_hidden()
+    expect(switch).to_be_focused()
