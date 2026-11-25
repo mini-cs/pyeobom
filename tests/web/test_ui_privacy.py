@@ -1,4 +1,4 @@
-"""개인정보 처리방침 페이지(public/privacy.html, 2026-11-25 사용자 결정). 문구는 채팅 Claude 초안 2판 그대로."""
+"""개인정보 처리방침 페이지(public/privacy.html, 2026-11-25 사용자 결정). 문구는 채팅 Claude 초안 3판 그대로."""
 from pathlib import Path
 
 import pytest
@@ -7,8 +7,8 @@ from playwright.sync_api import expect
 pytestmark = pytest.mark.ui
 
 CONTACT = "pyeobom@gmail.com"
-# 문구 2판의 줄(목록 머리 "- "만 뺌). 페이지에 글자 그대로 있어야 한다. 쿠키 문장은 운영 응답에 Set-Cookie가 없어 확정(2026-11-25)
-LINES = (Path(__file__).with_name("privacy_v2.txt")).read_text(encoding="utf-8").splitlines()
+# 문구 3판의 줄(2판에서 "요청 알림" 줄만 고침)(목록 머리 "- "만 뺌). 페이지에 글자 그대로 있어야 한다. 쿠키 문장은 운영 응답에 Set-Cookie가 없어 확정(2026-11-25)
+LINES = (Path(__file__).with_name("privacy_v3.txt")).read_text(encoding="utf-8").splitlines()
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def test_privacy_page_is_served_with_title_and_contact(page):
     assert contact.get_attribute("href") == f"mailto:{CONTACT}"
 
 
-def test_privacy_page_has_every_line_of_draft_2(page):
+def test_privacy_page_has_every_line_of_draft_3(page):
     page.goto("/privacy.html")
     text = " ".join(page.locator("body").inner_text().split())
     missing = [line for line in LINES if line.strip() and " ".join(line.split()) not in text]
