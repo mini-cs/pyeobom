@@ -122,7 +122,7 @@ def test_duplicate_model_key_is_rejected(user_b):
     _, b = user_b
     insert_ok(b, "RLS-DUP-9")
     r = b.post(TABLE, json=request_body("rls dup.9"))  # 정규화하면 같은 RLSDUP9
-    assert r.status_code >= 400
+    assert r.status_code == 409 and r.json()["code"] == "23505"   # 화면 "이미 요청하셨어요"가 기대는 값(db.md)
 
 
 def test_sixth_request_in_24h_is_rejected(new_user):
@@ -130,7 +130,7 @@ def test_sixth_request_in_24h_is_rejected(new_user):
     for i in range(5):
         insert_ok(c, f"RLS-LIMIT-{i}")
     r = c.post(TABLE, json=request_body("RLS-LIMIT-5"))
-    assert r.status_code >= 400
+    assert r.status_code == 400 and r.json()["code"] == "P0001"   # 하루 제한 트리거(db.md)
 
 
 def test_model_key_matches_cases_live(new_user):
@@ -143,3 +143,20 @@ def test_model_key_matches_cases_live(new_user):
         for case in CASES[start:start + 5]:
             got[case["input"]] = insert_ok(client, case["input"])["model_key"]
     assert got == {c["input"]: c["key"] for c in CASES}
+
+
+
+def test_insert_for_other_user_is_rejected(user_a, user_b):
+    # 다른 사람 user_id로 넣기: user_id 열에는 넣기 권한이 없어 거절(42501, 로그인 상태 403)
+    _, a = user_a
+    b_id, b = user_b
+    r = a.post(TABLE, json=request_body("RLS-OTHER-1", user_id=b_id))
+    assert r.status_code == 403 and r.json()["code"] == "42501"
+    assert "RLS-OTHER-1" not in {row["model_text"] for row in own_rows(b)}
+
+
+def test_anon_cannot_read_requests(env):
+    # 로그인 없이(공개 키만) 읽기: anon에는 권한이 없어 거절(42501, 로그인 전 401)
+    r = httpx.get(f"{env['SUPABASE_URL']}{TABLE}", params={"select": "*"},
+                  headers={"apikey": env["SUPABASE_ANON_KEY"]}, timeout=30)
+    assert r.status_code == 401 and r.json()["code"] == "42501"

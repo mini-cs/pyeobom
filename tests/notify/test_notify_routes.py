@@ -1,4 +1,5 @@
 """알림 주소 /api/notify(계획 Task 7). 메일·관리 API는 가짜 함수로 바꿔 네트워크·실제 메일 0. 값은 모두 가짜."""
+import asyncio
 import logging
 
 import pytest
@@ -166,3 +167,46 @@ def test_success_log_has_id_status_result_only(fake, caplog):
     assert "requester" in caplog.text
     for secret in (REQUESTER, OPERATOR, "DV90-FAKE1", "가짜브랜드", USER_ID, "washer-fake-a"):
         assert secret not in caplog.text
+
+
+
+# ── Step 6 지적 처리(2026-11-25) ──
+def test_mail_and_lookup_run_off_event_loop(fake):
+    # ① 메일 보내기·관리 API 조회(동기 httpx, 최대 10초)는 이벤트 루프 밖(스레드)에서 돈다
+    where = []
+
+    def on_loop():
+        try:
+            asyncio.get_running_loop()
+            return "event_loop"
+        except RuntimeError:
+            return "thread"
+
+    send, lookup = fake.send_mail, fake.get_user_email
+    fake.send_mail = lambda *a, **k: (where.append(("send", on_loop())), send(*a, **k))[1]
+    fake.get_user_email = lambda uid: (where.append(("lookup", on_loop())), lookup(uid))[1]
+    res = post(fake, update_body({"status": "확인 중"}, {"status": "추가됨", "model_id": "washer-fake-a"}))
+    assert res.status_code == 200
+    assert where == [("lookup", "thread"), ("send", "thread")]
+
+
+def test_operator_email_not_configured_returns_502_not_configured(fake, monkeypatch):
+    # ⑥ OPERATOR_EMAIL이 비면 보내지 않고 502 not_configured(Resend 422로 보이지 않게)
+    monkeypatch.setenv("OPERATOR_EMAIL", "")
+    get_settings.cache_clear()
+    res = post(fake, insert_body())
+    assert res.status_code == 502 and res.json()["reason"] == "not_configured"
+    assert fake.mails == []
+
+
+@pytest.mark.parametrize("body", [
+    insert_body({k: v for k, v in RECORD.items() if k != "brand"}),
+    {"type": "UPDATE", "table": "model_requests", "schema": "public",
+     "record": {k: v for k, v in {**RECORD, "status": "추가됨", "model_id": "washer-fake-a"}.items() if k != "user_id"},
+     "old_record": {**RECORD, "status": "확인 중"}},
+])
+def test_missing_record_field_returns_400(fake, body):
+    # ⑥ 웹훅 본문에 필요한 필드가 빠지면 500이 아니라 400, 메일·조회 없음
+    res = post(fake, body)
+    assert res.status_code == 400
+    assert fake.mails == [] and fake.lookups == []

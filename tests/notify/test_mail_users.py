@@ -104,3 +104,12 @@ def test_get_user_email_logs_never_contain_user_id(caplog):
     with httpx.Client(transport=transport) as client, caplog.at_level(logging.INFO):
         assert get_user_email(USER_ID, get=client.get) == "requester@example.com"
     assert USER_ID not in caplog.text and "requester@example.com" not in caplog.text
+
+
+
+def test_send_mail_without_mail_from_raises_not_configured(monkeypatch):
+    # ⑥ MAIL_FROM이 비면 not_configured
+    monkeypatch.setenv("MAIL_FROM", "")
+    get_settings.cache_clear()
+    with pytest.raises(MailError, match="not_configured"):
+        send_mail("someone@example.com", "제목", "본문", post=lambda url, **kw: pytest.fail("보내면 안 됨"))

@@ -70,6 +70,8 @@ class FakeSupabase:
         self.otp = [(200, {})]   # 코드 보내기 응답(앞에서부터 하나씩, 마지막 것은 계속)
         self.insert = (201, [{"id": 1, "user_id": USER_ID, "category": "dryer", "status": "대기"}])
         self.token = None   # 구글 PKCE 교환 응답. None이면 구글 계정 세션
+        self.logout = (204, {})   # 로그아웃 응답
+        self.config_hits = []   # /api/public-config 요청(open_app이 적음)
         self.hold_token = False   # True면 교환 응답을 붙잡아 둔다(테스트가 release로 보냄)
         self.held = []
 
@@ -113,7 +115,7 @@ class FakeSupabase:
         if path.startswith("/auth/v1/user"):
             return 200, USER
         if path.startswith("/auth/v1/logout"):
-            return 204, {}
+            return self.logout
         if path.startswith("/auth/v1/authorize"):
             return 200, "<!doctype html><title>가짜 구글</title><p>가짜 구글 로그인(테스트)</p>"
         if path.startswith("/rest/v1/model_requests"):
@@ -139,9 +141,9 @@ def open_app(browser, base_url):
         context.route("https://supabase.test/**", fake.handle)   # 나중에 건 가로채기가 먼저 걸린다
         context.route("**/api/models", lambda route: route.fulfill(json=MODELS))
         config = {"supabase_url": SUPABASE, "supabase_anon_key": PUBLIC_KEY}
-        context.route("**/api/public-config", lambda route: route.fulfill(
+        context.route("**/api/public-config", lambda route: (fake.config_hits.append(route.request.url), route.fulfill(
             status=config_status, json=config if config_status == 200 else
-            {"error_code": "LOGIN_UNAVAILABLE", "message": "가짜 오류입니다(테스트)"}))
+            {"error_code": "LOGIN_UNAVAILABLE", "message": "가짜 오류입니다(테스트)"})))
         context.route("**/api/ask", lambda route: route.fulfill(json=_ask_ok(json.loads(route.request.post_data))))
         if init:
             context.add_init_script(init)
@@ -787,3 +789,91 @@ def test_google_return_without_supabase_still_shows_screen(open_app, broken):
     page.evaluate("sessionStorage.setItem('pyeobom.returnTo', '#request/dryer')")
     page.goto("/?code=fake-auth-code")
     assert_not_blank(page, REQUEST_H1)
+
+
+
+# ── Step 6 지적 처리(2026-11-25) ──
+LOGOUT_FAILED = "로그아웃하지 못했어요. 다시 시도해 주세요"
+
+
+def test_logout_uses_local_scope_and_focuses_login(open_app):
+    # ② 이 기기만 로그아웃(scope local), 뒤 포커스는 보이는 [로그인]
+    page, fake = open_app()
+    open_request_form(page, fake)
+    row = drawer_row(page)
+    row.get_by_role("button", name="로그아웃").click()
+    login = row.get_by_role("button", name="로그인")
+    expect(login).to_be_visible()
+    expect(login).to_be_focused()
+    logout = [c for c in fake.calls if c["path"].startswith("/auth/v1/logout")]
+    assert logout and all("scope=local" in c["path"] for c in logout), [c["path"] for c in logout]
+
+
+def test_logout_failure_shows_message_and_keeps_account(open_app):
+    # ② 로그아웃 실패면 서랍에 문구, 계정 그대로
+    page, fake = open_app()
+    open_request_form(page, fake)
+    fake.logout = (500, {"code": 500, "error_code": "unexpected_failure", "msg": "가짜 실패(테스트)"})
+    row = drawer_row(page)
+    row.get_by_role("button", name="로그아웃").click()
+    expect(row.get_by_text(LOGOUT_FAILED)).to_be_visible()
+    expect(row.get_by_role("button", name="로그아웃")).to_be_visible()
+    expect(row.get_by_text(EMAIL)).to_be_visible()
+
+
+def test_google_cancel_error_returns_to_screen_with_message(open_app):
+    # ③ 구글 창에서 취소하면 ?error=로 돌아온다: 기억한 경로 + 로그인 시트와 실패 문구, 경로·오류 값은 지움
+    page, fake = open_app(init=RECORD_LANDING)
+    go_model_screen(page, "건조기")
+    page.get_by_role("button", name=NO_MODEL).click()
+    leave_for_google(page)
+    page.goto("/?error=access_denied&error_code=fake_denied&error_description=fake")
+    sheet = login_sheet(page)
+    expect(sheet.get_by_text(LOGIN_FAILED)).to_be_visible()
+    expect(page.get_by_role("heading", level=1)).to_have_text(REQUEST_H1)
+    assert page.evaluate("window.__landingSeen") is False
+    assert "error" not in page.url and page.url.endswith("#request/dryer")
+    assert page.evaluate("sessionStorage.getItem('pyeobom.returnTo')") is None
+    assert not fake.posts("/auth/v1/token")   # 교환은 시도하지 않는다
+
+
+def test_switch_account_google_failure_keeps_previous_account(open_app):
+    # ④ 계정 바꾸기 중 구글 교환 실패: 이전 세션이 남아도 실패 문구, 상자는 이전 계정 그대로
+    page, fake = open_app()
+    open_request_form(page, fake)
+    start_switch(page)
+    fake.token = (400, {"error": "invalid_grant", "error_description": "가짜 실패(테스트)"})
+    leave_for_google(page, SWITCH_SHEET_TITLE)
+    page.goto("/?code=fake-auth-code")
+    expect(page.get_by_role("dialog", name="로그인").get_by_text(LOGIN_FAILED)).to_be_visible()
+    expect(account_box(page)).to_contain_text("알림 받을 메일 · 메일 코드 계정")
+    expect(account_box(page).get_by_text(EMAIL)).to_be_visible()
+
+
+def test_first_screen_calls_neither_public_config_nor_supabase(open_app):
+    # ⑦ 첫 화면에서는 공개 설정·Supabase 주소를 한 번도 부르지 않는다(가로채기가 있어도 직접 센다)
+    page, fake = open_app()
+    expect(page.get_by_role("heading", level=1)).to_have_text(LANDING_H1)
+    page.wait_for_load_state("networkidle")
+    assert fake.config_hits == [] and fake.calls == []
+
+
+def test_switch_confirm_has_accessible_description(open_app):
+    # ⑧ 확인 팝업은 설명과 지금 계정을 화면 낭독기가 읽는다(aria-describedby)
+    page, fake = open_app()
+    open_request_form(page, fake)
+    account_box(page).get_by_role("button", name="계정 바꾸기").click()
+    expect(switch_confirm(page)).to_have_accessible_description(
+        re.compile(r"(?=.*tester@example\.com)(?=.*바꾸면 앞으로 알림은 새 계정 메일로 가요)", re.S))
+
+
+def test_switching_appliance_clears_request_inputs(open_app):
+    # ⑨ 다른 가전의 요청 화면으로 바뀌면 브랜드·모델명을 지운다
+    page, fake = open_app()
+    open_request_form(page, fake)
+    page.locator("#request-brand").fill("가짜브랜드")
+    page.locator("#request-model").fill("DV90-FAKE9")
+    page.evaluate("() => { location.hash = '#request/washer'; }")
+    expect(page.locator("#request-kind")).to_have_text("세탁기")
+    expect(page.locator("#request-brand")).to_have_value("")
+    expect(page.locator("#request-model")).to_have_value("")
