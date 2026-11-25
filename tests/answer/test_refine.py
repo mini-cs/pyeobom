@@ -88,3 +88,10 @@ def test_refine_question_api_error_logs_type_only(caplog):
     r = refine_question(Q, PRODUCT, "m", S, client=FakeClient(error=RuntimeError("sk-secret-in-message")))
     assert r == RefineResult(Q, False, "api_error")
     assert "RuntimeError" in caplog.text and "sk-secret-in-message" not in caplog.text
+
+
+def test_refine_call_is_not_stored_at_openai():
+    # 개인정보 처리방침(2026-11-25 사용자 결정): 지금은 꺼져 있어도 켜면 사용자 질문이 가는 호출이라 저장하지 않는다
+    client = FakeClient('{"search_question": "문이 안 열려요"}')
+    refine_question(Q, PRODUCT, "m", S, client=client)
+    assert client.calls[0]["store"] is False
