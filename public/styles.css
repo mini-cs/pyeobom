@@ -107,6 +107,8 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .icon-lock { --icon: url("/icons/lock.svg"); }
 .icon-washer { --icon: url("/icons/wash-machine.svg"); }
 .icon-dryer { --icon: url("/icons/wash-tumble-dry.svg"); }
+.icon-mail { --icon: url("/icons/mail.svg"); }
+.icon-switch { --icon: url("/icons/arrows-exchange.svg"); }
 .icon-aircon { --icon: url("/icons/air-conditioning.svg"); }
 .icon-dots { --icon: url("/icons/dots.svg"); }
 .icon-chevron { --icon: url("/icons/chevron-right.svg"); }
@@ -501,10 +503,49 @@ a.icon-button { text-decoration: none; }
 .google-button:hover { background: var(--color-surface); }
 .google-button:disabled { color: var(--color-text-muted); cursor: progress; }
 .google-button img { position: absolute; left: var(--space-2); top: 50%; transform: translateY(-50%); }  /* 둥근 테두리에서 떨어지게 */
-.drawer-account { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+/* 계정 상자(A1·V3, 가이드 6절 17): 안내 상자와 같은 모서리·여백. 오른쪽 동그라미 아이콘 버튼이 계정 바꾸기 */
+.account-box {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface); border-radius: var(--radius-sm);
+}
+.account-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: var(--leading-ui); }
+.account-label { font-size: var(--text-note); color: var(--color-text-muted); }
+.account-email { font-weight: var(--weight-semibold); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.account-switch {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--tap-min); height: var(--tap-min); margin-right: calc(-1 * var(--space-1));
+  padding: 0; background: none; color: var(--color-text);
+  border: 0; border-radius: var(--radius-pill); cursor: pointer;
+}
+.account-switch:focus-visible { box-shadow: var(--focus-ring-surface); }
+.switch-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  background: var(--color-bg); border-radius: var(--radius-pill);
+  transition: background var(--motion-fast);
+}
+.account-switch:hover .switch-dot, .account-switch:active .switch-dot { background: var(--color-border); }
+
+/* 서랍 계정 줄(C2, 가이드 6절 18): 하단 고지 바로 위, 위에 구분선 */
+.drawer-account {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  margin-top: auto; padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+.drawer-account + .drawer-footer { margin-top: 0; }  /* 아래로 미는 여백은 계정 줄이 가진다 */
+.drawer-account .account-email { flex: 1; min-width: 0; }
+.drawer-account .form-error { flex-basis: 100%; }
+.account-avatar {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: var(--color-action); color: var(--color-on-action);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm); line-height: 1; font-weight: var(--weight-semibold);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .pill, .send, .fold .icon { transition: none; }
+  .pill, .send, .fold .icon, .switch-dot { transition: none; }
   .drawer[open], .sheet[open] { animation: none; }
   .field label { transition: none; }
   .tiles, .suggestions { scroll-behavior: auto; }

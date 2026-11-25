@@ -708,11 +708,17 @@ function showError(box, message) {
 }
 const showRequestError = (message) => showError(req.error, message);
 
+// 요청 화면: 로그인한 메일(= 알림 받을 메일)을 보이고, 로그인 전이면 시트를 연다
 async function requireLogin(hash) {
   const auth = await initAuth();
+  const session = auth ? await auth.session() : null;
+  $("request-account").hidden = !session;
+  if (session) $("request-email").textContent = session.user?.email ?? "";
   if (!auth) showRequestError(UNAVAILABLE);
-  else if (!(await auth.session())) openLogin({ reason: true, then: hash });
+  else if (!session) openLogin({ reason: true, then: hash });
 }
+// 계정 바꾸기: 로그아웃하지 않고 시트만 연다. 새 로그인이 끝나면 그 세션으로 바뀌고, 닫으면 원래 계정 그대로
+$("account-switch").addEventListener("click", () => openLogin({ reason: true, then: location.hash }));
 
 $("no-model").addEventListener("click", async () => {
   const appliance = parseRoute(location.hash).appliance;
@@ -856,8 +862,11 @@ $("login-google").addEventListener("click", async () => {
 async function updateAccount() {
   const auth = await initAuth();
   const session = auth ? await auth.session() : null;
+  const email = session?.user?.email ?? "";
+  $("drawer-avatar").textContent = email.charAt(0).toUpperCase();  // 프로필 사진 대신 메일 첫 글자(장식)
+  $("drawer-email").textContent = email;
+  $("drawer-avatar").hidden = $("drawer-email").hidden = $("drawer-logout").hidden = !session;
   $("drawer-login").hidden = Boolean(session);
-  $("drawer-logout").hidden = !session;
 }
 $("drawer-login").addEventListener("click", async () => {
   $("drawer-login-error").hidden = true;

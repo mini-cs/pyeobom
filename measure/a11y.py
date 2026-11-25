@@ -51,8 +51,10 @@ STATES = {
     "login-code": ["model:건조기", "nomodel", "email"],
     "request-form": ["model:건조기", "nomodel", "email", "code"],
     "request-done": ["model:건조기", "nomodel", "email", "code", "request"],
+    # 2026-11-25 Task 6 덧붙임: 로그인한 상태의 서랍(맨 아래 계정 줄)
+    "drawer-account": ["model:건조기", "nomodel", "email", "code", "account-drawer"],
 }
-LOCAL_ONLY = {"model-dryer", "login-sheet", "login-code", "request-form", "request-done"}
+LOCAL_ONLY = {"model-dryer", "login-sheet", "login-code", "request-form", "request-done", "drawer-account"}
 SUPABASE = "https://supabase.test"   # 가짜 주소. 실제 Supabase·메일은 부르지 않는다
 FAKE_SESSION = {  # 모양만 맞춘 가짜 세션(토큰은 서명 없는 가짜)
     "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJleHAiOjQxMDI0NDQ4MDB9.fake",
@@ -179,6 +181,9 @@ def _prepare(page, base, steps, replies):
             page.fill("#request-model", "DV90-FAKE1")
             page.get_by_role("button", name="요청하기").click()
             page.locator("#request-done").wait_for()
+        elif action == "account-drawer":
+            page.get_by_role("button", name="지난 대화").click()
+            page.locator("#drawer-email").wait_for()
         elif action == "delete-all":
             page.get_by_role("button", name="전체 삭제").click()
             page.locator("#delete-confirm").wait_for()

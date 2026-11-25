@@ -46,8 +46,11 @@
           <button type="button" class="pill" id="delete-ok">모두 지우기</button>
         </div>
       </div>
-      <!-- 2차: 로그인은 요청할 때만 필요하다(로그인 벽 없음, 덧붙임 D-1·D-2). 로그인하면 같은 자리에 로그아웃 -->
+      <!-- 2차: 로그인은 요청할 때만 필요하다(로그인 벽 없음, 덧붙임 D-1·D-2). 서랍 맨 아래 계정 줄(C2, 2026-11-25):
+           로그인하면 첫 글자 동그라미 + 메일 + 로그아웃, 로그인 전이면 같은 자리에 로그인 -->
       <div class="drawer-account">
+        <span class="account-avatar" id="drawer-avatar" aria-hidden="true" hidden></span>
+        <strong class="account-email" id="drawer-email" hidden></strong>
         <button type="button" class="text-button" id="drawer-login">로그인</button>
         <button type="button" class="text-button" id="drawer-logout" hidden>로그아웃</button>
         <p class="form-error" id="drawer-login-error" role="alert" hidden></p>
@@ -156,6 +159,14 @@
     <section class="screen" data-screen="request" hidden>
       <h1 tabindex="-1">내 모델 요청하기</h1>
       <p class="request-kind"><span class="muted">가전 종류</span> <strong id="request-kind"></strong></p>
+      <!-- 알림 받을 메일(A1·V3, 2026-11-25): 바꾸기는 로그아웃 없이 로그인 시트만 연다 -->
+      <div class="account-box" id="request-account" hidden>
+        <span class="icon icon-mail" aria-hidden="true"></span>
+        <p class="account-text"><span class="account-label">알림 받을 메일</span>
+          <strong class="account-email" id="request-email"></strong></p>
+        <button type="button" class="account-switch" id="account-switch" aria-label="계정 바꾸기" title="계정 바꾸기">
+          <span class="switch-dot"><span class="icon icon-switch" aria-hidden="true"></span></span></button>
+      </div>
       <form class="request-form" id="request-form" novalidate>
         <div class="field">
           <input id="request-brand" name="brand" type="text" maxlength="20" autocomplete="off" placeholder=" ">
