@@ -71,7 +71,7 @@ Vercel 진입점은 루트 `index.py`(자동 감지), 파이썬 버전은 `.pyth
 - 한 번에 브랜치 하나. 이전 브랜치를 병합한 뒤 최신 `main`에서 다음 브랜치를 만든다: `git switch main && git pull && git switch -c <브랜치>`
 - 브랜치 마무리: `pytest -v -m "not integration"` 통과 → push → PR(양식 사용) → Vercel 미리보기 URL에서 확인 → merge commit으로 병합 → 브랜치 삭제 → 개발일지에 PR 링크
 - `git push`, PR 생성, 병합 직전에는 항상 사용자에게 확인한다
-- push 전 점검: 더할 줄과 PR 본문에서 키·토큰·uuid·메일 주소 모양을 개수로만 센다. 메일 주소는 `example.com`·`mail.pyeobom.help`와 공개 연락처 `pyeobom@gmail.com`(전체 주소만, gmail.com 전체가 아님)을 빼고 0이어야 한다. 0이 아니면 멈추고 사용자에게 묻는다(2026-11-25 사용자 결정)
+- push 전 점검: 더할 줄과 PR 본문에서 .env 파일이 올라가지 않는지 보고, sb_secret_·sb_publishable_·eyJ·re_로 시작하는 값, uuid 모양, 메일 주소 모양을 개수로만 센다. 메일 주소는 `example.com`·`mail.pyeobom.help`와 공개 연락처 `pyeobom@gmail.com`(전체 주소만, gmail.com 전체가 아님)을 빼고 0이어야 한다. 0이 아니면 멈추고 사용자에게 묻는다(2026-11-25 사용자 결정)
 
 ## 커밋 메시지 규칙
 
