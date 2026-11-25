@@ -91,3 +91,16 @@ def test_get_user_email_rejects_non_uuid_without_calling():
 def test_get_user_email_failure_raises_mail_error(get):
     with pytest.raises(MailError):
         get_user_email(USER_ID, get=get)
+
+
+def test_get_user_email_logs_never_contain_user_id(caplog):
+    # 실제 httpx 요청 경로를 지나게 한다(MockTransport, 네트워크 0). 앱 시작(create_app)을 거친 뒤 INFO 이상 모든 로그를 본다
+    import logging
+
+    from app.web import create_app
+
+    create_app()
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"id": USER_ID, "email": "requester@example.com"}))
+    with httpx.Client(transport=transport) as client, caplog.at_level(logging.INFO):
+        assert get_user_email(USER_ID, get=client.get) == "requester@example.com"
+    assert USER_ID not in caplog.text and "requester@example.com" not in caplog.text
