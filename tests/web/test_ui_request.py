@@ -197,6 +197,8 @@ def test_request_requires_login_then_returns_to_form(open_app):
     page.get_by_role("button", name=NO_MODEL).click()
     sheet = login_sheet(page)
     expect(sheet).to_be_visible()
+    # 시트가 올라오는 움직임이 끝난 뒤 잰다(움직이는 중에 둘을 따로 재면 위치가 어긋남)
+    page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
     expect(sheet.get_by_text(LOGIN_REASON)).to_be_visible()
     expect(sheet.get_by_text(PRIVACY)).to_be_visible()
     # 이유 문구는 맨 위, 개인정보 안내는 아래쪽(덧붙임 D-3)
