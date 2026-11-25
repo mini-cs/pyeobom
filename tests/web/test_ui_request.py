@@ -52,9 +52,9 @@ USER = {"id": USER_ID, "aud": "authenticated", "role": "authenticated", "email":
         "app_metadata": {"provider": "email"}, "user_metadata": {}, "created_at": "2026-11-25T00:00:00Z"}
 
 
-def session_body():
+def session_body(email=EMAIL):
     return {"access_token": FAKE_TOKEN, "token_type": "bearer", "expires_in": 3600,
-            "expires_at": int(time.time()) + 3600, "refresh_token": "fake-refresh-token", "user": USER}
+            "expires_at": int(time.time()) + 3600, "refresh_token": "fake-refresh-token", "user": {**USER, "email": email}}
 
 
 class FakeSupabase:
@@ -91,7 +91,7 @@ class FakeSupabase:
             return self.otp.pop(0) if len(self.otp) > 1 else self.otp[0]
         if path.startswith("/auth/v1/verify"):
             if body and body.get("token") == CODE:
-                return 200, session_body()
+                return 200, session_body(body.get("email") or EMAIL)
             return 403, {"code": 403, "error_code": "otp_expired", "msg": "Token has expired or is invalid"}
         if path.startswith("/auth/v1/token"):
             return 200, session_body()
@@ -150,9 +150,9 @@ def login_sheet(page):
     return page.get_by_role("dialog", name="로그인")
 
 
-def log_in_with_code(page, fake):
+def log_in_with_code(page, fake, email=EMAIL):
     sheet = login_sheet(page)
-    sheet.get_by_label("이메일").fill(EMAIL)
+    sheet.get_by_label("이메일").fill(email)
     sheet.get_by_role("button", name="코드 보내기").click()
     sheet.get_by_label("인증 코드").fill(CODE)
     sheet.get_by_role("button", name="확인").click()
@@ -392,3 +392,68 @@ def test_google_login_returns_to_request_form(open_app):
     assert fake.posts("/auth/v1/token")   # 받은 code를 세션으로 바꿨다
     stored = page.evaluate("JSON.stringify(Object.assign({}, sessionStorage))")
     assert EMAIL not in stored   # sessionStorage에는 경로만(이메일 없음)
+
+
+# ── 로그인 상태 보이기(Task 6 덧붙임, docs/superpowers/specs/2026-11-25-login-state-design.md) ──
+OTHER_EMAIL = "other@example.com"
+
+
+def account_box(page):
+    return page.locator('[data-screen="request"] .account-box')
+
+
+def test_request_screen_shows_notification_email(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    box = account_box(page)
+    expect(box).to_be_visible()
+    expect(box).to_contain_text("알림 받을 메일")
+    expect(box.get_by_text(EMAIL)).to_be_visible()
+    switch = box.get_by_role("button", name="계정 바꾸기")
+    expect(switch).to_have_attribute("title", "계정 바꾸기")
+    size = switch.bounding_box()
+    assert size["width"] >= 44 and size["height"] >= 44, size   # 누르는 영역 --tap-min 이상
+
+
+def test_switch_account_opens_sheet_without_logout_and_close_keeps_account(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    account_box(page).get_by_role("button", name="계정 바꾸기").click()
+    sheet = login_sheet(page)
+    expect(sheet).to_be_visible()
+    expect(sheet.get_by_label("이메일")).to_be_visible()   # 1단계
+    expect(sheet.get_by_text(LOGIN_REASON)).to_be_visible()
+    sheet.get_by_role("button", name="닫기").click()
+    expect(sheet).to_be_hidden()
+    expect(account_box(page).get_by_text(EMAIL)).to_be_visible()   # 닫으면 원래 계정 그대로
+    assert not [c for c in fake.calls if c["path"].startswith("/auth/v1/logout")]
+
+
+def test_switch_account_to_other_email_updates_box(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    account_box(page).get_by_role("button", name="계정 바꾸기").click()
+    log_in_with_code(page, fake, OTHER_EMAIL)
+    expect(page.get_by_role("heading", level=1)).to_have_text(REQUEST_H1)
+    expect(account_box(page).get_by_text(OTHER_EMAIL)).to_be_visible()
+    expect(account_box(page).get_by_text(EMAIL, exact=True)).to_have_count(0)
+    assert not [c for c in fake.calls if c["path"].startswith("/auth/v1/logout")]
+
+
+def test_drawer_account_row_at_bottom_shows_email_and_logout(open_app):
+    page, fake = open_app()
+    open_request_form(page, fake)
+    page.get_by_role("button", name="지난 대화").click()
+    row = page.locator("#drawer .drawer-account")
+    expect(row.get_by_text(EMAIL)).to_be_visible()
+    expect(row.locator(".account-avatar")).to_have_text("T")   # 메일 첫 글자 대문자(장식)
+    expect(row.locator(".account-avatar")).to_have_attribute("aria-hidden", "true")
+    expect(row.get_by_role("button", name="로그아웃")).to_be_visible()
+    # 서랍 맨 아래: 계정 줄 바로 다음이 하단 고지, 위에 구분선
+    assert row.evaluate("(r) => r.nextElementSibling.classList.contains('drawer-footer')")
+    assert row.evaluate("(r) => getComputedStyle(r).borderTopStyle") == "solid"
+    row.get_by_role("button", name="로그아웃").click()
+    if not page.locator("#drawer").is_visible():
+        page.get_by_role("button", name="지난 대화").click()
+    expect(row.get_by_role("button", name="로그인")).to_be_visible()   # 같은 자리에 로그인
+    expect(row.get_by_text(EMAIL)).to_have_count(0)
