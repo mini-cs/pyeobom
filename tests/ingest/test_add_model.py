@@ -75,7 +75,10 @@ def test_draft_passes_catalog_and_document_checks():
 
 
 def test_draft_refuses_values_the_checks_would_reject():
-    for bad in ({"appliance": "fridge"}, {"source_url": "http://example.com"}, {"name": "LG (드럼)"}, {"codes": []}):
+    for bad in ({"appliance": "fridge"}, {"source_url": "http://example.com"}, {"name": "LG (드럼)"}, {"codes": []},
+                # 검토 지적(2026-11-26): 날짜는 YYYY-MM-DD만, 문서·모델 id는 confirm과 같은 모양(소문자·숫자·하이픈)만
+                {"fetched_at": "2026/11/26"}, {"fetched_at": "20261126"}, {"fetched_at": "2026-13-01"},
+                {"doc_id": "Manual-X"}, {"doc_id": "../manual-x"}, {"model_id": "washer_x"}, {"model_id": "washer x"}):
         with pytest.raises(ValueError):
             add_model.draft_entries(**{**DRAFT, **bad})
 
@@ -124,16 +127,22 @@ def test_link_guide_refuses_manual_or_unknown_model(tmp_path):
 
 
 # ── 되돌리기(remove) ──
-def _remove_answer(doc_type="manual", bundle=None, linked=1):
+def _remove_answer(doc_type="manual", bundle=None, linked=1, variants=None, others=0):
     def answer(sql, params):
-        if "to_regclass" in sql:
+        if "to_regclass('bundle_chunks')" in sql:
             return ("bundle_chunks" if bundle is not None else None,)
+        if "to_regclass('chunk_variants')" in sql:
+            return ("chunk_variants" if variants is not None else None,)
         if sql.startswith("SELECT doc_type"):
             return (doc_type,) if doc_type else None
         if "FROM bundle_chunks" in sql:
             return (bundle,)
+        if "FROM chunk_variants" in sql:
+            return (variants,)
         if "FROM document_models WHERE doc_id = %s AND model_id = %s" in sql:
             return (linked,)
+        if "FROM document_models WHERE doc_id = %s AND model_id <> %s" in sql:
+            return (others,)
         return (7,)
     return answer
 
@@ -149,7 +158,7 @@ def test_remove_with_yes_deletes_in_one_transaction_and_keeps_bundle():
     conn = FakeConn(_remove_answer())
     out = add_model.remove_model_data("manual-x", "m1", connect=_connect(conn), yes=True)
     deletes = [s for s in conn.sql if s.startswith("DELETE")]
-    assert out["deleted"] is True and conn.transactions == 1 and len(deletes) == 3
+    assert out["deleted"] is True and conn.transactions == 1 and len(deletes) == 4
     assert all("bundle_chunks" not in s for s in deletes)
 
 
@@ -159,6 +168,49 @@ def test_remove_refuses_guide_unlinked_model_or_bundle_rows():
         with pytest.raises(ValueError):
             add_model.remove_model_data("manual-x", "m1", connect=_connect(conn), yes=True)
         assert not any(s.startswith("DELETE") for s in conn.sql)
+
+
+# 검토 지적 처리(2026-11-26 사용자 결정 1~3)
+def test_remove_refuses_doc_missing_in_db():
+    """문서 id 오타면 연결 확인 없이 그 모델의 연결을 다 지우던 길(검토 Important 3, 보안 ①)."""
+    for yes in (False, True):
+        conn = FakeConn(_remove_answer(doc_type=None))
+        with pytest.raises(ValueError, match="DB에 없는 문서"):
+            add_model.remove_model_data("manual-typo", "m1", connect=_connect(conn), yes=yes)
+        assert not any(s.startswith("DELETE") for s in conn.sql)
+
+
+def test_remove_keeps_other_documents_links():
+    """가이드 연결은 가이드 문서와의 연결만 세고 지운다. 다른 설명서와의 연결은 남긴다."""
+    conn = FakeConn(_remove_answer())
+    add_model.remove_model_data("manual-x", "m1", connect=_connect(conn), yes=True)
+    guide_count = next(s for s in conn.sql if s.startswith("SELECT count(*) FROM document_models") and "model_id = %s" in s
+                       and "doc_id = %s" not in s)
+    assert "doc_type = 'guide'" in guide_count
+    for s in (s for s in conn.sql if s.startswith("DELETE FROM document_models")):
+        assert " OR " not in s
+        assert s == "DELETE FROM document_models WHERE doc_id = %s" or "doc_type = 'guide'" in s
+    # 이 설명서가 다른 모델에도 연결돼 있으면 지우지 않는다(그 모델의 설명서 연결까지 사라지므로)
+    conn = FakeConn(_remove_answer(others=1))
+    with pytest.raises(ValueError, match="다른 모델"):
+        add_model.remove_model_data("manual-x", "m1", connect=_connect(conn), yes=True)
+    assert not any(s.startswith("DELETE") for s in conn.sql)
+
+
+def test_remove_refuses_model_still_in_models_json():
+    """Task 10 Step 1 순서: models.json에서 빼는 PR을 병합한 뒤에만 지운다(보안 ②)."""
+    conn = FakeConn(_remove_answer())
+    with pytest.raises(ValueError, match="models.json"):
+        add_model.remove_model_data("manual-lg-fx25", "washer-lg-fx25", connect=_connect(conn), yes=True)
+    assert conn.sql == []
+
+
+def test_remove_preview_counts_chunk_variants():
+    """chunk_variants는 chunks를 ON DELETE CASCADE로 참조해 함께 지워진다(measure/chunk_variants.sql). 표가 없으면 0."""
+    out = add_model.remove_model_data("manual-x", "m1", connect=_connect(FakeConn(_remove_answer(variants=4))))
+    assert out["chunk_variants"] == 4
+    out = add_model.remove_model_data("manual-x", "m1", connect=_connect(FakeConn(_remove_answer())))
+    assert out["chunk_variants"] == 0
 
 
 # ── 에러 코드 후보(codes) ──
@@ -204,12 +256,57 @@ def test_ingest_command_refuses_over_budget(monkeypatch, tmp_path):
     called = []
     monkeypatch.setattr(add_model, "LEDGER", ledger)
     monkeypatch.setattr(add_model, "load_env", lambda: None)
-    monkeypatch.setattr(add_model, "ingest_document", lambda doc_id, **kw: called.append(doc_id))
+    monkeypatch.setattr(add_model, "ingest_manual", lambda doc_id, **kw: called.append((doc_id, kw)) or {})
     with pytest.raises(SystemExit, match="장부"):
         add_model.main(["ingest", "--doc-id", "manual-lg-fx25", "--estimate-usd", "0.01"])
     assert called == []
     add_model.main(["ingest", "--doc-id", "manual-lg-fx25", "--estimate-usd", "0.005"])
-    assert called == ["manual-lg-fx25"]
+    add_model.main(["ingest", "--doc-id", "manual-lg-fx25", "--estimate-usd", "0.001", "--yes"])
+    assert called == [("manual-lg-fx25", {"yes": False}), ("manual-lg-fx25", {"yes": True})]
+
+
+# 검토 지적 처리(2026-11-26 사용자 결정 4·5)
+PROD = Settings(openai_api_key="", database_url="", openai_embed_model="text-embedding-3-small",
+                openai_chat_model="gpt-6-luna", embed_dim=1536, rewrite_model="gpt-6-luna")  # 운영 그대로
+
+
+def test_prod_settings_fixture_matches_production():
+    from evaluation.run_config import differences
+    assert differences(PROD) == []
+
+
+@pytest.fixture
+def ingest_calls(monkeypatch):
+    calls = []
+    monkeypatch.setattr(config, "get_settings", lambda: PROD)
+    monkeypatch.setattr(add_model, "ingest_document", lambda doc_id, **kw: calls.append(doc_id) or {"doc_id": doc_id})
+    return calls
+
+
+def test_ingest_refuses_guide_and_existing_without_yes(ingest_calls):
+    """가이드는 다시 적재하지 않는다(Global 9). 이미 DB에 있는 문서는 --yes 없이 지우고 다시 넣지 않는다(CLAUDE.md)."""
+    conn = FakeConn()
+    with pytest.raises(ValueError, match="가이드"):
+        add_model.ingest_manual("guide-lg-drum-errors", connect=_connect(conn))
+    assert conn.sql == [] and ingest_calls == []
+    exists = FakeConn(lambda sql, params: (1,))
+    with pytest.raises(ValueError, match="--yes"):
+        add_model.ingest_manual("manual-lg-fx25", connect=_connect(exists))
+    assert ingest_calls == [] and exists.sql == ["SELECT 1 FROM documents WHERE id = %s"]
+    add_model.ingest_manual("manual-lg-fx25", connect=_connect(exists), yes=True)
+    add_model.ingest_manual("manual-lg-fx25", connect=_connect(FakeConn(lambda sql, params: None)))
+    assert ingest_calls == ["manual-lg-fx25", "manual-lg-fx25"]
+
+
+def test_ingest_stops_on_non_production_settings(monkeypatch, ingest_calls):
+    from dataclasses import replace
+    for bad in ({"openai_embed_model": "text-embedding-3-large"}, {"chunk_context_model": "gpt-6-luna"},
+                {"refine_model": "gpt-6-luna"}, {"openai_embed_dimensions": 512}):
+        monkeypatch.setattr(config, "get_settings", lambda bad=bad: replace(PROD, **bad))
+        conn = FakeConn()
+        with pytest.raises(ValueError, match="운영"):
+            add_model.ingest_manual("manual-lg-fx25", connect=_connect(conn))
+        assert conn.sql == [] and ingest_calls == []
 
 
 def _connect(conn):

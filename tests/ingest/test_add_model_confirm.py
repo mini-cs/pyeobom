@@ -16,7 +16,7 @@ from tests.ingest.db_rule import assert_no_ai_while_open
 
 MODEL = "washer-test-x1"
 SETTINGS = Settings(openai_api_key="", database_url="", openai_embed_model="text-embedding-3-small",
-                    openai_chat_model="gpt-6-luna", embed_dim=1536)
+                    openai_chat_model="gpt-6-luna", embed_dim=1536, rewrite_model="gpt-6-luna")  # 운영 그대로
 CHUNKS = [Chunk(1, "manual-test-x1", "manual", "테스트 설명서", "https://example.com/m", 3, "세탁조 청소는 통세척 코스로 해요.", 0.1),
           Chunk(2, "guide-test-x1", "guide", "테스트 가이드", "https://example.com/g", None, "4E가 뜨면 급수를 확인해요.", 0.2)]
 FOUND = json.dumps({"found": True, "answer": "통세척 코스로 청소해요.",
@@ -52,7 +52,10 @@ def env(tmp_path, monkeypatch):
             events.append("ai")
             text = json.dumps(messages, ensure_ascii=False)
             seen["prompts"].append(text)
-            return next((r for key, r in replies.items() if key in text), FOUND)
+            reply = next((r for key, r in replies.items() if key in text), FOUND)
+            if isinstance(reply, Exception):
+                raise reply  # 일시 오류 흉내: 라우트가 500 SERVICE_UNAVAILABLE로 바꾼다
+            return reply
         return Deps(embed_query=embed_query, search=search, complete=complete, supported_ids={MODEL},
                     official_url=lambda m: "https://example.com/support", brand=lambda m: "삼성")  # 4E·5E는 삼성 코드
     monkeypatch.setattr(ask_routes, "get_settings", lambda: SETTINGS)
@@ -122,26 +125,74 @@ def test_confirm_writes_results_without_calling_network(env):
     # 판정 입력 파일(git 밖): 질문별 인용문과 쪽(전 측정의 펼친 캡처 대신)
     md = (env["tmp"] / "judge" / f"{MODEL}-after-judge-input.md").read_text(encoding="utf-8")
     assert "## q1" in md and "사용설명서 3쪽" in md and "> 통세척 코스" in md and "공식 해결 가이드: 테스트 가이드" in md
+    # 그때 설정을 결과 옆에 남긴다(키·접속 주소 없음, 검토 지적 5)
+    saved = json.loads(path.with_suffix(".settings.json").read_text(encoding="utf-8"))
+    assert saved["label"] == "after" and saved["differences"] == [] and saved["settings"]["openai_embed_model"] == "text-embedding-3-small"
+    assert "openai_api_key" not in saved["settings"] and "database_url" not in saved["settings"]
     # 같은 이름으로 다시 돌리면 덮어쓰지 않는다(측정 결과 보호)
     with pytest.raises(ValueError, match="이미"):
         _run(env)
 
 
-def test_confirm_goes_through_ask_route_processing(env):
-    """새 대화로 /api/ask를 부를 때와 같은 처리: 개인정보 가리기(임베딩·답변 AI에는 가린 질문만), 오류는 error_code로."""
-    rows = list(ROWS)
-    rows[0] = ("q1", "사용법", "010-1234-5678로 연락 주세요. 통세척은 어떻게 하나요?", "2", "manual")
-    rows[1] = ("q2", "사용법", "가" * 501, "5", "manual")  # 질문 길이 상한(500) 넘음 → 라우트가 오류 응답으로
+def _write_questions(env, rows):
     with env["questions"].open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["qid", "kind", "question", "expected_pages", "source"])
         w.writerows(rows)
-    path = _run(env, expect_sha256=hashlib.sha256(env["questions"].read_bytes()).hexdigest())
+    return hashlib.sha256(env["questions"].read_bytes()).hexdigest()
+
+
+def test_confirm_goes_through_ask_route_processing(env):
+    """새 대화로 /api/ask를 부를 때와 같은 처리: 개인정보 가리기(임베딩·답변 AI에는 가린 질문만)."""
+    rows = list(ROWS)
+    rows[0] = ("q1", "사용법", "010-1234-5678로 연락 주세요. 통세척은 어떻게 하나요?", "2", "manual")
+    path = _run(env, expect_sha256=_write_questions(env, rows))
     results = _read(path)
     assert all("010-1234-5678" not in t for t in env["seen"]["embedded"] + env["seen"]["prompts"])
     assert "010-1234-5678" not in results[0]["질문"]
-    assert results[1]["error_code"] and results[1]["found"] == "" and results[1]["인용 쪽"] == "없음"
-    assert len(env["seen"]["embedded"]) == 9  # 오류 질문은 AI를 부르지 않음
+
+
+# 검토 지적 처리(2026-11-26 사용자 결정 5·6·7·9)
+def test_confirm_stops_on_non_production_settings(env, monkeypatch):
+    from dataclasses import replace
+    monkeypatch.setattr(ask_routes, "get_settings", lambda: replace(SETTINGS, refine_model="gpt-6-luna"))
+    with pytest.raises(ValueError, match="운영"):
+        _run(env)
+    assert env["events"] == [] and not (env["tmp"] / "results").exists() and not (env["tmp"] / "judge").exists()
+
+
+def test_confirm_stops_on_error_without_judge_sheet(env):
+    """오류가 하나라도 나면 판정지를 만들지 않고 멈춘다. 부분 결과는 failed 이름으로, 같은 label은 다시 쓸 수 있다."""
+    env["replies"]["세제는 어디에"] = RuntimeError("일시 오류")  # q3
+    with pytest.raises(ValueError) as e:
+        _run(env)
+    message = str(e.value)
+    assert "판정지를 만들지 않" in message and "다시 돌리기 1번에 세지 않음" in message and "개발일지" in message
+    assert "SERVICE_UNAVAILABLE" in message
+    failed = list((env["tmp"] / "results").glob(f"phase2-{MODEL}-after-failed-*.csv"))
+    assert len(failed) == 1 and [r["qid"] for r in _read(failed[0])] == ["q1", "q2", "q3"]  # 첫 오류에서 멈춤
+    assert _read(failed[0])[2]["error_code"] == "SERVICE_UNAVAILABLE"
+    assert not (env["tmp"] / "results" / f"phase2-{MODEL}-after.csv").exists()
+    assert not (env["tmp"] / "judge").exists() or not any((env["tmp"] / "judge").iterdir())
+    assert env["events"].count("open") == 3  # q4부터는 묻지 않음
+    del env["replies"]["세제는 어디에"]
+    assert _run(env) == env["tmp"] / "results" / f"phase2-{MODEL}-after.csv"  # 같은 label 다시 실행
+
+
+def test_csv_cells_cannot_start_a_formula(env):
+    """판정지·결과 CSV 칸이 = + - @ (탭·CR)로 시작하면 앞에 '를 붙인다. 판정 입력 md의 원문은 그대로."""
+    for raw in ("=1+1", "+82", "-5도", "@sum", "\t탭", "\r줄"):
+        assert add_model.csv_cell(raw) == "'" + raw
+    for raw in ("통세척 코스", "4E", "", 3, None):
+        assert add_model.csv_cell(raw) == raw
+    env["replies"]["통세척은"] = json.dumps({"found": True, "answer": "=HYPERLINK(\"x\") 통세척",
+                                          "citations": [{"chunk_id": 1, "quote": "통세척 코스"}]})
+    path = _run(env)
+    assert _read(path)[0]["답"].startswith("'=HYPERLINK")
+    judge = _read(env["tmp"] / "judge" / f"{MODEL}-after-judge.csv")
+    assert judge[0]["답"].startswith("'=HYPERLINK")
+    md = (env["tmp"] / "judge" / f"{MODEL}-after-judge-input.md").read_text(encoding="utf-8")
+    assert "\n=HYPERLINK(\"x\") 통세척" in md
 
 
 def test_verdict_prints_pass_and_032_note(tmp_path, capsys):
@@ -155,7 +206,8 @@ def test_verdict_prints_pass_and_032_note(tmp_path, capsys):
         w.writerows(rows)
     add_model.main(["verdict", "--judge", str(judge)])
     out = capsys.readouterr().out
-    assert "합격" in out and "정답 8" in out and "환각 0" in out
+    first = out.splitlines()[0]  # 리포트 줄의 고정 문구 "(합격선 정답 8개 이상·환각 0)"과 섞이지 않게 첫 줄만 본다
+    assert first.startswith("합격:") and "정답 8·환각 0" in first
     assert "결정기록 032 근거로 기록" in out
     rows[0][4] = "환각"
     with judge.open("w", encoding="utf-8-sig", newline="") as f:
@@ -163,7 +215,7 @@ def test_verdict_prints_pass_and_032_note(tmp_path, capsys):
         w.writerow(JUDGE_COLUMNS)
         w.writerows(rows)
     add_model.main(["verdict", "--judge", str(judge)])
-    assert "미달" in capsys.readouterr().out
+    assert capsys.readouterr().out.splitlines()[0].startswith("미달:")
 
 
 def test_checklist_order(capsys):

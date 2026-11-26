@@ -83,6 +83,23 @@ def test_link_guide_writes_json_only_after_closing(tmp_path, monkeypatch):
     assert_no_ai_while_open(events)
 
 
+def test_ingest_manual_checks_db_then_closes_before_embedding(monkeypatch):
+    """이미 있는지 보는 연결도 짧게 열고 닫은 뒤에 임베딩(검토 지적 4, Global 8)."""
+    from dataclasses import replace
+    events = []
+
+    def fake_ingest(doc_id, connect=None, embed=None):
+        events.append("ai")
+        with connect():
+            events.append("save")
+        return {"doc_id": doc_id}
+    monkeypatch.setattr(config, "get_settings", lambda: replace(SETTINGS, rewrite_model="gpt-6-luna"))
+    monkeypatch.setattr(add_model, "ingest_document", fake_ingest)
+    add_model.ingest_manual("manual-lg-fx25", connect=event_connect(events, FakeConn(lambda sql, params: None)))
+    assert events == ["open", "close", "ai", "open", "save", "close"]
+    assert_no_ai_while_open(events)
+
+
 def test_remove_closes_when_query_fails():
     events = []
 
