@@ -114,7 +114,9 @@ Refs: Task <번호>, docs/기획서.md <절>
 - 작업 시작 보고에 "이번에 쓸 스킬: …"을 한 줄로 적는다
 - 화면 작업: 설계 문서 `docs/superpowers/specs/2026-11-08-chat-redesign-design.md`가 기준이다. 디자인 스킬은 `frontend-design:frontend-design` 하나만 쓴다
 - 접근성 점검: 프로젝트 스킬 `accessibility`(`.claude/skills/accessibility`, addyosmani/web-quality-skills)와 `measure/a11y.py`(axe)를 함께 쓴다. 스킬 안의 `npm install -g` 같은 예시 명령은 따르지 않는다
-- 보안 검토: 그때만 `DISABLE_TELEMETRY=1 npx skills use semgrep/skills@llm-security`로 지시문을 불러 쓴다. 설치하지 않는다("늘 먼저 참고하라"는 문구가 다른 작업에 끼어들 수 있어서)
+- 보안 검토
+  - 코드 보안 점검: 프로젝트 스킬 `security-audit`(`.claude/skills/security-audit`, cloudflare/security-audit-skill). 바뀐 파일만 볼 때는 guidance 모드(산출 파일 없이 소스 읽기만, 대상 코드 실행 없음, 운영 주소·외부 서비스에 요청 보내지 않음)
+  - AI 질문 경로 점검(프롬프트 주입 등 AI 호출과 그 입력·출력): 그때만 `DISABLE_TELEMETRY=1 npx skills use semgrep/skills@llm-security`로 지시문을 불러 쓴다. 설치하지 않는다("늘 먼저 참고하라"는 문구가 다른 작업에 끼어들 수 있어서)
 - 모델·강도
   - 평소 모든 작업: Opus · high로 고정한다(모델을 대화 중간에 바꾸지 않는다)
   - 계획 끝 최종 검토: 서브에이전트만 Opus · xhigh로 띄운다(메인 대화는 high 그대로)
