@@ -15,4 +15,8 @@ export const EXAMPLES = {
     { "question": "필터 청소는 어떻게 해요?", "hint": "관리 방법" },
     { "question": "꺼짐 예약은 어떻게 해요?", "hint": "예약 설정 방법" },
   ],
+  "washer-samsung-sew-hbw122l": [
+    { "question": "예약 세탁은 어떻게 해요?", "hint": "예약 설정 방법" },
+    { "question": "이불은 어떻게 빨아요?", "hint": "코스 쓰는 방법" },
+  ],
 };

@@ -92,7 +92,7 @@
     "title": "5C, SC, 5E, SE 에러 코드가 발생하고 배수가 안돼요",
     "source_url": "https://www.samsungsvc.co.kr/solution/1488876",
     "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
-    "model_ids": ["washer-samsung-wd90h25"],
+    "model_ids": ["washer-samsung-wd90h25", "washer-samsung-sew-hbw122l"],
     "file": "data/guides/guide-samsung-drum-5c.html",
     "content_selector": "div.editor-view",
     "fetched_at": "2026-10-28"
@@ -103,7 +103,7 @@
     "title": "[4C, 4E 점검 코드] 물이 나오지 않아요",
     "source_url": "https://www.samsungsvc.co.kr/solution/1488864",
     "scope_note": "삼성 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
-    "model_ids": ["washer-samsung-wd90h25"],
+    "model_ids": ["washer-samsung-wd90h25", "washer-samsung-sew-hbw122l"],
     "file": "data/guides/guide-samsung-drum-4c.html",
     "content_selector": "div.editor-view",
     "fetched_at": "2026-10-28"
@@ -118,5 +118,15 @@
     "file": "data/guides/guide-lg-aircon-ch-errors.html",
     "content_selector": "#viewContent",
     "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "manual-samsung-sew-hbw122l",
+    "doc_type": "manual",
+    "title": "삼성 드럼세탁기 사용설명서",
+    "source_url": "https://www.samsungsvc.co.kr/download",
+    "scope_note": "모델 전용 — 표지 모델명 SEW-HBW122L/SEW-HBW142L",
+    "model_ids": ["washer-samsung-sew-hbw122l"],
+    "file": "data/manuals/20060907074054109_SEW-HBW122L_02367D.pdf",
+    "fetched_at": "2026-11-26"
   }
 ]
