@@ -16,7 +16,7 @@ from tests.ingest.db_rule import FakeConn
 
 ROOT = Path(__file__).resolve().parents[2]
 MANUAL = {"id": "manual-x", "doc_type": "manual", "title": "샘플 설명서", "file": "unused.pdf"}
-FILLER = "세탁조 청소는 한 달에 한 번 해 주세요. "  # 공백을 빼도 30자가 넘는 쪽 글
+FILLER = "세탁조 청소는 한 달에 한 번 해 주세요. " * 2  # 공백을 빼면 32자: 30자가 넘는 쪽 글
 DRAFT = dict(doc_id="manual-new-x1", model_id="washer-new-x1", brand="LG", appliance="washer",
              title="LG 드럼세탁기 사용설명서", source_url="https://example.com/manuals", pdf="data/manuals/x1.pdf",
              codes=["X1*N*", "X2*N*"], fetched_at="2026-11-26", name="LG 드럼세탁기",
@@ -113,11 +113,14 @@ def test_link_guide_does_not_touch_chunks(tmp_path):
 
 
 def test_link_guide_refuses_manual_or_unknown_model(tmp_path):
+    docs = tmp_path / "documents.json"
+    shutil.copy(ROOT / "data" / "documents.json", docs)
     for guide_id, model_id in (("manual-lg-fx25", "washer-lg-fx25"), ("guide-lg-drum-errors", "washer-none")):
         conn = FakeConn()
         with pytest.raises(ValueError):
-            add_model.link_guide(guide_id, model_id, connect=_connect(conn), documents_path=tmp_path / "unused.json")
+            add_model.link_guide(guide_id, model_id, connect=_connect(conn), documents_path=docs)
         assert conn.sql == []
+    assert docs.read_bytes() == (ROOT / "data" / "documents.json").read_bytes()
 
 
 # ── 되돌리기(remove) ──
