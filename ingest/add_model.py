@@ -7,8 +7,11 @@
 """
 import argparse
 import csv
+import hashlib
+import io
 import json
 import re
+import time
 from pathlib import Path
 
 from ingest.__main__ import ingest_document, load_env
@@ -20,6 +23,10 @@ from ingest.pdf import extract_pages
 DOCUMENTS = ROOT / "data" / "documents.json"
 MODELS = ROOT / "data" / "models.json"
 LEDGER = ROOT / "evaluation" / "phase2" / "ledger.csv"
+RESULTS_DIR = ROOT / "evaluation" / "results"  # 결과 CSV(질문·답·인용 쪽·found·시간)
+JUDGE_DIR = ROOT / "measure" / "out" / "phase2"  # 판정지·판정 입력(설명서 글이 들어갈 수 있어 git 밖)
+JUDGE_COLUMNS = ("qid", "질문", "답", "인용 쪽", "verdict", "borderline", "worse_verdict", "메모")  # 전 측정 판정지와 같음
+NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")  # 파일 이름에 들어가는 모델 id·label(경로 글자 막기)
 CAP_USD = 1.0  # 2차 장부 상한(Global 10)
 MIN_CHARS = 30  # 공백을 뺀 글자가 이보다 적으면 글자 없는 쪽(Claude 판단)
 APPLIANCES = ("washer", "dryer", "aircon")  # Global 5
@@ -164,6 +171,161 @@ def remove_model_data(doc_id: str, model_id: str, *, connect=_get_conn, yes: boo
         return {**out, "deleted": True}
 
 
+# ── 확인 질문(Task 9) ──
+def _ask_route(model_id: str, question: str, deps) -> dict:
+    """새 대화(앞 대화 없음)로 /api/ask를 부를 때와 같은 처리: 라우트 함수를 그대로 부른다(본문 검사·오류 응답 포함)."""
+    from app.ask.routes import AskBody, ask
+    out = ask(AskBody(model_id=model_id, question=question), debug=False, deps=deps)
+    return out if isinstance(out, dict) else json.loads(out.body)  # 오류면 {"error_code", "message"}
+
+
+def _groups(citations: list) -> list[dict]:
+    """public/js/evidence.js groupCitations와 같다: 설명서는 쪽별, 가이드는 제목별, 처음 나온 순서."""
+    groups = {}
+    for c in (c for c in citations if isinstance(c, dict)):
+        manual = c.get("doc_type") == "manual"
+        key = f"manual:{c.get('page')}" if manual else f"guide:{c.get('title')}"
+        g = groups.setdefault(key, {"doc_type": "manual" if manual else "guide", "page": c.get("page"),
+                                    "title": str(c.get("title") or ""), "quotes": []})
+        g["quotes"].append(str(c.get("quote") or ""))
+    return list(groups.values())
+
+
+def screen_text(resp: dict) -> tuple[str, str]:
+    """(답 칸, 인용 쪽 칸) — 화면이 그리는 글자 그대로(store.js 답 종류, app.js answerBody, evidence.js 라벨·경고)."""
+    if "error_code" in resp:
+        return resp.get("message", ""), "없음"
+    if resp.get("reason") == "other_brand":
+        return f"(안내) 모델 안내 {resp['answer']}", "없음"
+    if resp.get("found") is not True:
+        return f"{resp['answer']}\n(링크) 공식 고객센터에서 찾아보기", "없음"
+    citations = resp.get("citations") or []
+    groups = _groups(citations)
+    if not groups:
+        return resp["answer"], "없음"
+    warns = list(dict.fromkeys(c["warning"] for c in citations
+                               if isinstance(c, dict) and isinstance(c.get("warning"), str) and c["warning"].strip()))
+    pages = sorted(g["page"] for g in groups if g["doc_type"] == "manual" and isinstance(g["page"], int))
+    guides = sum(g["doc_type"] == "guide" for g in groups)
+    label = " · ".join(["근거 보기"] + ([f"사용설명서 {'·'.join(map(str, pages))}쪽"] if pages else [])
+                       + ([f"공식 해결 가이드 {guides}개"] if guides else []))
+    return "\n".join([resp["answer"]] + [f"(안내) 참고 {w}" for w in warns]), label
+
+
+def _evidence_md(resp: dict) -> list[str]:
+    lines = []
+    for g in _groups(resp.get("citations") or []) if resp.get("found") is True else []:
+        head = f"사용설명서 {g['page']}쪽 · {g['title']}" if g["doc_type"] == "manual" else f"공식 해결 가이드: {g['title']}"
+        lines += [f"### {head}"] + ["> " + line for q in g["quotes"] for line in q.splitlines() or [""]] + [""]
+    return lines or ["(근거 없음)", ""]
+
+
+def _manual_page_count(model_id: str) -> int:
+    doc = next((d for d in _load(DOCUMENTS) if d["doc_type"] == "manual" and model_id in d["model_ids"]), None)
+    if not doc:
+        raise ValueError(f"documents.json에 이 모델의 설명서가 없어요: {model_id}")
+    return len(extract_pages(str(ROOT / doc["file"])))
+
+
+def run_confirm(model_id: str, questions_path: str, *, expect_sha256: str, label: str, estimate_usd: float,
+                page_count: int | None = None, answer=None, deps_factory=None) -> Path:
+    """확인 질문 10개를 새 대화로 차례로 묻고 결과 CSV·판정지·판정 입력 파일을 쓴다. 결과 CSV 경로를 돌려준다.
+    파일 해시가 다르거나, 질문 세트 검사·장부 상한을 못 넘거나, 같은 이름의 결과가 있으면 묻지 않는다.
+    DB 연결은 get_deps의 검색이 그때그때 열고 닫는다(Global 8)."""
+    from evaluation.phase2_verdict import validate_confirm_set
+    from measure.budget import check_budget
+    if not (NAME_RE.fullmatch(model_id) and NAME_RE.fullmatch(label)):
+        raise ValueError("모델 id·label은 영문 소문자·숫자·하이픈만")
+    raw = Path(questions_path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expect_sha256.lower():
+        raise ValueError("확인 질문 파일 해시가 기록과 달라요")
+    rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline="")))
+    problems = validate_confirm_set(rows, page_count or _manual_page_count(model_id))
+    if problems:
+        raise ValueError("확인 질문 세트 검사 실패: " + "; ".join(problems))
+    if estimate_usd <= 0 or not check_budget(_ledger_rows(LEDGER), estimate_usd, cap_usd=CAP_USD):
+        raise ValueError(f"장부 상한 {CAP_USD}달러를 넘거나 예상 비용이 없어 묻지 않아요")
+    results = Path(RESULTS_DIR) / f"phase2-{model_id}-{label}.csv"
+    judge = Path(JUDGE_DIR) / f"{model_id}-{label}-judge.csv"
+    judge_md = Path(JUDGE_DIR) / f"{model_id}-{label}-judge-input.md"
+    if any(p.exists() for p in (results, judge, judge_md)):
+        raise ValueError(f"이미 같은 이름의 결과가 있어요(덮어쓰지 않음): {model_id}-{label}")
+    if deps_factory is None:
+        from app.ask.routes import get_deps as deps_factory
+    answer = answer or _ask_route
+
+    from app.ask import routes
+    from evaluation.run_config import warn_if_different
+    warn_if_different(routes.get_settings())  # 경고만: 운영 기본값과 다른 설정이면 알린다
+    done = []
+    for r in rows:
+        start = time.perf_counter()
+        resp = answer(model_id, r["question"], deps_factory())  # 질문마다 새 deps(라우트가 요청마다 만드는 것과 같음)
+        ms = int((time.perf_counter() - start) * 1000)
+        done.append((r, resp, ms))
+
+    results.parent.mkdir(parents=True, exist_ok=True)
+    judge.parent.mkdir(parents=True, exist_ok=True)
+    with results.open("w", encoding="utf-8-sig", newline="") as f:  # evaluation/results 관례(BOM·CRLF)
+        w = csv.writer(f)
+        w.writerow(["qid", "질문", "답", "인용 쪽", "found", "error_code", "ms"])
+        for r, resp, ms in done:
+            text, cited = screen_text(resp)
+            w.writerow([r["qid"], resp.get("question_masked", r["question"]), text, cited,
+                        resp.get("found", ""), resp.get("error_code", ""), ms])
+    with judge.open("w", encoding="utf-8-sig", newline="") as f:  # 전 측정 판정지와 같은 8열·BOM·LF
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(JUDGE_COLUMNS)
+        for r, resp, _ in done:
+            text, cited = screen_text(resp)
+            w.writerow([r["qid"], resp.get("question_masked", r["question"]), text, cited, "", "", "", ""])
+    md = [f"# {model_id} {label} 판정 입력", "", "질문별 답과 인용문·쪽(전 측정의 근거 펼친 캡처 대신). 판정은 판정지 CSV에 적는다.", ""]
+    for r, resp, _ in done:
+        text, cited = screen_text(resp)
+        md += [f"## {r['qid']}", f"질문: {resp.get('question_masked', r['question'])}", "답:", text,
+               f"인용 쪽: {cited}", "근거:", ""] + _evidence_md(resp)
+    judge_md.write_text("\n".join(md), encoding="utf-8", newline="\n")
+    return results
+
+
+def verdict_lines(judge_path: str) -> list[str]:
+    """판정지 CSV → passes() 결과와 리포트에 붙일 한 줄. 메모에 "다른 코드 절차"가 있으면 결정기록 032 줄도."""
+    from evaluation.phase2_verdict import VERDICTS, passes
+    with open(judge_path, encoding="utf-8-sig", newline="") as f:
+        rows = [r for r in csv.DictReader(f) if r["qid"].startswith("q")]
+    ok, d = passes(rows)
+    counts = "·".join(f"{v} {sum(r['verdict'] == v for r in rows)}" for v in VERDICTS)
+    borderline = sum(r["borderline"] == "yes" for r in rows)
+    lines = [f"{'합격' if ok else '미달'}: 정답 {d['correct']}·환각 {d['hallucination']}"
+             f"(경계를 나쁜 쪽으로: 정답 {d['correct_worst']}·환각 {d['hallucination_worst']})",
+             f"리포트: 확인 질문 {len(rows)}개 사람 판정 — {counts}, 경계 {borderline}개 → "
+             f"{'합격' if ok else '미달'}(합격선 정답 8개 이상·환각 0)"]
+    other = [r["qid"] for r in rows if "다른 코드 절차" in r.get("메모", "")]
+    if other:
+        lines.append(f"결정기록 032 근거로 기록: {', '.join(other)}(다시 정하기는 2차 뒤)")
+    return lines
+
+
+def checklist_lines(model_id: str, doc_id: str = "<문서 id>") -> list[str]:
+    """설계 8.3 순서: 적재 → 로컬 확인 질문 → 합격 → PR 병합·운영 화면 확인 → 그 뒤에만 "추가됨"."""
+    cmd = "python -m ingest.add_model"
+    steps = [
+        "장부(evaluation/phase2/ledger.csv)에 적재·확인 질문 예상 비용 적기",
+        f"{cmd} draft --doc-id {doc_id} --model-id {model_id} … --write",
+        f"{cmd} check --doc-id {doc_id}",
+        f"{cmd} ingest --doc-id {doc_id} --estimate-usd <예상 비용>",
+        f"{cmd} link-guide --guide-id <가이드 id> --model-id {model_id}",
+        f"{cmd} confirm --model-id {model_id} --questions <확인 질문 파일> --sha256 <기록한 해시> --label after --estimate-usd <예상 비용>",
+        "예시 질문 화면 확인: 로컬 화면에서 예시 질문을 질문마다 새 대화로 묻고 답을 봄(판정하지 않음, 사람 단계)",
+        f"사람 판정: measure/out/phase2/{model_id}-after-judge.csv의 verdict·borderline·worse_verdict·메모(설명서 원문 대조)",
+        f"{cmd} verdict --judge measure/out/phase2/{model_id}-after-judge.csv",
+        "합격이면 PR 병합(미달이면 models.json을 배포하지 않음, Global 4)",
+        f"운영 화면에서 {model_id}가 보이는지 확인",
+        "그 뒤에만 요청 상태를 \"추가됨\"으로(Supabase 표 화면)",
+    ]
+    return [f"{i}. {s}" for i, s in enumerate(steps, 1)]
+
+
 # ── 명령 ──
 def _ledger_rows(path: Path) -> list[dict]:
     with Path(path).open(encoding="utf-8-sig", newline="") as f:
@@ -197,7 +359,31 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--doc-id", required=True)
     r.add_argument("--model-id", required=True)
     r.add_argument("--yes", action="store_true", help="사용자 확인 뒤에만")
+    c = sub.add_parser("confirm")
+    for arg in ("model-id", "questions", "sha256", "label"):
+        c.add_argument(f"--{arg}", required=True)
+    c.add_argument("--estimate-usd", type=float, required=True, help="장부에 적은 예상 비용")
+    v = sub.add_parser("verdict")
+    v.add_argument("--judge", required=True, help="사람이 판정을 채운 판정지 CSV")
+    k = sub.add_parser("checklist")
+    k.add_argument("--model-id", required=True)
+    k.add_argument("--doc-id", default="<문서 id>")
     a = p.parse_args(argv)
+
+    if a.cmd == "verdict":
+        print("\n".join(verdict_lines(a.judge)))
+        return
+    if a.cmd == "checklist":
+        print("\n".join(checklist_lines(a.model_id, a.doc_id)))
+        return
+    if a.cmd == "confirm":
+        load_env()
+        try:
+            path = run_confirm(a.model_id, a.questions, expect_sha256=a.sha256, label=a.label, estimate_usd=a.estimate_usd)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+        print(f"결과 {path.relative_to(ROOT)} · 판정지 measure/out/phase2/{a.model_id}-{a.label}-judge.csv")
+        return
 
     if a.cmd == "check":
         result = check_document(_doc(a.doc_id))

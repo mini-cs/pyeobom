@@ -76,7 +76,7 @@ def _run(env, **kw):
     return add_model.run_confirm(MODEL, str(env["questions"]), **{**args, **kw})
 
 
-def _read(path, encoding="utf-8"):
+def _read(path, encoding="utf-8-sig"):  # 결과 CSV는 evaluation/results 관례대로 BOM 있는 UTF-8
     with open(path, encoding=encoding, newline="") as f:
         return list(csv.DictReader(f))
 
