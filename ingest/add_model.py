@@ -12,6 +12,7 @@ import io
 import json
 import re
 import time
+from datetime import date, datetime
 from pathlib import Path
 
 from ingest.__main__ import ingest_document, load_env
@@ -30,6 +31,8 @@ NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")  # 파일 이름에 들어가는 모
 CAP_USD = 1.0  # 2차 장부 상한(Global 10)
 MIN_CHARS = 30  # 공백을 뺀 글자가 이보다 적으면 글자 없는 쪽(Claude 판단)
 APPLIANCES = ("washer", "dryer", "aircon")  # Global 5
+GUIDE_DOCS = "doc_id IN (SELECT id FROM documents WHERE doc_type = 'guide')"  # 가이드 문서와의 연결만(고정 SQL 조각)
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")  # 스프레드시트가 수식으로 읽는 첫 글자(OWASP CSV Injection)
 
 
 def _get_conn():
@@ -66,6 +69,11 @@ def draft_entries(*, doc_id, model_id, brand, appliance, title, source_url, pdf,
                   name, scope_note, model_name_hint) -> tuple[dict, dict]:
     """documents.json·models.json 항목 초안. 사람이 정할 값(name·scope_note·model_name_hint)은 인자로 받아
     자리 표시 글자를 남기지 않는다. 진단 쪽(diagnostic_refs)은 빈 목록으로 시작한다."""
+    if not (NAME_RE.fullmatch(doc_id) and NAME_RE.fullmatch(model_id)):
+        raise ValueError("문서·모델 id는 영문 소문자·숫자·하이픈만")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fetched_at):
+        raise ValueError("fetched_at은 YYYY-MM-DD")
+    date.fromisoformat(fetched_at)  # 없는 날짜(13월 등)면 ValueError
     if doc_id in {d["id"] for d in _load(DOCUMENTS)}:
         raise ValueError(f"이미 있는 문서 id: {doc_id}")
     if model_id in {m["id"] for m in _load(MODELS)}:
@@ -138,7 +146,10 @@ def link_guide(guide_id: str, model_id: str, *, connect=_get_conn, documents_pat
 # ── 되돌리기 ──
 def remove_model_data(doc_id: str, model_id: str, *, connect=_get_conn, yes: bool = False) -> dict:
     """지울 개수를 세어 돌려주고, yes=True일 때만 그 문서의 chunks·document_models·documents 행과
-    그 모델의 가이드 연결 행을 한 트랜잭션으로 지운다. bundle_chunks·다른 문서는 안 건드린다(설계 9.3-12)."""
+    그 모델의 가이드 연결 행(가이드 문서와의 연결만)을 한 트랜잭션으로 지운다. bundle_chunks·다른 문서는 안 건드린다(설계 9.3-12).
+    그 모델이 아직 models.json에 있거나, DB에 없는 문서·가이드·연결 안 된 모델·다른 모델도 쓰는 설명서면 거절한다."""
+    if model_id in {m["id"] for m in _load(MODELS)}:
+        raise ValueError(f"{model_id}가 아직 data/models.json에 있어요. models.json에서 빼는 PR을 병합한 뒤에 지워요(Task 10 Step 1)")
     with connect() as conn, conn.cursor() as cur:
         def one(sql, params=()):
             cur.execute(sql, params)
@@ -146,29 +157,67 @@ def remove_model_data(doc_id: str, model_id: str, *, connect=_get_conn, yes: boo
             return row[0] if row else None
 
         doc_type = one("SELECT doc_type FROM documents WHERE id = %s", (doc_id,))
-        if doc_type not in (None, "manual"):
+        if doc_type is None:
+            raise ValueError(f"DB에 없는 문서예요(id를 확인하세요): {doc_id}")
+        if doc_type != "manual":
             raise ValueError(f"설명서만 되돌려요(가이드는 지우지 않음, Global 9): {doc_id}")
-        if doc_type and not one("SELECT count(*) FROM document_models WHERE doc_id = %s AND model_id = %s",
-                                (doc_id, model_id)):
+        if not one("SELECT count(*) FROM document_models WHERE doc_id = %s AND model_id = %s", (doc_id, model_id)):
             raise ValueError(f"문서와 모델이 연결돼 있지 않아요: {doc_id} · {model_id}")
+        others = one("SELECT count(*) FROM document_models WHERE doc_id = %s AND model_id <> %s", (doc_id, model_id))
+        if others:
+            raise ValueError(f"이 설명서는 다른 모델 {others}개에도 연결돼 있어 지우지 않아요: {doc_id}")
         has_bundle = one("SELECT to_regclass('bundle_chunks')") is not None
-        out = {"doc_id": doc_id, "model_id": model_id, "documents": 1 if doc_type else 0,
+        has_variants = one("SELECT to_regclass('chunk_variants')") is not None
+        out = {"doc_id": doc_id, "model_id": model_id, "documents": 1,
                "chunks": one("SELECT count(*) FROM chunks WHERE doc_id = %s", (doc_id,)),
                "document_models": one("SELECT count(*) FROM document_models WHERE doc_id = %s", (doc_id,)),
-               "guide_links": one("SELECT count(*) FROM document_models WHERE model_id = %s AND doc_id <> %s",
-                                  (model_id, doc_id)),
+               "guide_links": one(f"SELECT count(*) FROM document_models WHERE model_id = %s AND {GUIDE_DOCS}", (model_id,)),
                # 실험 조각이 이 문서를 참조하면 documents 행을 지울 수 없다(외래 키). 세기만 하고 건드리지 않는다
                "bundle_chunks": one("SELECT count(*) FROM bundle_chunks WHERE doc_id = %s", (doc_id,)) if has_bundle else 0,
+               # 실험 색인은 chunks를 ON DELETE CASCADE로 참조해 함께 지워진다(measure/chunk_variants.sql)
+               "chunk_variants": one("SELECT count(*) FROM chunk_variants v JOIN chunks c ON c.id = v.chunk_id "
+                                     "WHERE c.doc_id = %s", (doc_id,)) if has_variants else 0,
                "deleted": False}
         if not yes:
             return out
         if out["bundle_chunks"]:
             raise ValueError(f"bundle_chunks에 이 문서 행이 {out['bundle_chunks']}개 있어 지우지 않아요(실험 조각은 따로 정리)")
         with conn.transaction():
-            cur.execute("DELETE FROM document_models WHERE doc_id = %s OR model_id = %s", (doc_id, model_id))
+            cur.execute(f"DELETE FROM document_models WHERE model_id = %s AND {GUIDE_DOCS}", (model_id,))
+            cur.execute("DELETE FROM document_models WHERE doc_id = %s", (doc_id,))
             cur.execute("DELETE FROM chunks WHERE doc_id = %s", (doc_id,))
             cur.execute("DELETE FROM documents WHERE id = %s", (doc_id,))
         return {**out, "deleted": True}
+
+
+# ── 적재 ──
+def require_production(settings) -> None:
+    """운영 그대로 설정(evaluation/run_config.PRODUCTION)이 아니면 멈춘다. 경고만 하고 계속하지 않는다(Global 1)."""
+    from evaluation.run_config import differences
+    diffs = differences(settings)
+    if diffs:
+        raise ValueError("운영 그대로 설정이 아니라 멈춰요(.env 확인): " + ", ".join(diffs))
+
+
+def ingest_manual(doc_id: str, *, yes: bool = False, connect=_get_conn) -> dict:
+    """설명서만 적재한다(가이드는 다시 적재하지 않음, Global 9). 이미 DB에 있는 문서는 다시 넣으면 조각을 지우고
+    새로 넣으므로(데이터 삭제) yes=True일 때만. 있는지 보는 연결은 짧게 열고 닫은 뒤 임베딩한다(Global 8)."""
+    from app.core.config import get_settings
+    require_production(get_settings())
+    doc = _doc(doc_id)
+    if doc["doc_type"] != "manual":
+        raise ValueError(f"가이드는 다시 적재하지 않아요(Global 9, link-guide로 연결만): {doc_id}")
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM documents WHERE id = %s", (doc_id,))
+        exists = cur.fetchone() is not None
+    if exists and not yes:
+        raise ValueError(f"이미 DB에 있는 문서예요. 다시 넣으면 조각을 지우고 새로 넣어요(사용자 확인 뒤 --yes): {doc_id}")
+    return ingest_document(doc_id, connect=connect)
+
+
+def csv_cell(value):
+    """스프레드시트가 수식으로 읽지 않게 = + - @ 탭 CR로 시작하는 글자 앞에 '를 붙인다(판정 입력 md는 원문 그대로)."""
+    return "'" + value if isinstance(value, str) and value.startswith(FORMULA_START) else value
 
 
 # ── 확인 질문(Task 9) ──
@@ -220,6 +269,16 @@ def _evidence_md(resp: dict) -> list[str]:
     return lines or ["(근거 없음)", ""]
 
 
+def _write_results(path: Path, done: list) -> None:
+    with path.open("w", encoding="utf-8-sig", newline="") as f:  # evaluation/results 관례(BOM·CRLF)
+        w = csv.writer(f)
+        w.writerow(["qid", "질문", "답", "인용 쪽", "found", "error_code", "ms"])
+        for r, resp, ms in done:
+            text, cited = screen_text(resp)
+            w.writerow([csv_cell(v) for v in (r["qid"], resp.get("question_masked", r["question"]), text, cited,
+                                               resp.get("found", ""), resp.get("error_code", ""), ms)])
+
+
 def _manual_page_count(model_id: str) -> int:
     doc = next((d for d in _load(DOCUMENTS) if d["doc_type"] == "manual" and model_id in d["model_ids"]), None)
     if not doc:
@@ -234,8 +293,12 @@ def run_confirm(model_id: str, questions_path: str, *, expect_sha256: str, label
     DB 연결은 get_deps의 검색이 그때그때 열고 닫는다(Global 8)."""
     from evaluation.phase2_verdict import validate_confirm_set
     from measure.budget import check_budget
+    from app.ask import routes
+    from evaluation.run_config import write_settings
     if not (NAME_RE.fullmatch(model_id) and NAME_RE.fullmatch(label)):
         raise ValueError("모델 id·label은 영문 소문자·숫자·하이픈만")
+    settings = routes.get_settings()  # 라우트가 쓰는 것과 같은 설정
+    require_production(settings)
     raw = Path(questions_path).read_bytes()
     if hashlib.sha256(raw).hexdigest() != expect_sha256.lower():
         raise ValueError("확인 질문 파일 해시가 기록과 달라요")
@@ -248,37 +311,40 @@ def run_confirm(model_id: str, questions_path: str, *, expect_sha256: str, label
     results = Path(RESULTS_DIR) / f"phase2-{model_id}-{label}.csv"
     judge = Path(JUDGE_DIR) / f"{model_id}-{label}-judge.csv"
     judge_md = Path(JUDGE_DIR) / f"{model_id}-{label}-judge-input.md"
-    if any(p.exists() for p in (results, judge, judge_md)):
+    if any(p.exists() for p in (results, results.with_suffix(".settings.json"), judge, judge_md)):
         raise ValueError(f"이미 같은 이름의 결과가 있어요(덮어쓰지 않음): {model_id}-{label}")
     if deps_factory is None:
         from app.ask.routes import get_deps as deps_factory
     answer = answer or _ask_route
 
-    from app.ask import routes
-    from evaluation.run_config import warn_if_different
-    warn_if_different(routes.get_settings())  # 경고만: 운영 기본값과 다른 설정이면 알린다
     done = []
     for r in rows:
         start = time.perf_counter()
         resp = answer(model_id, r["question"], deps_factory())  # 질문마다 새 deps(라우트가 요청마다 만드는 것과 같음)
         ms = int((time.perf_counter() - start) * 1000)
         done.append((r, resp, ms))
+        if "error_code" in resp:  # 오류 규칙(2026-11-26 사용자 결정): 하나라도 나면 더 묻지 않고 판정지도 만들지 않음
+            break
 
     results.parent.mkdir(parents=True, exist_ok=True)
+    errors = [resp["error_code"] for _, resp, _ in done if "error_code" in resp]
+    if errors:
+        failed = results.with_name(f"phase2-{model_id}-{label}-failed-{datetime.now():%Y%m%d-%H%M%S}.csv")
+        _write_results(failed, done)
+        write_settings(failed, settings, label)
+        qid = done[-1][0]["qid"]
+        raise ValueError(f"확인 질문 {qid}에서 오류 {', '.join(errors)} → 판정지를 만들지 않고 멈췄어요. 부분 결과 {failed.name}. "
+                         "같은 label로 다시 실행할 수 있어요(다시 돌리기 1번에 세지 않음, 개발일지에 오류 종류·횟수를 기록)")
+    _write_results(results, done)
+    write_settings(results, settings, label)  # 그때 설정(키·접속 주소 없음)을 결과 옆에
     judge.parent.mkdir(parents=True, exist_ok=True)
-    with results.open("w", encoding="utf-8-sig", newline="") as f:  # evaluation/results 관례(BOM·CRLF)
-        w = csv.writer(f)
-        w.writerow(["qid", "질문", "답", "인용 쪽", "found", "error_code", "ms"])
-        for r, resp, ms in done:
-            text, cited = screen_text(resp)
-            w.writerow([r["qid"], resp.get("question_masked", r["question"]), text, cited,
-                        resp.get("found", ""), resp.get("error_code", ""), ms])
     with judge.open("w", encoding="utf-8-sig", newline="") as f:  # 전 측정 판정지와 같은 8열·BOM·LF
         w = csv.writer(f, lineterminator="\n")
         w.writerow(JUDGE_COLUMNS)
         for r, resp, _ in done:
             text, cited = screen_text(resp)
-            w.writerow([r["qid"], resp.get("question_masked", r["question"]), text, cited, "", "", "", ""])
+            w.writerow([csv_cell(v) for v in (r["qid"], resp.get("question_masked", r["question"]), text, cited)]
+                       + ["", "", "", ""])
     md = [f"# {model_id} {label} 판정 입력", "", "질문별 답과 인용문·쪽(전 측정의 근거 펼친 캡처 대신). 판정은 판정지 CSV에 적는다.", ""]
     for r, resp, _ in done:
         text, cited = screen_text(resp)
@@ -352,6 +418,7 @@ def main(argv: list[str] | None = None) -> None:
     i = sub.add_parser("ingest")
     i.add_argument("--doc-id", required=True)
     i.add_argument("--estimate-usd", type=float, required=True, help="장부(evaluation/phase2/ledger.csv)에 적은 예상 비용")
+    i.add_argument("--yes", action="store_true", help="이미 DB에 있는 문서를 지우고 다시 넣을 때(사용자 확인 뒤에만)")
     g = sub.add_parser("link-guide")
     g.add_argument("--guide-id", required=True)
     g.add_argument("--model-id", required=True)
@@ -405,7 +472,10 @@ def main(argv: list[str] | None = None) -> None:
         if a.estimate_usd <= 0 or not check_budget(_ledger_rows(LEDGER), a.estimate_usd, cap_usd=CAP_USD):
             raise SystemExit(f"장부 상한 {CAP_USD}달러를 넘거나 예상 비용이 없어 적재하지 않아요")
         load_env()
-        print(json.dumps(ingest_document(a.doc_id), ensure_ascii=False))
+        try:
+            print(json.dumps(ingest_manual(a.doc_id, yes=a.yes), ensure_ascii=False))
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
     else:
         load_env()
         if a.cmd == "link-guide":
