@@ -15,16 +15,17 @@ def load_env() -> None:
                 os.environ.setdefault(key.strip(), value.strip().strip('"'))
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(prog="python -m ingest")
-    parser.add_argument("--doc-id", required=True)
-    args = parser.parse_args()
+def _document(doc_id: str) -> dict:
     docs = {d["id"]: d for d in load_documents()}
-    if args.doc_id not in docs:
-        raise SystemExit(f"documents.json에 없는 문서: {args.doc_id} (있는 것: {', '.join(docs)})")
-    doc = docs[args.doc_id]
+    if doc_id not in docs:
+        raise SystemExit(f"documents.json에 없는 문서: {doc_id} (있는 것: {', '.join(docs)})")
+    return docs[doc_id]
 
-    load_env()
+
+def ingest_document(doc_id: str, *, connect=None, embed=None) -> dict:
+    """조각 → 임베딩을 먼저 다 만든 뒤 연결을 열어 save()하고 바로 닫는다(2차 Global 8 DB 연결 규칙).
+    connect·embed가 없으면 운영 것(get_conn·embed_texts)을 쓴다. 설정은 부른 쪽이 load_env 한 뒤에 읽힌다."""
+    doc = _document(doc_id)
     from app.catalog.registry import load_models
     from app.core.config import get_settings
     from app.core.db import get_conn  # load_env 뒤에 설정을 읽게 한다
@@ -37,10 +38,20 @@ def main() -> None:
     models = {m["id"]: m for m in load_models()}
     settings = get_settings()
     warn_if_different(settings)  # 경고만(멈추지 않음): 조각 설명 설정이 운영 기록과 다르면 알린다(설계 5절 4, 검토 I1)
-    embeddings = embed_texts(ingest_texts(doc, chunks_src, settings, models))
-    with get_conn() as conn:
+    embeddings = (embed or embed_texts)(ingest_texts(doc, chunks_src, settings, models))
+    with (connect or get_conn)() as conn:
         save(conn, doc, chunks, embeddings)
-    print(f"{doc['id']}: 조각 {len(chunks)}개, 적용 범위 밖이라 뺀 문단 {dropped}개, 연결 모델 {', '.join(doc['model_ids'])}")
+    return {"doc_id": doc["id"], "chunks": len(chunks), "dropped": dropped}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="python -m ingest")
+    parser.add_argument("--doc-id", required=True)
+    args = parser.parse_args()
+    doc = _document(args.doc_id)
+    load_env()
+    out = ingest_document(args.doc_id)
+    print(f"{doc['id']}: 조각 {out['chunks']}개, 적용 범위 밖이라 뺀 문단 {out['dropped']}개, 연결 모델 {', '.join(doc['model_ids'])}")
 
 
 if __name__ == "__main__":
