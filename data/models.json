@@ -49,5 +49,21 @@
       "manual:34",
       "manual:49"
     ]
+  },
+  {
+    "id": "washer-lg-fx21wnc",
+    "brand": "LG",
+    "appliance": "washer",
+    "model_name": "FX21*NC",
+    "display_name": "LG 드럼세탁기 FX21 (FX21*NC)",
+    "name": "LG 드럼세탁기 FX21",
+    "model_codes": [
+      "FX21*NC"
+    ],
+    "official_url": "https://www.lge.co.kr/support/product-manuals",
+    "model_name_hint": "제품에 붙은 라벨(옆면·뒷면 등)에서 모델명을 확인하세요. 위치는 제품마다 달라요",
+    "diagnostic_refs": [
+      "manual:50"
+    ]
   }
 ]

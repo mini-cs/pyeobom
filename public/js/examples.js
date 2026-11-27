@@ -15,4 +15,8 @@ export const EXAMPLES = {
     { "question": "필터 청소는 어떻게 해요?", "hint": "관리 방법" },
     { "question": "꺼짐 예약은 어떻게 해요?", "hint": "예약 설정 방법" },
   ],
+  "washer-lg-fx21wnc": [
+    { "question": "통살균은 어떻게 해요?", "hint": "세탁조 관리 방법" },
+    { "question": "세탁기가 심하게 흔들려요", "hint": "원인과 해결 방법" },
+  ],
 };

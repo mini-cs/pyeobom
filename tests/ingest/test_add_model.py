@@ -42,7 +42,7 @@ def test_check_flags_remaining_page_marker():
 
 def test_existing_three_manuals_pass_check():
     manuals = [d for d in load_documents() if d["doc_type"] == "manual"]
-    assert len(manuals) == 3
+    assert len(manuals) == 4   # 2차 FX21WNC 설명서도 check 통과(2026-11-27)
     missing = [d["id"] for d in manuals if not (ROOT / d["file"]).exists()]
     if missing:
         pytest.skip(f"로컬 PDF 없음: {missing}")
@@ -101,18 +101,21 @@ def test_json_writers_keep_current_format(tmp_path):
 def test_link_guide_does_not_touch_chunks(tmp_path):
     docs = tmp_path / "documents.json"
     shutil.copy(ROOT / "data" / "documents.json", docs)
+    # 연결 전 목록(모델을 더하면 늘어나므로 파일에서 읽음) 끝에 에어컨이 붙어야 한다
+    before = next(d for d in json.loads(docs.read_text(encoding="utf-8")) if d["id"] == "guide-lg-drum-errors")["model_ids"]
+    expected = [*before, "aircon-lg-sq06fa1wds"]
     conn = FakeConn(rowcount=1)
     connect = _connect(conn)
     assert add_model.link_guide("guide-lg-drum-errors", "aircon-lg-sq06fa1wds", connect=connect, documents_path=docs) is True
     assert len(conn.sql) == 1 and "chunks" not in conn.sql[0]
     assert conn.sql[0].startswith("INSERT INTO document_models") and "ON CONFLICT DO NOTHING" in conn.sql[0]
     guide = next(d for d in json.loads(docs.read_text(encoding="utf-8")) if d["id"] == "guide-lg-drum-errors")
-    assert guide["model_ids"] == ["washer-lg-fx25", "aircon-lg-sq06fa1wds"]
+    assert guide["model_ids"] == expected
     # 다시 연결하면 DB는 그대로(0행), 파일에 두 번 넣지 않음
     assert add_model.link_guide("guide-lg-drum-errors", "aircon-lg-sq06fa1wds", connect=_connect(FakeConn(rowcount=0)),
                                 documents_path=docs) is False
     guide = next(d for d in json.loads(docs.read_text(encoding="utf-8")) if d["id"] == "guide-lg-drum-errors")
-    assert guide["model_ids"] == ["washer-lg-fx25", "aircon-lg-sq06fa1wds"]
+    assert guide["model_ids"] == expected
 
 
 def test_link_guide_refuses_manual_or_unknown_model(tmp_path):
