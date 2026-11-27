@@ -339,6 +339,10 @@
 - 단계 순서는 `python -m ingest.add_model checklist` 출력 그대로(설계 8.3)
 - 시간 기록지 `measure/out/phase2/<모델 id>-request.timelog.csv`(git 밖)
 
+## 후 측정 ② 결과 (`FX21WNC`, 2026-11-27)
+
+확인 질문 `evaluation/phase2/washer-lg-fx21wnc-confirm.csv`(적재 전 커밋 `04debf1`, SHA-256 `baf4c275f2c7ad1cf72fa6338d93826251e007c396de0e7d9fe3df7afc84f99a`). 표지 모델명 FX21*NC, 규칙 d로 인정(사용자 2026-11-27).
+
 ## 한계
 
 - 같은 모델을 두 번째 넣을 때는 손에 익어 빨라지는 효과가 섞인다. 그래서 처음 보는 모델(후 ②)도 함께 잰다. 표본이 작다(설계 9.3-10)
