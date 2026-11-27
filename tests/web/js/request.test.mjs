@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   normalizeModelKey, findExistingModel, validateRequest, requestErrorMessage, requestRow, LOGIN_REQUIRED,
+  hasSavedLogin, sortRequests, summarizeRequests, requestView,
 } from "../../../public/js/request.js";
 import { isOtpCode } from "../../../public/js/auth.js";
 
@@ -80,4 +81,36 @@ test("requestErrorMessage: 그 밖(권한 42501·연결 실패)은 잠시 쓸 �
 test("isOtpCode: 숫자 6~10자리만(길이 고정 안 함, 덧붙임 A-2)", () => {
   for (const ok of ["123456", "12345678", "1234567890"]) assert.equal(isOtpCode(ok), true, ok);
   for (const bad of ["12345", "12345678901", "12a456", "", "123 456"]) assert.equal(isOtpCode(bad), false, bad);
+});
+
+test("hasSavedLogin: Supabase 로그인 기록 키가 있을 때만 true(값은 보지 않음)", () => {
+  const store = (keys) => ({ length: keys.length, key: (i) => keys[i] });
+  assert.equal(hasSavedLogin(store(["pyeobom.conversations", "sb-supabase-auth-token"])), true);
+  assert.equal(hasSavedLogin(store(["pyeobom.conversations", "sb-auth-token", "sb-x-auth-token-code-verifier"])), false);
+  assert.equal(hasSavedLogin({ get length() { throw new Error("막힘"); } }), false);
+});
+
+test("sortRequests·summarizeRequests: 최근에 바뀐 순, 상태 개수는 정한 순서·0은 뺌", () => {
+  const rows = [
+    { id: 1, status: "대기", updated_at: "2026-11-26T03:00:00Z" },
+    null,
+    { id: 2, status: "추가됨", updated_at: "2026-11-27T03:00:00Z" },
+    { id: 3, status: "확인 중", updated_at: "2026-11-27T01:00:00Z" },
+  ];
+  assert.deepEqual(sortRequests(rows).map((r) => r.id), [2, 3, 1]);
+  assert.deepEqual(summarizeRequests(rows), { total: 3, parts: [
+    { status: "추가됨", count: 1 }, { status: "확인 중", count: 1 }, { status: "대기", count: 1 }] });
+});
+
+test("requestView: 추가됨은 배포된 모델일 때만 누를 수 있고, 추가 어려움은 사유", () => {
+  const deployed = new Set(["washer-lg-fx21wnc"]);
+  const base = { brand: " LG ", model_text: "FX21WNC ", category: "washer", updated_at: "2026-11-27T03:00:00Z" };
+  assert.deepEqual(requestView({ ...base, status: "추가됨", model_id: "washer-lg-fx21wnc" }, deployed), {
+    title: "LG FX21WNC", category: "washer", status: "추가됨", updatedAt: "2026-11-27T03:00:00Z",
+    extra: "눌러서 바로 질문하기", href: "#chat/washer-lg-fx21wnc" });
+  const hidden = requestView({ ...base, status: "추가됨", model_id: "dryer-fake-not-deployed" }, deployed);
+  assert.equal(hidden.href, null); assert.equal(hidden.extra, null);
+  assert.equal(requestView({ ...base, status: "추가 어려움", reason: " 글자가 없는 설명서(테스트) " }, deployed).extra,
+    "사유: 글자가 없는 설명서(테스트)");
+  assert.equal(requestView({ ...base, status: "대기" }, deployed).extra, null);
 });

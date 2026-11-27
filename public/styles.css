@@ -437,6 +437,9 @@ a.icon-button { text-decoration: none; }
   line-height: var(--leading-ui);
 }
 .request-exists strong { font-weight: var(--weight-semibold); }
+/* 2차 Task 11 ① 내 요청: 카드는 .conv-card를 다시 쓰고, 상태는 굵은 글자로 구분(색만으로 구분하지 않음) */
+.request-item .card-title { white-space: normal; }
+.requests-empty { display: flex; flex-direction: column; gap: var(--space-3); }
 
 /* 흰 테두리 입력칸(2026-11-25 사용자 결정, 가이드 6절 14): 실제 <label>이 비었고 포커스 없으면 칸 안, 아니면 테두리 선 위로.
    평소 테두리 --color-border-strong(흰 바탕 3.36:1), 포커스 때 본문색 + 포커스 링 */

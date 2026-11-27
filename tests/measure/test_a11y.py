@@ -25,6 +25,7 @@ def test_states_are_plan_condition_4_list():
     # 그 뒤에 2026-11-11 근거 접기 확인용 2개(근거 펼침, 공식 링크 표시)를 덧붙인다(조건 4의 15개는 그대로)
     # 2026-11-25 개인정보 처리방침 페이지 1개를 맨 뒤에 덧붙인다
     # 2026-11-25 2차 Task 6: 새 화면 5개(로컬 전용, 가짜 Supabase)를 맨 뒤에 덧붙인다. 같은 날 덧붙임: 로그인한 서랍 1개, 계정 바꾸기 확인 창 1개
+    # 2026-11-27 2차 Task 11 ① 내 요청: 첫 화면 요약 줄 1개, #requests 목록 1개(로컬 전용)를 맨 뒤에 덧붙인다
     assert list(STATES) == [
         "landing-empty", "landing-recent", "category", "model-washer", "model-aircon",
         "chat-empty", "chat-loading", "chat-answer", "chat-followup", "chat-not-found", "chat-other-brand",
@@ -33,6 +34,7 @@ def test_states_are_plan_condition_4_list():
         "model-dryer", "login-sheet", "login-code", "request-form", "request-done",
         "drawer-account", "switch-confirm",
         "privacy",
+        "landing-my-requests", "requests-list",
     ]
 
 

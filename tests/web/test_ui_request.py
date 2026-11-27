@@ -6,6 +6,7 @@ import base64
 import json
 import re
 import time
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from playwright.sync_api import expect
@@ -74,6 +75,7 @@ class FakeSupabase:
         self.config_hits = []   # /api/public-config 요청(open_app이 적음)
         self.hold_token = False   # True면 교환 응답을 붙잡아 둔다(테스트가 release로 보냄)
         self.held = []
+        self.rows = []   # "내 요청" 읽기(GET /rest/v1/model_requests) 응답
 
     def release(self):
         for route, cors in self.held:
@@ -119,7 +121,7 @@ class FakeSupabase:
         if path.startswith("/auth/v1/authorize"):
             return 200, "<!doctype html><title>가짜 구글</title><p>가짜 구글 로그인(테스트)</p>"
         if path.startswith("/rest/v1/model_requests"):
-            return self.insert if method == "POST" else (200, [])
+            return self.insert if method == "POST" else (200, self.rows)
         return 404, {"message": "가짜 Supabase에 없는 주소(테스트)"}
 
 
@@ -905,3 +907,106 @@ def test_landing_and_drawer_footers_link_to_policy(open_app):
     drawer = page.get_by_role("dialog", name="지난 대화")
     expect(drawer.get_by_role("link", name=POLICY)).to_be_visible()
     expect(drawer.get_by_role("link", name=POLICY)).to_have_attribute("href", "/privacy.html")
+
+
+# ── 2차 Task 11 ① "내 요청"(설계 docs/superpowers/specs/2026-11-27-my-requests-design.md) ──
+ROWS = [  # 가짜 요청(누가 봐도 가짜인 값)
+    {"id": 11, "category": "dryer", "brand": "가짜브랜드", "model_text": "DV90-FAKE1", "status": "확인 중",
+     "model_id": None, "reason": None, "updated_at": "2026-11-27T01:00:00Z"},
+    {"id": 12, "category": "washer", "brand": "LG", "model_text": "FX21WNC", "status": "추가됨",
+     "model_id": "washer-lg-fx21wnc", "reason": None, "updated_at": "2026-11-27T03:00:00Z"},
+    {"id": 13, "category": "aircon", "brand": "가짜브랜드", "model_text": "AB-1234", "status": "추가 어려움",
+     "model_id": None, "reason": "글자가 없는 설명서라 추가하기 어려워요(테스트)", "updated_at": "2026-11-26T03:00:00Z"},
+    {"id": 14, "category": "washer", "brand": "가짜브랜드", "model_text": "CD-5678", "status": "대기",
+     "model_id": None, "reason": None, "updated_at": "2026-11-25T03:00:00Z"},
+]
+
+
+def _login_then_landing(page, fake, rows):
+    fake.rows = rows
+    page.goto("/#requests")
+    log_in_with_code(page, fake)
+    page.goto("/")
+
+
+def test_my_requests_card_shows_status(open_app):
+    page, fake = open_app()
+    _login_then_landing(page, fake, ROWS)
+    card = page.get_by_role("link", name=re.compile("내 요청 4건"))
+    expect(card).to_contain_text("추가됨 1 · 확인 중 1 · 대기 1 · 추가 어려움 1")
+    card.click()
+    expect(page.get_by_role("heading", level=1)).to_have_text("내 요청")
+    items = page.locator('[data-screen="requests"] .conv-list > li')
+    expect(items).to_have_count(4)
+    expect(items.nth(0)).to_contain_text("LG FX21WNC")
+    expect(items.nth(0)).to_contain_text("세탁기 · 추가됨 · 11월 27일")
+    expect(items.nth(0).get_by_role("link")).to_have_attribute("href", "#chat/washer-lg-fx21wnc")
+    expect(items.nth(1)).to_contain_text("건조기 · 확인 중")
+    expect(items.nth(1).get_by_role("link")).to_have_count(0)
+    expect(items.nth(2)).to_contain_text("사유: 글자가 없는 설명서라 추가하기 어려워요(테스트)")
+    expect(page.locator('[data-screen="requests"]')).to_contain_text("추가됨이나 추가 어려움으로 바뀌면 메일로도 알려 드려요.")
+    gets = [c for c in fake.calls if c["method"] == "GET" and c["path"].startswith("/rest/v1/model_requests")]
+    assert gets and all(parse_qs(urlsplit(c["path"]).query)["select"] == ["id,category,brand,model_text,status,model_id,reason,updated_at"]
+                        for c in gets)   # 이메일·user_id를 읽지 않는다
+
+
+def test_my_requests_zero_and_not_deployed(open_app):
+    page, fake = open_app()
+    _login_then_landing(page, fake, [])
+    expect(page.get_by_role("link", name="시작하기")).to_be_visible()
+    expect(page.locator("#landing-requests")).to_be_hidden()
+    page.goto("/#requests")
+    expect(page.get_by_text("아직 요청이 없어요")).to_be_visible()
+    fake.rows = [{**ROWS[1], "model_id": "dryer-fake-not-deployed"}]
+    page.goto("/")
+    page.goto("/#requests")
+    items = page.locator('[data-screen="requests"] .conv-list > li')
+    expect(items).to_have_count(1)
+    expect(items.get_by_role("link")).to_have_count(0)
+    expect(items).not_to_contain_text("눌러서 바로 질문하기")
+
+
+def test_my_requests_direct_without_login_opens_sheet(open_app):
+    page, fake = open_app()
+    fake.rows = ROWS
+    page.goto("/#requests")
+    expect(login_sheet(page)).to_be_visible()
+    log_in_with_code(page, fake)
+    expect(page.locator('[data-screen="requests"] .conv-list > li')).to_have_count(4)
+
+
+def test_my_requests_stale_login_record_shows_nothing(open_app):   # Review Focus 1
+    page, fake = open_app(init="localStorage.setItem('sb-supabase-auth-token', '망가진 값(테스트)')")
+    expect(page.get_by_role("link", name="시작하기")).to_be_visible()
+    expect(page.locator("#landing-requests")).to_be_hidden()
+
+
+def test_my_requests_supabase_down_keeps_landing(open_app):   # Review Focus 2
+    page, fake = open_app()
+    _login_then_landing(page, fake, ROWS)
+    fake.down = True
+    page.reload()
+    expect(page.locator("#landing-requests")).to_be_hidden()
+    page.get_by_role("link", name="시작하기").click()
+    expect(page.get_by_role("heading", level=1)).to_have_text(CATEGORY_H1)
+
+
+def test_my_requests_reason_is_plain_text(open_app):   # Review Focus 3
+    page, fake = open_app()
+    _login_then_landing(page, fake, [{**ROWS[2], "reason": "<b>굵게</b>(테스트)"}])
+    page.goto("/#requests")
+    expect(page.get_by_text("사유: <b>굵게</b>(테스트)")).to_be_visible()
+
+
+def test_my_requests_cleared_after_logout(open_app):   # Review Focus 5
+    page, fake = open_app()
+    _login_then_landing(page, fake, ROWS)
+    expect(page.locator("#landing-requests")).to_be_visible()
+    page.goto("/#requests")
+    row = drawer_row(page)   # 기존 test_logout_on_request_screen_returns_to_model_screen과 같은 조작
+    row.get_by_role("button", name="로그아웃").click()
+    expect(row.get_by_role("button", name="로그인")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator('[data-screen="landing"]')).to_be_visible()
+    expect(page.locator("#landing-requests")).to_be_hidden()
+    assert "내 요청 4건" not in (page.locator("#landing-requests").text_content() or "")   # 숨긴 줄에도 A의 요약이 남지 않는다
