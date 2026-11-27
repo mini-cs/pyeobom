@@ -75,4 +75,29 @@
 - 한 번만 한다. 결과를 보고 질문·모델·순서를 바꾸지 않는다. 비용은 장부에 먼저 적는다(질문 3건)
 
 ### 결과
-(측정 뒤 채운다)
+- 측정: 2026-11-27 11:38(한국 시각) 한 번(Claude Code). 운영 사이트(배포 커밋 2fd4c45), Playwright Pixel 7 흉내, 저장 내용이 없는 새 브라우저, 질문 3개를 순서 그대로
+- 기준과 다른 점: 새로 불러오면 대화가 아니라 첫 화면(랜딩)이 열린다(`public/app.js` "처음 열면 # 부분과 상관없이 랜딩(계획 기본값 3)"). 실제 질문 전 연습(질문 API를 가짜 응답으로 가로챔, AI 호출 없음)에서 발견해 멈췄고, 사용자가 2026-11-27에 "랜딩 최근 대화 카드로 다시 열기"로 정했다. 그래서 순서 6은 새로 불러오기 → 랜딩 '최근 대화' 카드 → 그 대화에서 쟀다
+- 읽은 곳
+  - c: 질문 API(`POST /api/ask`) 응답 본문의 `citations` 배열 길이
+  - s: 브라우저 localStorage `pyeobom.conversations`에서 그 대화의 `turns[i].citations` 배열 길이(새로 불러온 뒤)
+  - n1·n2: 이전 답 줄 "이전 답 · 근거 N개"의 N("근거 없음"은 0)
+  - g·g2: 근거를 펼친 목록의 카드 수
+
+| 질문 | c | g | n1 | n2 | s | g2 |
+|---|---|---|---|---|---|---|
+| Lg 세탁기 소모품 추천 | 1 | 1 | 1 | 1 | 1 | 1 |
+| 세탁 방법 | 3 | 2 | 3 | 3 | 3 | 2 |
+| 세탁기 설치 방법 | 0 | 0 | - | - | 0 | 0 |
+
+- "세탁기 설치 방법"은 찾지 못함 답이라 근거가 없고, 마지막 턴이라 이전 답 줄이 없다(-)
+- 판정: 1 "재현됨 — 숫자 기준 차이"(줄은 인용 수, 카드는 묶음 수). "세탁 방법" 턴에서 n1·n2(3)가 c·s(3)와 같고 g(2) < n2(3). 고치는 범위는 정리 기준의 3 그대로(문구 수준이면 동결 전 고침 후보, 화면 구조를 바꿔야 하면 기록만)
+  - 2·3은 나오지 않았다(s > c, n2 > s, g2 < g인 턴 없음)
+- 직접 확인한 것
+  - "세탁 방법" 응답의 인용 3개는 사용설명서 15쪽 2개·26쪽 1개였고, 펼친 근거는 15쪽 카드(인용 2개)와 26쪽 카드 2장이었다
+  - 이전 답 줄의 N은 그 턴 `citations`의 길이(`public/app.js` renderEntry), 카드는 설명서 쪽·가이드 문서별 묶음(`public/js/evidence.js` groupCitations)이다
+- 확인하지 못함: D가 실기기(안드로이드)에서 본 턴이 이번과 같은 경우(같은 쪽 인용이 여러 개)였는지
+- 원자료: `measure/out/phase2/repro-evidence-n/`(git 밖, 응답 본문·측정값). 화면 사진 9장: `docs/Claude outputs/phase2/qa-shots/`(git 밖)
+  - 질문마다 근거를 펼친 화면: repro-q1-evidence.png, repro-q2-evidence.png, repro-q3-evidence.png
+  - 새로 불러온 뒤 랜딩: repro-reload-landing.png
+  - 새로 불러온 뒤 이전 답 줄: repro-reload-t1-fold.png, repro-reload-t2-fold.png
+  - 새로 불러온 뒤 펼친 화면: repro-reload-t1-open.png, repro-reload-t2-open.png, repro-reload-t3-open.png
