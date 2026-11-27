@@ -93,10 +93,10 @@
 - 판정: 1 "재현됨 — 숫자 기준 차이"(줄은 인용 수, 카드는 묶음 수). "세탁 방법" 턴에서 n1·n2(3)가 c·s(3)와 같고 g(2) < n2(3). 고치는 범위는 정리 기준의 3 그대로(문구 수준이면 동결 전 고침 후보, 화면 구조를 바꿔야 하면 기록만)
   - 2·3은 나오지 않았다(s > c, n2 > s, g2 < g인 턴 없음)
 - 직접 확인한 것
-  - "세탁 방법" 응답의 인용 3개는 사용설명서 15쪽 2개·26쪽 1개였고, 펼친 근거는 15쪽 카드(인용 2개)와 26쪽 카드 2장이었다
+  - "세탁 방법" 응답의 인용 3개는 사용설명서 15쪽 2개·26쪽 1개였고, 펼친 근거 카드는 2장(15쪽 1장에 인용 2개, 26쪽 1장에 인용 1개)이었다
   - 이전 답 줄의 N은 그 턴 `citations`의 길이(`public/app.js` renderEntry), 카드는 설명서 쪽·가이드 문서별 묶음(`public/js/evidence.js` groupCitations)이다
 - 확인하지 못함: D가 실기기(안드로이드)에서 본 턴이 이번과 같은 경우(같은 쪽 인용이 여러 개)였는지
-- 원자료: `measure/out/phase2/repro-evidence-n/`(git 밖, 응답 본문·측정값). 화면 사진 9장: `docs/Claude outputs/phase2/qa-shots/`(git 밖)
+- 원자료: `measure/out/phase2/repro-evidence-n/`(git 밖, 응답 본문·측정값). 화면 사진 파일 9개: `docs/Claude outputs/phase2/qa-shots/`(git 밖). 한 화면에 함께 보여 t1-fold·t2-fold가 같은 화면, t2-open·t3-open이 같은 화면이라 서로 다른 화면은 7장(t3-open은 3번째 턴에 근거가 없어 2번째 턴을 펼친 화면 아래에 3번째 턴이 보임)
   - 질문마다 근거를 펼친 화면: repro-q1-evidence.png, repro-q2-evidence.png, repro-q3-evidence.png
   - 새로 불러온 뒤 랜딩: repro-reload-landing.png
   - 새로 불러온 뒤 이전 답 줄: repro-reload-t1-fold.png, repro-reload-t2-fold.png
