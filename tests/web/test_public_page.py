@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -133,3 +134,20 @@ def test_third_tile_more_coming_with_tabler_dots_icon_and_no_fridge():
 def test_favicon_request_blocked_with_empty_data_url():
     # 로고 아이콘은 나중에. 그전까지 /favicon.ico 404 콘솔 오류가 나지 않게 요청만 막는다
     assert '<link rel="icon" href="data:,">' in read("index.html")
+
+
+def test_washer_dryer_tiles_use_mdi_icons_with_license():
+    # 2026-11-27 사용자 결정(상호 테스트 D 의견 2): 세탁기·건조기 타일만 MDI 7.4.47 원본 그대로, 에어컨은 Tabler
+    css, html = read("styles.css"), read("index.html")
+    assert '.icon-washer { --icon: url("/icons/washing-machine.svg"); }' in css
+    assert '.icon-dryer { --icon: url("/icons/tumble-dryer.svg"); }' in css
+    assert '.icon-aircon { --icon: url("/icons/air-conditioning.svg"); }' in css
+    assert 'class="icon icon-washer"' in html and 'class="icon icon-dryer"' in html
+    digests = {"washing-machine.svg": "13714999ceb1fe12e18df07a4f69047e659fd8aaba82c1fbea8ba779cfe5f475",
+               "tumble-dryer.svg": "32f34559c1170b8e076adf30f134feec4d012c4512b833388c5cac242fa81347",
+               "LICENSE-mdi.txt": "f3bc8715bad84b26396bb42d2abd11f919cf58163be158eab79ecbaabf84cdf2"}
+    for name, digest in digests.items():
+        assert hashlib.sha256((PUBLIC / "icons" / name).read_bytes()).hexdigest() == digest, name
+    assert "Pictogrammers Free License" in read("icons/LICENSE-mdi.txt")
+    for old in ("wash-machine.svg", "wash-tumble-dry.svg"):
+        assert not (PUBLIC / "icons" / old).exists() and old not in css, old
