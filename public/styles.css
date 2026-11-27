@@ -106,8 +106,8 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; box-shadow: no
 .icon-file { --icon: url("/icons/file-text.svg"); }
 .icon-flag { --icon: url("/icons/flag.svg"); }
 .icon-lock { --icon: url("/icons/lock.svg"); }
-.icon-washer { --icon: url("/icons/wash-machine.svg"); }
-.icon-dryer { --icon: url("/icons/wash-tumble-dry.svg"); }
+.icon-washer { --icon: url("/icons/washing-machine.svg"); }
+.icon-dryer { --icon: url("/icons/tumble-dryer.svg"); }
 .icon-mail { --icon: url("/icons/mail.svg"); }
 .icon-switch { --icon: url("/icons/arrows-exchange.svg"); }
 .icon-aircon { --icon: url("/icons/air-conditioning.svg"); }

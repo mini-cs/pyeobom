@@ -6,3 +6,9 @@
   - 지운 요소 원문: `<path d="M0 4C0 1.79086 1.79086 0 4 0H36C38.2091 0 40 1.79086 40 4V36C40 38.2091 38.2091 40 36 40H4C1.79086 40 0 38.2091 0 36V4Z" fill="#F2F2F2"/>`
   - 이유: 화면 사진에서 40×40 회색 사각이 버튼 왼쪽 둥근 테두리를 덮음 → 사용자가 비교 그림을 보고 "G만 흰 바탕에"로 다시 정함(2026-11-25)
   - 근거(Google 지침 원문, 2026-11-25 확인): "you can't change the size or color of the Google "G" logo. It must be the standard color version (the standard color gradient super G logo) and appear on a white background", "Stick with the Google "G" with fixed padding and size". 배경 사각을 빼도 된다는 문장은 지침에 직접 없다 → 채팅 Claude 해석, 사용자 결정
+- *(2026-11-27 덧붙임: 첫 줄의 Tabler `wash-machine.svg`(세탁기 타일)·`wash-tumble-dry.svg`(건조기 타일)는 지웠고 아래 MDI 두 파일로 바뀜)*
+- MDI(Material Design Icons, Pictogrammers): `@mdi/svg@7.4.47`의 `svg/washing-machine.svg`(세탁기 타일)·`svg/tumble-dryer.svg`(건조기 타일)를 이름·내용 그대로 둠(2026-11-27, 고치지 않음). SHA-256 `washing-machine.svg` `13714999ceb1fe12e18df07a4f69047e659fd8aaba82c1fbea8ba779cfe5f475`(465바이트), `tumble-dryer.svg` `32f34559c1170b8e076adf30f134feec4d012c4512b833388c5cac242fa81347`(667바이트)
+  - 받은 곳: npm `npm pack @mdi/svg@7.4.47`(꾸러미 SHA-256 `de92e5dc9ce46c392ab5c53aa7190b19f82b40cb48872a083f788c7e13e91fef`)
+  - 라이선스: 꾸러미 `LICENSE`(Pictogrammers Free License, 아이콘은 Apache 2.0)를 `LICENSE-mdi.txt`로 그대로 둠. SHA-256 `f3bc8715bad84b26396bb42d2abd11f919cf58163be158eab79ecbaabf84cdf2`(1,012바이트, 원본의 CRLF 줄 끝 그대로, `.gitattributes` `-text`)
+  - 이유: 2차 상호 테스트 D 의견 2(건조기 아이콘이 세탁기와 구분 안 됨). Tabler 그대로·직접 그린 시안을 본 뒤 사용자가 MDI의 세탁기·건조기 쌍으로 정함(2026-11-27). 아이콘 묶음 8개의 파일 목록 중 건조기 그림이 있는 것은 MDI 하나였다(채팅 Claude 확인)
+  - 면을 채운 그림이라 선 그림인 Tabler 아이콘(에어컨·"더 추가 예정" 등)과 모양 방식이 다르다(알고 고름)

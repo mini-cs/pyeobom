@@ -437,7 +437,7 @@ function renderEntry(entry, index, latest) {
     turn.dataset.state = STATES[entry.turn.kind] ?? "answer";
     const body = answerBody(entry);
     if (!latest) {  // 이전 답은 본문과 근거를 함께 한 줄로 접는다(계획 기본값 11)
-      const n = Array.isArray(entry.turn.citations) ? entry.turn.citations.length : 0;
+      const n = groupCitations(entry.turn.citations).length;  // 이전 답 줄 숫자 = 펼친 근거 카드 수(설명서 쪽·가이드 문서 묶음, D 의견 4, 2026-11-27)
       body.id = `turn-body-${index}`;
       body.hidden = true;
       turn.append(foldButton(n ? `이전 답 · 근거 ${n}개` : "이전 답 · 근거 없음", body));
