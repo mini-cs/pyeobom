@@ -1,0 +1,26 @@
+{
+ "label": "after",
+ "time": "2026-11-27T13:01:06",
+ "settings": {
+  "search_mode": "vector",
+  "top_k": 5,
+  "openai_chat_model": "gpt-6-luna",
+  "reasoning_effort": "low",
+  "prompt_version": "v1",
+  "rewrite_model": "gpt-6-luna",
+  "rewrite_reasoning_effort": "none",
+  "rewrite_max_output_tokens": 300,
+  "openai_embed_model": "text-embedding-3-small",
+  "openai_embed_dimensions": null,
+  "chunk_context_model": "",
+  "chunk_context_reasoning_effort": "low",
+  "refine_model": "",
+  "refine_reasoning_effort": "none",
+  "refine_max_output_tokens": 300,
+  "max_output_tokens": 600,
+  "rewrite_timeout_s": 5.0,
+  "max_question_len": 500,
+  "refine_timeout_s": 3.0
+ },
+ "differences": []
+}
