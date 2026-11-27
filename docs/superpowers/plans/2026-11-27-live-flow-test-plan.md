@@ -164,3 +164,15 @@ def test_scrub_hides_every_secret_case_insensitively():
 - [ ] **Step 2:** 영상 파일 이름·길이(초)·크기를 보고(채팅 Claude가 장면을 뽑아 주소가 안 보이는지 확인할 때까지 시연 영상에 쓰지 않음)
 - [ ] **Step 3:** 개발일지 `docs/개발일지/2026-11-27.md` 끝에 절 하나(원문은 지시 블록, `<…>` 자리만 실제 값으로)
 - [ ] **Step 4:** 커밋 → push 전 점검(CLAUDE.md 기준 + 받기 도메인 글자가 더한 줄·PR 본문에 0개인지 셈, 값은 출력하지 않고 개수만) → push → PR(양식) → 보고하고 멈춤(병합은 채팅 Claude 대조·영상 확인 뒤)
+
+## 덧붙임 1 (2026-11-27, 첫 실행 실패 뒤, 채팅 Claude)
+
+- 첫 실행이 방어 ① 단계에서 실패. 원인: 계획이 결과 확인을 "`#request-done`에 완료 문구"처럼 글자로만 적음. `#request-done`·`#requests-empty`는 글자가 HTML에 처음부터 있고 숨어 있을 뿐이라, 글자 확인은 요청이 끝나기 전에 바로 통과함(Playwright `to_have_text`·`to_contain_text`는 숨은 요소에도 통과, 채팅 Claude 확인). 요청이 끝나며 앱이 폼을 비워(`req.form.reset()`) 두 번째 입력이 지워짐(영상 9.0초 → 9.5초)
+- 고침: 화면 결과는 모두 **보이는지 먼저** 확인한다(기존 `tests/web/test_ui_request.py`의 `get_by_text(…).to_be_visible()`과 같은 방법)
+  - 5번 완료: `#request-done`이 보임 + 완료 문구
+  - 6번 방어 ①: 완료 안내가 보인 뒤에 다시 입력, `#request-error`가 보임 + `이미 요청하셨어요`
+  - 7번: `#landing-requests`가 보임 + `내 요청 1건`, 목록 `.request-item` 1개
+  - 8번 방어 ②: `#login-code-error`가 보임 + 문구
+  - 9번 B: `#requests-empty`가 **보임** + `아직 요청이 없어요`, 그 뒤 `.request-item` 0개(보이기 전의 0개 확인은 아무것도 증명하지 못함). 첫 화면 `#landing-requests` 숨김 확인은 읽기 응답을 기다린 뒤 그대로
+- 실행 출력: `PYTHONUTF8=1`로 켜고, 전체를 `docs/Claude outputs/phase2/e2e/`의 UTF-8 파일로 받아 자르지 않는다(첫 실행은 cp949로 한글이 깨지고 끝 8줄만 받아 단계 이름을 잃음)
+- 돌리는 횟수: 사용자 승인으로 한 번 더(2026-11-27). 실패하면 다시 멈춤

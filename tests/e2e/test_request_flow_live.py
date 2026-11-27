@@ -165,11 +165,14 @@ def run_flow(page, flow: Flow) -> None:
 
     flow.step = "A 요청"
     fill_request(page, model_text)
-    expect(page.locator("#request-done")).to_contain_text(DONE, timeout=T)
+    # 결과 안내는 글자가 HTML에 처음부터 있고 숨어 있을 뿐이라 보이는지 먼저 본다(계획 덧붙임 1)
+    expect(page.locator("#request-done")).to_be_visible(timeout=T)
+    expect(page.locator("#request-done")).to_contain_text(DONE)
 
     flow.step = "방어 ① 같은 모델 다시 요청"
     fill_request(page, model_text)
-    expect(page.locator("#request-error")).to_contain_text(DUPLICATE, timeout=T)
+    expect(page.locator("#request-error")).to_be_visible(timeout=T)
+    expect(page.locator("#request-error")).to_contain_text(DUPLICATE)
 
     flow.step = "A 내 요청"
     page.goto(flow.base)
@@ -193,7 +196,8 @@ def run_flow(page, flow: Flow) -> None:
     sheet = send_code(page, flow.addr["B"])
     code = flow.wait_code("B")
     enter_code(sheet, code[:-1] + str((int(code[-1]) + 1) % 10))
-    expect(page.locator("#login-code-error")).to_contain_text(WRONG_CODE, timeout=T)
+    expect(page.locator("#login-code-error")).to_be_visible(timeout=T)
+    expect(page.locator("#login-code-error")).to_contain_text(WRONG_CODE)
     enter_code(sheet, code)
     expect(sheet).to_be_hidden(timeout=T)
 
@@ -202,7 +206,8 @@ def run_flow(page, flow: Flow) -> None:
         page.goto(flow.base)
     expect(page.locator("#landing-requests")).to_be_hidden(timeout=T)
     page.goto(f"{flow.base}/#requests")
-    expect(page.locator("#requests-empty")).to_contain_text(EMPTY, timeout=T)
+    expect(page.locator("#requests-empty")).to_be_visible(timeout=T)   # 보이기 전의 0개 확인은 아무것도 증명하지 못함
+    expect(page.locator("#requests-empty")).to_contain_text(EMPTY)
     expect(page.locator("#requests-list .request-item")).to_have_count(0)
 
 
