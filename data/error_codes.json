@@ -18,9 +18,9 @@
       "OF": ["guide-samsung-drum-oc"]
     },
     "lg": {
-      "OE": ["manual-lg-fx25:41", "guide-lg-drum-errors"],
-      "1E": ["manual-lg-fx25:41"],
-      "UE": ["manual-lg-fx25:55", "guide-lg-drum-errors"],
+      "OE": ["manual-lg-fx25:41", "guide-lg-drum-errors", "manual-lg-fx21wnc:37"],
+      "1E": ["manual-lg-fx25:41", "manual-lg-fx21wnc:37"],
+      "UE": ["manual-lg-fx25:55", "guide-lg-drum-errors", "manual-lg-fx21wnc:51"],
       "IE": ["guide-lg-drum-errors"],
       "LE": ["guide-lg-drum-errors"],
       "DE": ["guide-lg-drum-errors"],

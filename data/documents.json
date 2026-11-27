@@ -35,7 +35,7 @@
     "title": "[LG 드럼세탁기 에러코드] 표시창에 에러표시가 나타나요",
     "source_url": "https://www.lge.co.kr/support/solutions-1001261",
     "scope_note": "LG 드럼세탁기 공용 — 모델에 따라 다를 수 있음",
-    "model_ids": ["washer-lg-fx25"],
+    "model_ids": ["washer-lg-fx25", "washer-lg-fx21wnc"],
     "file": "data/guides/guide-lg-drum-errors.html",
     "content_selector": "#viewContent",
     "fetched_at": "2026-10-28"
@@ -118,5 +118,15 @@
     "file": "data/guides/guide-lg-aircon-ch-errors.html",
     "content_selector": "#viewContent",
     "fetched_at": "2026-10-28"
+  },
+  {
+    "id": "manual-lg-fx21wnc",
+    "doc_type": "manual",
+    "title": "LG 드럼세탁기 사용설명서",
+    "source_url": "https://www.lge.co.kr/support/product-manuals",
+    "scope_note": "모델 전용 — 표지 모델명 FX21*NC (문서 번호 MFL71792820)",
+    "model_ids": ["washer-lg-fx21wnc"],
+    "file": "data/manuals/WM_KOR_MFL71792820_06_251204_00_OM_WEB.pdf",
+    "fetched_at": "2026-11-27"
   }
 ]
