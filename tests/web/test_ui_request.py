@@ -204,7 +204,7 @@ def test_dryer_tile_shows_empty_list_and_request_button(open_app):
 def test_washer_model_screen_also_has_request_button(open_app):
     page, _ = open_app()
     go_model_screen(page, "세탁기")
-    expect(page.locator(".model-card")).to_have_count(2)
+    expect(page.locator(".model-card")).to_have_count(sum(m["appliance"] == "washer" for m in MODELS))
     expect(page.get_by_role("button", name=NO_MODEL)).to_be_visible()
 
 

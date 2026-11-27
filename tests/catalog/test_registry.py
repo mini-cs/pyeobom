@@ -36,9 +36,10 @@ def test_short_name_only_for_samsung_and_null_elsewhere():
     # 2026-11-10 사용자 결정: 360px 위쪽 막대 한 줄을 위해 삼성만 "세탁건조기"를 뺀 짧은 이름
     models = {m["id"]: m for m in load_models()}
     assert models["washer-samsung-wd90h25"]["short_name"] == "삼성 BESPOKE AI 콤보"
-    assert "short_name" not in models["washer-lg-fx25"] and "short_name" not in models["aircon-lg-sq06fa1wds"]
+    assert all("short_name" not in models[m] for m in ("washer-lg-fx25", "aircon-lg-sq06fa1wds", "washer-lg-fx21wnc"))
     body = {m["id"]: m["short_name"] for m in TestClient(create_app()).get("/api/models").json()}
-    assert body == {"washer-samsung-wd90h25": "삼성 BESPOKE AI 콤보", "washer-lg-fx25": None, "aircon-lg-sq06fa1wds": None}
+    assert body == {"washer-samsung-wd90h25": "삼성 BESPOKE AI 콤보", "washer-lg-fx25": None, "aircon-lg-sq06fa1wds": None,
+                    "washer-lg-fx21wnc": None}
 
 
 def test_diagnostic_refs_point_to_manual_pages():
@@ -46,4 +47,5 @@ def test_diagnostic_refs_point_to_manual_pages():
     refs = {m["id"]: m["diagnostic_refs"] for m in load_models()}
     assert all(re.fullmatch(r"manual:\d+", r) for rs in refs.values() for r in rs)
     assert refs == {"washer-samsung-wd90h25": [], "washer-lg-fx25": ["manual:54"],
-                    "aircon-lg-sq06fa1wds": ["manual:34", "manual:49"]}   # 결정기록 019
+                    "aircon-lg-sq06fa1wds": ["manual:34", "manual:49"],
+                    "washer-lg-fx21wnc": ["manual:50"]}   # 결정기록 019, FX21은 FX25와 같은 "고장 진단하기" 쪽(사용자 결정 2026-11-27)
