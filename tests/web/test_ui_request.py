@@ -958,8 +958,12 @@ def test_my_requests_zero_and_not_deployed(open_app):
     page.goto("/#requests")
     expect(page.get_by_text("아직 요청이 없어요")).to_be_visible()
     fake.rows = [{**ROWS[1], "model_id": "dryer-fake-not-deployed"}]
-    page.reload()
-    expect(page.locator('[data-screen="requests"] .conv-list > li').get_by_role("link")).to_have_count(0)
+    page.goto("/")
+    page.goto("/#requests")
+    items = page.locator('[data-screen="requests"] .conv-list > li')
+    expect(items).to_have_count(1)
+    expect(items.get_by_role("link")).to_have_count(0)
+    expect(items).not_to_contain_text("눌러서 바로 질문하기")
 
 
 def test_my_requests_direct_without_login_opens_sheet(open_app):

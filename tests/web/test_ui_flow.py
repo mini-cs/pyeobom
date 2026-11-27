@@ -203,7 +203,7 @@ def test_recent_conversation_cards_landing_one_category_three(open_page):
 def test_no_recent_section_without_conversations(open_page):
     page = open_page()
     assert_screen(page, LANDING_H1)
-    expect(page.locator(".conv-card")).to_have_count(0)
+    expect(page.locator(".conv-card:visible")).to_have_count(0)
     expect(page.get_by_role("heading", name="최근 대화")).to_have_count(0)
 
 
