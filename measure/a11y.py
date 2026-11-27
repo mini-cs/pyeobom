@@ -57,8 +57,12 @@ STATES = {
     "switch-confirm": ["model:건조기", "nomodel", "email", "code", "switch"],
     # 2026-11-25 개인정보 처리방침 페이지(정적 파일, Supabase 없음)
     "privacy": ["privacy"],
+    # 2026-11-27 2차 Task 11 ① 내 요청: 로그인 뒤 첫 화면 요약 줄, #requests 목록(가짜 Supabase의 가짜 요청 MY_REQUESTS)
+    "landing-my-requests": ["model:건조기", "nomodel", "email", "code", "home-requests"],
+    "requests-list": ["model:건조기", "nomodel", "email", "code", "home-requests", "requests"],
 }
-LOCAL_ONLY = {"model-dryer", "login-sheet", "login-code", "request-form", "request-done", "drawer-account", "switch-confirm"}
+LOCAL_ONLY = {"model-dryer", "login-sheet", "login-code", "request-form", "request-done", "drawer-account", "switch-confirm",
+              "landing-my-requests", "requests-list"}
 SUPABASE = "https://supabase.test"   # 가짜 주소. 실제 Supabase·메일은 부르지 않는다
 FAKE_SESSION = {  # 모양만 맞춘 가짜 세션(토큰은 서명 없는 가짜)
     "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJleHAiOjQxMDI0NDQ4MDB9.fake",
@@ -66,6 +70,16 @@ FAKE_SESSION = {  # 모양만 맞춘 가짜 세션(토큰은 서명 없는 가�
     "user": {"id": "00000000-0000-4000-8000-000000000001", "aud": "authenticated", "role": "authenticated",
              "email": "tester@example.com", "app_metadata": {}, "user_metadata": {}, "created_at": "2026-11-25T00:00:00Z"},
 }
+MY_REQUESTS = [  # 가짜 요청(상태 4가지). 읽기(GET /rest/v1/model_requests) 응답으로만 쓴다
+    {"id": 11, "category": "washer", "brand": "LG", "model_text": "FX21WNC", "status": "추가됨",
+     "model_id": "washer-lg-fx21wnc", "reason": None, "updated_at": "2026-11-27T03:00:00Z"},
+    {"id": 12, "category": "dryer", "brand": "가짜브랜드", "model_text": "DV90-FAKE1", "status": "확인 중",
+     "model_id": None, "reason": None, "updated_at": "2026-11-27T01:00:00Z"},
+    {"id": 13, "category": "aircon", "brand": "가짜브랜드", "model_text": "AB-1234", "status": "추가 어려움",
+     "model_id": None, "reason": "글자가 없는 설명서라 추가하기 어려워요(측정용)", "updated_at": "2026-11-26T03:00:00Z"},
+    {"id": 14, "category": "washer", "brand": "가짜브랜드", "model_text": "CD-5678", "status": "대기",
+     "model_id": None, "reason": None, "updated_at": "2026-11-25T03:00:00Z"},
+]
 NO_SAVE = "Storage.prototype.setItem = function () { throw new DOMException('측정용 공간 부족', 'QuotaExceededError'); };"
 FIXTURES = {"found": "ask_found.json", "not_found": "ask_not_found.json", "other_brand": "ask_other_brand.json"}
 
@@ -191,6 +205,12 @@ def _prepare(page, base, steps, replies):
         elif action == "account-drawer":
             page.get_by_role("button", name="지난 대화").click()
             page.locator("#drawer-email").wait_for()
+        elif action == "home-requests":   # 로그인 기록이 남은 채 첫 화면(새로 불러오기)
+            page.goto(base)
+            page.locator("#landing-requests").wait_for()
+        elif action == "requests":
+            page.locator("#landing-requests").click()
+            page.locator('[data-screen="requests"] .conv-list li').first.wait_for()
         elif action == "privacy":
             page.goto(base.rstrip("/") + "/privacy.html")
             page.get_by_role("heading", level=1).wait_for()
@@ -208,7 +228,8 @@ def _fake_supabase(route):
     if req.method == "OPTIONS":
         return route.fulfill(status=204, headers=cors)
     path = req.url.split("supabase.test", 1)[1]
-    body = FAKE_SESSION if path.startswith("/auth/v1/verify") else ([] if path.startswith("/rest/") else {})
+    rest_body = MY_REQUESTS if req.method == "GET" else []   # 읽기는 가짜 요청, 넣기는 빈 응답
+    body = FAKE_SESSION if path.startswith("/auth/v1/verify") else (rest_body if path.startswith("/rest/") else {})
     status = 201 if path.startswith("/rest/") and req.method == "POST" else 200
     route.fulfill(status=status, headers=cors, json=body)
 
