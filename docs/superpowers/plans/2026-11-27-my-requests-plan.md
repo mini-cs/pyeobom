@@ -216,3 +216,11 @@ def test_my_requests_cleared_after_logout(open_app):   # Review Focus 5
 - [ ] **Step 2:** 화면 사진(로컬 서버 + 가짜 Supabase, 360px, deviceScaleFactor 2) 세 장을 `docs/Claude outputs/phase2/my-requests/`에: 첫 화면 요약 줄, `#requests` 목록(위 ROWS), 다른 계정(0건) 첫 화면
 - [ ] **Step 3:** 개발일지 `docs/개발일지/2026-11-27.md` 끝에 절 하나(한 것·결정한 것·AI 실수, 채팅 Claude가 원문을 주면 그대로) — 원문은 지시 블록에 있음
 - [ ] **Step 4:** 커밋 → push 전 점검 → push → PR(양식) → 보고하고 멈춤(병합은 채팅 Claude 대조 뒤)
+
+## 덧붙임 (2026-11-27, 실행 중)
+
+- Task 2: 첫 화면에 숨긴 요약 링크(`.conv-card`)가 생겨 기존 `tests/web/test_ui_flow.py` `test_no_recent_section_without_conversations`의 `.conv-card` 개수 0이 깨짐 → 그 줄을 `.conv-card:visible`(보이는 카드 0개)로 바꿈. 테스트 뜻("대화가 없으면 카드가 보이지 않음")은 그대로이고, 로그인하지 않았을 때 요약 줄이 보이지 않는 것도 함께 확인한다(Claude Code가 멈춰 물음, 사용자 결정 2026-11-27)
+- Task 2 `test_my_requests_zero_and_not_deployed`: 앱은 새로 불러오면 첫 화면이 열려(2차 계획 기본값 3) `page.reload()` 뒤의 확인이 빈 목록을 셌음 → `page.goto("/")` 뒤 `page.goto("/#requests")`로 바꾸고, 배포 안 된 모델의 한 줄이 1개 보이고 그 안에 링크가 0개인지 확인
+- JS 테스트 명령: `node --test tests/web/js/`(폴더)는 이 환경에서 바꾸기 전에도 실패 1개로 끝나(2026-11-12·11-25 개발일지와 같음) `node --test "tests/web/js/*.test.mjs"`로 돌림
+- 화면 접근성: 지금까지 화면 작업처럼 `measure/a11y.py`(axe)에 첫 화면 요약 줄·`#requests` 목록 상태를 더해 위반 0을 확인한다(계획에서 빠졌던 것)
+- `test_my_requests_stale_login_record_shows_nothing`은 실패 확인 단계에서 이미 통과했다(요약 줄 요소가 아직 없어 "숨김"이 바로 맞음). 구현 뒤에 망가진 로그인 기록으로도 오류 없이 숨는지를 지키는 테스트로 둔다
