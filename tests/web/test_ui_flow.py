@@ -1306,10 +1306,27 @@ def test_saved_conversation_renders_evidence_the_same_way(open_page):
     expect(page.locator(".turn")).to_have_count(2)
     expect(page.locator(".turn .fold", has_text=MIXED_LABEL)).to_have_count(2)   # 이전 답(접힌 안, 숨김)과 최신 답 모두 같은 구조
     expect(page.locator(".turn").last.get_by_role("button", name="공식 설명서·문서를 드릴까요?")).to_be_visible()
-    page.get_by_role("button", name="이전 답 · 근거 5개").click()
+    page.get_by_role("button", name="이전 답 · 근거 3개").click()   # MIXED 인용 5개 = 카드 3개(12쪽·13쪽·가이드 1), D 의견 4(2026-11-27)
     first = page.locator(".turn").first
     expect(first.get_by_role("button", name=MIXED_LABEL)).to_be_visible()
     expect(first.get_by_role("button", name="공식 설명서·문서를 드릴까요?")).to_be_visible()
+
+
+def test_previous_answer_counts_evidence_cards_not_quotes(open_page):
+    # D 의견 4(2026-11-27): 이전 답 줄 숫자 = 펼친 근거 카드 수. 같은 쪽 인용 2개는 카드 하나
+    same_page = [CITE, {**CITE, "quote": "가짜 인용 둘(테스트)."}]
+    page = open_page(ask=lambda body, route: fake(body, citations=same_page))
+    open_chat(page, "washer-lg-fx25")
+    for i in (1, 2):
+        send(page, f"가짜 질문 {i}")
+        wait_turns(page, i)
+    first = page.locator(".turn").first
+    fold = first.get_by_role("button", name="이전 답 · 근거 1개")
+    expect(fold).to_have_attribute("aria-expanded", "false")
+    fold.click()
+    expect(first.locator(".evidence")).to_have_count(1)
+    expect(first.locator(".evidence blockquote")).to_have_count(2)
+
 
 
 # ── 아래 고정 입력창에 포커스가 가려지지 않음(WCAG 2.2 2.4.11, 2026-11-11 사용자 결정). 위쪽 막대는 고정이 아니라 아래만 본다 ──
