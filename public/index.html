@@ -130,6 +130,11 @@
           <span><strong>개인정보는 적지 마세요</strong><span class="muted">적어도 AI에 보내기 전에 가려요</span></span></li>
       </ul>
       <div class="landing-bottom">
+        <!-- 2차 Task 11 ① 내 요청 요약(로그인했고 요청이 있을 때만, 글자는 app.js가 textContent로) -->
+        <a class="conv-card" id="landing-requests" href="#requests" hidden>
+          <span class="card-text"><span class="card-title" id="landing-requests-title"></span>
+            <span class="card-meta" id="landing-requests-meta"></span></span>
+          <span class="icon icon-chevron" aria-hidden="true"></span></a>
         <section class="recent" id="landing-recent" aria-labelledby="landing-recent-title" hidden>
           <h2 id="landing-recent-title">최근 대화</h2>
           <ul class="conv-list"></ul>
@@ -204,6 +209,19 @@
       </div>
       <p class="notice" id="request-done" role="status" hidden><span class="icon icon-info" aria-hidden="true"></span>
         <span>요청을 받았어요. 추가되면 메일로 알려 드릴게요.</span></p>
+    </section>
+
+    <!-- 2차 Task 11 ① 내 요청(설계 docs/superpowers/specs/2026-11-27-my-requests-design.md): 화면이 Supabase(RLS 본인 요청만)에서 바로 읽음 -->
+    <section class="screen" data-screen="requests" hidden>
+      <h1 tabindex="-1">내 요청</h1>
+      <p class="form-error" id="requests-error" role="alert" hidden></p>
+      <ul class="conv-list" id="requests-list"></ul>
+      <div class="requests-empty" id="requests-empty" hidden>
+        <p>아직 요청이 없어요</p>
+        <a class="pill" href="#category">시작하기</a>
+      </div>
+      <p class="notice" id="requests-note" hidden><span class="icon icon-info" aria-hidden="true"></span>
+        <span>추가됨이나 추가 어려움으로 바뀌면 메일로도 알려 드려요.</span></p>
     </section>
 
     <!-- ④ 채팅(설계 2절 ④): 대화 목록, 대화가 없을 때 추천 카드, 아래 고정 입력창 -->

@@ -5,7 +5,10 @@ import { EXAMPLES } from "./js/examples.js";
 import { wheelToScroll } from "./js/wheel.js";
 import { docLinks, evidenceLabel, groupCitations, offerText, warnings } from "./js/evidence.js";
 import { parentHash } from "./js/nav.js";
-import { findExistingModel, LOGIN_REQUIRED, requestErrorMessage, requestRow, UNAVAILABLE, validateRequest } from "./js/request.js";
+import {
+  findExistingModel, hasSavedLogin, LOGIN_REQUIRED, requestErrorMessage, requestRow, requestView, sortRequests, summarizeRequests,
+  UNAVAILABLE, validateRequest,
+} from "./js/request.js";
 import { initAuth, isOtpCode, onAuthChange, signInMethod } from "./js/auth.js";
 
 const MAX_LEN = 500;
@@ -64,6 +67,7 @@ function parseRoute(hash) {
     if (name === "model" && APPLIANCES[a]) return { screen: "model", appliance: a };
     if (name === "request" && APPLIANCES[a]) return { screen: "request", appliance: a };
     if (name === "chat" && a) return { screen: "chat", modelId: a, conversationId: b };
+    if (name === "requests") return { screen: "requests" };
   } catch { /* 잘못된 % 표기는 랜딩으로 */ }
   return { screen: "landing" };
 }
@@ -93,12 +97,16 @@ async function render(focus) {
     $("no-model-error").hidden = true;
   }
   if (route.screen === "request") prepareRequest(route.appliance);
+  if (route.screen === "requests") clearRequests();
   show(route.screen, focus);
   if (route.screen === "category") updateDots();
   const models = await modelsReady;
   if (id !== renderId) return;  // 그사이 다른 화면으로 옮겼으면 버린다
   if (route.screen === "landing" || route.screen === "category") {
     renderRecent($(`${route.screen}-recent`), RECENT_LIMIT[route.screen], models);
+    if (route.screen === "landing") renderLandingRequests(id);
+  } else if (route.screen === "requests") {
+    renderRequests(id, models);
   } else if (route.screen === "model") {
     renderModelCards(route.appliance, models);
   } else if (route.screen === "request") {
@@ -758,6 +766,9 @@ onAuthChange((event, session) => {
   const route = parseRoute(location.hash);
   if (event === "SIGNED_OUT") {
     clearAccount();
+    hideLandingRequests();  // 다른 계정으로 바꾸는 장면에서 앞 계정의 요약·목록이 남지 않게
+    clearRequests();
+    if (route.screen === "requests") location.hash = "";
     if (route.screen === "request") {
       req.form.reset();
       location.hash = `#model/${route.appliance}`;
@@ -830,6 +841,86 @@ req.form.addEventListener("submit", async (e) => {
   else showRequestError(message);
 });
 $("request-ask").addEventListener("click", () => { location.hash = chatHash(existingModel.id); });
+
+// ── 2차 Task 11 ① 내 요청(설계 docs/superpowers/specs/2026-11-27-my-requests-design.md) ──
+// 화면이 Supabase에서 바로 읽고, 본인 것만 읽히는 일은 RLS "본인 요청만 읽기"가 맡는다. 이메일·user_id는 읽지 않는다
+const REQUEST_COLUMNS = "id,category,brand,model_text,status,model_id,reason,updated_at";
+const landingRequests = $("landing-requests");
+
+// { auth: null } 쓸 수 없음 / { session: null } 로그인 안 됨 / { rows: null } 읽기 실패 / { rows: [...] }
+async function readMyRequests() {
+  try {
+    const auth = await initAuth();
+    if (!auth) return { auth: null };
+    const session = await auth.session();
+    if (!session) return { auth, session: null };
+    const { data, error } = await auth.client.from("model_requests").select(REQUEST_COLUMNS);
+    return { auth, session, rows: error ? null : (data ?? []) };
+  } catch {
+    return { auth: null };  // 망가진 로그인 기록·연결 끊김: 화면은 그대로 두고 요약만 없앤다
+  }
+}
+
+function hideLandingRequests() {
+  landingRequests.hidden = true;
+  $("landing-requests-title").textContent = "";
+  $("landing-requests-meta").replaceChildren();
+}
+
+// 첫 화면은 이 브라우저에 로그인 기록이 있을 때만 Supabase를 부른다(로그인하지 않은 방문자는 아무것도 부르지 않음)
+async function renderLandingRequests(id) {
+  if (!hasSavedLogin(storage())) return hideLandingRequests();
+  const { rows } = await readMyRequests();
+  if (id !== renderId) return;  // 그사이 다른 화면으로 옮겼으면 버린다
+  if (!rows || rows.length === 0) return hideLandingRequests();
+  const { total, parts } = summarizeRequests(rows);
+  $("landing-requests-title").textContent = `내 요청 ${total}건`;
+  $("landing-requests-meta").replaceChildren(...parts.flatMap(({ status, count }, i) => {
+    const text = `${status} ${count}`;
+    return [...(i ? [" · "] : []), status === "추가됨" ? el("strong", null, text) : text];
+  }));
+  landingRequests.hidden = false;
+}
+
+function clearRequests() {
+  $("requests-list").replaceChildren();
+  $("requests-empty").hidden = $("requests-note").hidden = $("requests-error").hidden = true;
+}
+
+// 한 줄: 제목 / 가전 · 상태(굵게) · 바뀐 날 / (추가됨) 눌러서 바로 질문하기 · (추가 어려움) 사유. 글자는 textContent로만
+function requestItem(view) {
+  const card = el(view.href ? "a" : "div", "conv-card request-item");
+  if (view.href) card.href = view.href;
+  const text = el("span", "card-text");
+  const meta = el("span", "card-meta", `${APPLIANCES[view.category] ?? ""} · `);
+  meta.append(el("strong", null, view.status));
+  const date = formatDate(view.updatedAt);
+  if (date) meta.append(" · ", el("span", "card-date", date));
+  text.append(el("span", "card-title", view.title), meta);
+  if (view.extra) text.append(el("span", "card-meta", view.extra));
+  card.append(text);
+  if (view.href) card.append(icon("chevron"));
+  const li = el("li");
+  li.append(card);
+  return li;
+}
+
+async function renderRequests(id, models) {
+  if (googleReturn && !(await googleReturn)) return;  // 구글에서 돌아오는 중이면 교환을 기다린다(실패는 시트로 알림)
+  const result = await readMyRequests();
+  if (id !== renderId) return;
+  clearRequests();
+  if (!result.auth || result.rows === null) return showError($("requests-error"), UNAVAILABLE);
+  if (!result.session) return openLogin({ then: "#requests" });
+  const rows = sortRequests(result.rows);
+  if (rows.length === 0) {
+    $("requests-empty").hidden = false;
+    return;
+  }
+  const deployed = new Set(models.map((m) => m.id));
+  $("requests-list").replaceChildren(...rows.map((row) => requestItem(requestView(row, deployed))));
+  $("requests-note").hidden = false;
+}
 
 // ── 로그인 시트(덧붙임 D-3·D-4): ① 이메일 → 코드 보내기 또는 구글 ② 코드 입력 ──
 const WRONG_CODE = "코드가 맞지 않아요. 다시 확인해 주세요";
