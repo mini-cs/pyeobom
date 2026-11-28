@@ -81,5 +81,7 @@ revoke all on table public.model_requests from anon, authenticated;
 grant select on table public.model_requests to authenticated;
 -- 넣기는 화면이 보내는 세 열만: user_id·status·created_at 등을 사용자가 정할 수 없게 한다(24시간 개수를 created_at으로 피하는 것도 막음)
 grant insert (category, brand, model_text) on table public.model_requests to authenticated;
+-- 깨우기(/api/wake, 2차 Task 11 ③)가 서버 키(service_role)로 1줄 읽는다. 새 표를 자동으로 열지 않는 프로젝트라 직접 준다(읽기만)
+grant select on table public.model_requests to service_role;
 
 commit;

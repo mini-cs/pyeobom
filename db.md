@@ -41,9 +41,11 @@
 |---|---|---|---|
 | `anon`(로그인 전) | 없음 | 없음 | 없음 |
 | `authenticated`(로그인 후) | 있음(RLS로 본인 행만) | **`category`·`brand`·`model_text` 세 열만** | 없음 |
+| `service_role`(서버 비밀 키) | 있음(깨우기 `/api/wake`가 1줄 읽음, 2026-11-28 더함) | 없음 | 없음 |
 
 - 넣기는 세 열만 받는다. 화면은 이 세 열만 보내야 한다(Task 6). `user_id`·`status`·`reason`·`model_id`·`created_at`을 보내면 열 권한 오류로 거부된다. 그래서 사용자가 상태를 `추가됨`으로 넣거나 `created_at`을 과거로 넣어 하루 제한을 피할 수 없다
 - `service_role`에는 이 파일에서 따로 권한을 주거나 빼지 않았다(지금 쓰는 곳 없음, Task 7·8에서 필요하면 그때 정함)
+  - (덧붙임 2026-11-28) 깨우기(Task 11 ③)가 서버 키로 이 표를 1줄 읽으므로 `service_role`에 `SELECT`만 준다(`supabase/schema.sql`). 아래 "Supabase 깨우기" 절
 - 운영 DB 조회(2026-11-25, 채팅 Claude가 읽기만): `service_role`은 이 표에 `REFERENCES`·`TRIGGER`·`TRUNCATE`만 있고 `SELECT`·`UPDATE`가 없다(Supabase 기본값으로 보임). Task 7·8에서 서버가 이 표를 읽거나 고치게 되면 그때 권한을 준다
 - identity 열의 시퀀스 권한은 주지 않았고, 넣기 테스트가 통과해 필요 없음을 확인했다
 
@@ -147,6 +149,7 @@ RLS를 켰다. 정책은 둘뿐이다.
 | Cron(UTC, `vercel.json`) | `23 1 * * *`, `23 9 * * *`, `23 17 * * *` (Hobby는 작업마다 하루 1번, 정한 시각의 한 시간 안 어느 때) |
 | 인증 | `Authorization: Bearer <CRON_SECRET>` (Vercel Cron이 보냄. 값은 Vercel Production에만, 여기에 적지 않음. 서버는 앞뒤 빈칸을 떼고 비교) |
 | 읽기 | `GET /rest/v1/model_requests?select=id&limit=1`, 머리글 `apikey`에 비밀 키만, 시간 제한 10초. 결과는 버림(표 내용은 바꾸지 않음) |
+| 필요한 권한 | `grant select on table public.model_requests to service_role` (`supabase/schema.sql`). 새 표를 자동으로 열지 않는 프로젝트라 서버 키에도 읽기 권한이 없다. 없으면 Supabase가 403(`permission denied for table model_requests`)을 돌려주고 `/api/wake`는 502 `rest_403`(2026-11-28 병합 뒤 확인) |
 
 - 응답: 200 `{"ok": true}`. 401: 머리글이 없거나 틀림, 또는 서버에 `CRON_SECRET`이 없음(Supabase를 부르지 않음). 502: `reason`이 `not_configured`·`rest_<상태숫자>`·`<httpx 예외 이름>`.
 - 로그: `wake: result=ok` / `wake: result=unauthorized` / `wake 실패: reason=…`(키·주소·응답 본문 없음).
