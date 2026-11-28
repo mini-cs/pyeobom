@@ -136,3 +136,19 @@ RLS를 켰다. 정책은 둘뿐이다.
 - Resend 무료: 하루 100통(UTC 기준 하루, 보낸 메일과 받은 메일을 합산, SMTP도 같은 한도). 넘으면 429이고 다시 보내 주지 않는다.
 - Supabase 사용자 지정 SMTP: 기본 시간당 30통.
 - 로그인 코드 메일(Supabase → Resend SMTP), 알림 메일(Resend API), Task 11의 받기 확인이 같은 100통을 나눠 쓴다 → Task 11 계획 때 다시 본다.
+
+## Supabase 깨우기 (Task 11 ③)
+
+설계 `docs/superpowers/specs/2026-11-28-supabase-wake-design.md`. Supabase 무료 플랜은 지난 일주일 사용자 데이터베이스 활동이 충분하지 않으면 프로젝트를 멈춘다(Supabase 문서 "Project Pausing"). 질문·답변은 Neon이라 Supabase는 로그인·요청 때만 불리므로, 방문이 줄어도 멈추지 않게 Vercel Cron이 하루 3번 요청 표를 1줄 읽는다.
+
+| 항목 | 값 |
+|---|---|
+| 주소 | GET https://pyeobom.help/api/wake (`app/wake/`) |
+| Cron(UTC, `vercel.json`) | `23 1 * * *`, `23 9 * * *`, `23 17 * * *` (Hobby는 작업마다 하루 1번, 정한 시각의 한 시간 안 어느 때) |
+| 인증 | `Authorization: Bearer <CRON_SECRET>` (Vercel Cron이 보냄. 값은 Vercel Production에만, 여기에 적지 않음. 서버는 앞뒤 빈칸을 떼고 비교) |
+| 읽기 | `GET /rest/v1/model_requests?select=id&limit=1`, 머리글 `apikey`에 비밀 키만, 시간 제한 10초. 결과는 버림(표 내용은 바꾸지 않음) |
+
+- 응답: 200 `{"ok": true}`. 401: 머리글이 없거나 틀림, 또는 서버에 `CRON_SECRET`이 없음(Supabase를 부르지 않음). 502: `reason`이 `not_configured`·`rest_<상태숫자>`·`<httpx 예외 이름>`.
+- 로그: `wake: result=ok` / `wake: result=unauthorized` / `wake 실패: reason=…`(키·주소·응답 본문 없음).
+- Neon·Vercel은 깨우지 않는다(2차 계획 덧붙임 G).
+- 한계: 하루 3번 1줄 읽기가 Supabase의 "충분한 활동"에 드는지는 기준이 공개되지 않아 확인할 수 없다(멈추기 약 일주일 전 경고 메일이 오면 횟수를 늘린다). Vercel Cron은 최선 노력이라 가끔 빠질 수 있고, 실패해도 다시 하지 않으며, legacy라 나중에 Schedules로 옮겨야 할 수 있다. `CRON_SECRET`은 배포가 만들어질 때의 값을 쓴다(넣은 뒤 다시 배포해야 반영).
