@@ -40,6 +40,7 @@ class Settings:
     notify_webhook_secret: str = ""
     operator_email: str = ""
     mail_from: str = ""
+    cron_secret: str = ""  # Supabase 깨우기 /api/wake 인증. 운영 Vercel Production에만(Vercel Cron이 Authorization 머리글로 보냄)
 
 
 @lru_cache
@@ -77,4 +78,5 @@ def get_settings() -> Settings:
         notify_webhook_secret=env("NOTIFY_WEBHOOK_SECRET", ""),
         operator_email=env("OPERATOR_EMAIL", ""),
         mail_from=env("MAIL_FROM", ""),
+        cron_secret=env("CRON_SECRET", "").strip(),  # 붙여 넣을 때 섞인 앞뒤 빈칸·줄바꿈을 뗀다(머리글 쪽은 HTTP가 뗌)
     )

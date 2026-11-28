@@ -19,6 +19,7 @@ app/catalog/      지원 모델 목록 (/api/models)
 app/retrieval/    임베딩·검색
 app/answer/       프롬프트·AI 호출·답변 검증
 app/ask/          질문 처리 흐름 (/api/ask)
+app/wake/         Supabase 깨우기 (/api/wake, Vercel Cron 하루 3번)
 ingest/           전처리(로컬): PDF → 조각 → 임베딩 → Neon
 evaluation/       평가(로컬): 테스트 30개·채점·리포트
 public/           화면

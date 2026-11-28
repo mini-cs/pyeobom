@@ -3,5 +3,10 @@
   "framework": "fastapi",
   "regions": [
     "sin1"
+  ],
+  "crons": [
+    { "path": "/api/wake", "schedule": "23 1 * * *" },
+    { "path": "/api/wake", "schedule": "23 9 * * *" },
+    { "path": "/api/wake", "schedule": "23 17 * * *" }
   ]
 }

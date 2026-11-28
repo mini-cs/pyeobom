@@ -8,6 +8,7 @@ from app.catalog.routes import router as catalog_router
 from app.core.config import get_settings
 from app.core.errors import make_error
 from app.notify.routes import router as notify_router
+from app.wake.routes import router as wake_router
 
 
 def create_app() -> FastAPI:
@@ -33,5 +34,6 @@ def create_app() -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(ask_router)
     app.include_router(notify_router)
+    app.include_router(wake_router)
     register_error_handlers(app)
     return app
